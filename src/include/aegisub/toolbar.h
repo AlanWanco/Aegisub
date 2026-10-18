@@ -19,6 +19,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 namespace agi { struct Context; }
 class wxFrame;

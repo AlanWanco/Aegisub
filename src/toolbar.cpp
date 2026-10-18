@@ -234,6 +234,9 @@ namespace toolbar {
 		for (size_t i = 0; i < visual_tool_commands.size(); ++i) {
 			int const id = TOOL_ID_BASE + i;
 			bool const active = selected_command == visual_tool_commands[i];
+			auto tool = toolbar->FindById(id);
+			if (!tool || toolbar->GetToolState(id) == active) continue;
+
 			toolbar->ToggleTool(id, active);
 			auto command = cmd::get(visual_tool_commands[i]);
 			toolbar->SetToolNormalBitmap(id, ui::CommandIcon(command->name(),
