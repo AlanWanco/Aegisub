@@ -44,6 +44,7 @@
 #include "include/aegisub/context.h"
 #include "include/aegisub/hotkey.h"
 #include "include/aegisub/menu.h"
+#include "include/aegisub/toolbar.h"
 #include "options.h"
 #include "project.h"
 #include "spline_curve.h"
@@ -97,11 +98,12 @@ enum {
 	NOTHING,
 };
 
-VideoDisplay::VideoDisplay(wxToolBar *toolbar, bool freeSize, wxComboBox *zoomBox, wxWindow *parent, agi::Context *c)
+VideoDisplay::VideoDisplay(wxToolBar *toolbar, wxToolBar *visualToolToolbar, bool freeSize, wxComboBox *zoomBox, wxWindow *parent, agi::Context *c)
 : wxGLCanvas(parent, buildGLAttributes())
 , autohideTools(OPT_GET("Tool/Visual/Autohide"))
 , con(c)
 , windowZoomValue(OPT_GET("Video/Default Zoom")->GetInt() * .125 + .125)
+, visualToolToolbar(visualToolToolbar)
 , toolBar(toolbar)
 , zoomBox(zoomBox)
 , freeSize(freeSize)
@@ -159,6 +161,10 @@ VideoDisplay::VideoDisplay(wxToolBar *toolbar, bool freeSize, wxComboBox *zoomBo
 	SetLayoutDirection(wxLayout_LeftToRight);
 
 	UpdateViewportSize(false, wxSize(1, 1));
+	Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+		if (!tool) RefreshVisualToolbar();
+		event.Skip();
+	});
 }
 
 VideoDisplay::~VideoDisplay () {
@@ -612,6 +618,17 @@ void VideoDisplay::SetWindowZoomFromBoxText(wxCommandEvent &) {
 		SetWindowZoom(value / 100.);
 }
 
+void VideoDisplay::RefreshVisualToolbar() {
+	std::string_view command = "video/tool/cross";
+	if (tool && typeid(*tool) == typeid(VisualToolDrag)) command = "video/tool/drag";
+	else if (tool && typeid(*tool) == typeid(VisualToolRotateZ)) command = "video/tool/rotate/z";
+	else if (tool && typeid(*tool) == typeid(VisualToolRotateXY)) command = "video/tool/rotate/xy";
+	else if (tool && typeid(*tool) == typeid(VisualToolScale)) command = "video/tool/scale";
+	else if (tool && typeid(*tool) == typeid(VisualToolClip)) command = "video/tool/clip";
+	else if (tool && typeid(*tool) == typeid(VisualToolVectorClip)) command = "video/tool/vector_clip";
+	toolbar::RefreshVisualTools(visualToolToolbar, command);
+}
+
 void VideoDisplay::SetTool(std::unique_ptr<VisualToolBase> new_tool) {
 	// Set the tool first to prevent repeated initialization from VideoDisplay::Render
 	tool = std::move(new_tool);
@@ -629,6 +646,7 @@ void VideoDisplay::SetTool(std::unique_ptr<VisualToolBase> new_tool) {
 		GetGrandParent()->Layout();
 		PositionVideo();
 	}
+	RefreshVisualToolbar();
 }
 
 bool VideoDisplay::ToolIsType(std::type_info const& type) const {

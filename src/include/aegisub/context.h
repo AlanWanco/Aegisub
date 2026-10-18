@@ -35,6 +35,7 @@ class TextSelectionController;
 class VideoController;
 class VideoDisplay;
 class wxWindow;
+class wxToolBar;
 namespace Automation4 { class ScriptManager; }
 
 namespace agi {
@@ -62,6 +63,8 @@ struct Context {
 
 	// Views (i.e. things that should eventually not be here at all)
 	AudioBox *audioBox = nullptr;
+	wxToolBar *visualToolBar = nullptr;
+	wxToolBar *visualSubToolBar = nullptr;
 	AudioKaraoke *karaoke = nullptr;
 	BaseGrid *subsGrid = nullptr;
 	std::unique_ptr<DialogManager> dialog;

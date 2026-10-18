@@ -79,8 +79,6 @@ class SubsEditBox final : public wxPanel {
 	AssDialogue *line = nullptr;
 	AssStyle *active_style = nullptr;
 
-	/// Are the buttons currently split into two lines?
-	bool button_bar_split = true;
 	/// Are the controls currently enabled?
 	bool controls_enabled = true;
 

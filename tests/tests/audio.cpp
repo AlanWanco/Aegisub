@@ -17,11 +17,16 @@
 #include <main.h>
 
 #include <libaegisub/audio/provider.h>
+#include <libaegisub/audio/provider_rate.h>
 #include <libaegisub/fs.h>
 #include <libaegisub/path.h>
 #include <libaegisub/util.h>
 
+#include <array>
+#include <cmath>
 #include <fstream>
+#include <limits>
+#include <vector>
 
 TEST(lagi_audio, dummy_blank) {
 	auto provider = agi::CreateDummyAudioProvider("dummy-audio:", nullptr);
@@ -70,6 +75,70 @@ struct TestAudioProvider : agi::AudioProvider {
 			*out++ = (Sample)(start + bias);
 	}
 };
+
+TEST(lagi_audio, playback_rate_normal_is_bit_exact) {
+	TestAudioProvider<int16_t> source;
+	agi::PlaybackAudioProvider playback(&source, 1.0);
+	std::array<int16_t, 64> expected{}, actual{};
+	source.GetAudio(expected.data(), 29301, expected.size());
+	playback.GetAudio(actual.data(), 29301, actual.size());
+	EXPECT_EQ(expected, actual);
+	EXPECT_EQ(source.GetSampleRate(), playback.GetSampleRate());
+	EXPECT_EQ(source.GetNumSamples(), playback.GetNumSamples());
+}
+
+TEST(lagi_audio, playback_rate_speed_and_source_positions) {
+	TestAudioProvider<int16_t> source;
+	for (double rate : {0.5, 0.75, 1.25, 1.5, 2.0}) {
+		agi::PlaybackAudioProvider playback(&source, rate);
+		EXPECT_EQ(static_cast<int64_t>(std::ceil(source.GetNumSamples() / rate)), playback.GetNumSamples());
+		std::array<int16_t, 16> samples{};
+		playback.GetAudio(samples.data(), 100, samples.size());
+		for (size_t i = 0; i < samples.size(); ++i)
+			EXPECT_EQ(std::lround((100 + i) * rate), samples[i]);
+		for (int64_t sample : {0, 1, 17, 48000, 1234567}) {
+			auto roundtrip = playback.PlaybackToSource(playback.SourceToPlayback(sample));
+			EXPECT_NEAR(sample, roundtrip, 2);
+		}
+	}
+}
+
+TEST(lagi_audio, playback_rate_chunk_boundaries_are_continuous) {
+	TestAudioProvider<int16_t> source;
+	for (double rate : {0.5, 0.75, 1.25, 1.5, 2.0}) {
+		agi::PlaybackAudioProvider playback(&source, rate);
+		std::vector<int16_t> contiguous(10003), chunked(contiguous.size());
+		playback.GetAudio(contiguous.data(), 1300, contiguous.size());
+		for (size_t offset = 0; offset < chunked.size();) {
+			auto count = std::min<size_t>(137, chunked.size() - offset);
+			playback.GetAudio(chunked.data() + offset, 1300 + offset, count);
+			offset += count;
+		}
+		EXPECT_EQ(contiguous, chunked);
+	}
+}
+
+TEST(lagi_audio, playback_rate_eof_and_volume) {
+	TestAudioProvider<int16_t> source(1);
+	for (double rate : {0.5, 0.75, 1.0, 1.5, 2.0}) {
+		agi::PlaybackAudioProvider playback(&source, rate);
+		std::array<int16_t, 16> samples;
+		samples.fill(123);
+		playback.GetAudio(samples.data(), playback.GetNumSamples() - 4, samples.size());
+		for (size_t i = 4; i < samples.size(); ++i) EXPECT_EQ(0, samples[i]);
+		playback.GetAudioWithVolume(samples.data(), 100, samples.size(), 0.0);
+		for (auto sample : samples) EXPECT_EQ(0, sample);
+	}
+}
+
+TEST(lagi_audio, playback_rate_rejects_invalid_parameters) {
+	TestAudioProvider<int16_t> source;
+	for (double rate : {0.0, -1.0, 0.49, 2.01, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
+		EXPECT_THROW(agi::PlaybackAudioProvider(&source, rate), agi::InternalError);
+	EXPECT_THROW(agi::PlaybackAudioProvider(nullptr, 1.0), agi::InternalError);
+	TestAudioProvider<uint8_t> unconverted;
+	EXPECT_THROW(agi::PlaybackAudioProvider(&unconverted, 1.0), agi::InternalError);
+}
 
 TEST(lagi_audio, before_sample_zero) {
 	TestAudioProvider<> provider;

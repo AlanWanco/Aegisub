@@ -6,7 +6,11 @@ from collections import defaultdict
 manifestfile, cppfile, hfile, sourcepath = sys.argv[1:]
 
 with open(manifestfile, 'r') as manifest:
-    files = dict(x.strip().split('|') if '|' in x else (x.strip(), None) for x in manifest.readlines() if x.strip() != '')    # type: ignore
+    files = dict(
+    x.strip().split('|') if '|' in x else (x.strip(), None)
+    for x in manifest.readlines()
+    if x.strip() and not x.lstrip().startswith('#')
+)  # type: ignore
 
 buildpath = os.path.split(cppfile)[0]
 
@@ -34,6 +38,7 @@ for k in files:
 with open(cppfile, 'w') as cpp:
     cpp.write('#include "libresrc.h"\n')
     with open(hfile, 'w') as h:
+        h.write('#pragma once\n')
         groups = defaultdict(list)
 
         for k in files:
@@ -45,11 +50,12 @@ with open(cppfile, 'w') as cpp:
             cpp.write('const unsigned char {}[] = {{{}}};\n'.format(name, datastr))
             h.write('extern const unsigned char {}[{}];\n'.format(name, len(data)))
 
-            if name.split('_')[-1].isnumeric():
-                groups['_'.join(name.split('_')[:-1])].append(name)
+            parts = name.rsplit('_', 1)
+            if len(parts) == 2 and parts[1].isnumeric():
+                groups[parts[0]].append(name)
 
         if groups:
             h.write('\n')
 
         for group in sorted(groups):
-            h.write('const LibresrcBlob {}[] = {{{}}};\n'.format(group, ', '.join('{{{}, sizeof({}), {}}}'.format(file, file, file.split('_')[-1]) for file in groups[group])))
+            h.write('const LibresrcBlob {}[] = {{{}}};\n'.format(group, ', '.join('{{{}, sizeof({}), {}}}'.format(file, file, file.rsplit('_', 1)[1]) for file in groups[group])))

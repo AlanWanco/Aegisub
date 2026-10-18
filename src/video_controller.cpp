@@ -44,6 +44,8 @@
 
 #include <libaegisub/ass/time.h>
 
+#include <cmath>
+#include <limits>
 #include <wx/log.h>
 
 VideoController::VideoController(agi::Context *c)
@@ -175,9 +177,26 @@ void VideoController::Stop() {
 	}
 }
 
+void VideoController::SetPlaybackRate(double rate) {
+	if (!std::isfinite(rate) || rate < 0.5 || rate > 2.0 || rate == playback_rate) return;
+	if (IsPlaying()) {
+		auto now = std::chrono::steady_clock::now();
+		auto elapsed = std::chrono::duration<double, std::milli>(now - playback_start_time).count();
+		start_ms += static_cast<int>(std::llround(elapsed * playback_rate));
+		playback_start_time = now;
+	}
+	playback_rate = rate;
+	// Use the same source-time anchor for both streams when video is playing.
+	context->audioController->SetPlaybackRate(rate, IsPlaying() ? start_ms : -1);
+	if (IsPlaying()) playback_start_time = std::chrono::steady_clock::now();
+	PlaybackRateChange(rate);
+}
+
 void VideoController::OnPlayTimer(wxTimerEvent &) {
 	using namespace std::chrono;
-	int next_frame = FrameAtTime(start_ms + duration_cast<milliseconds>(steady_clock::now() - playback_start_time).count());
+	double elapsed = duration<double, std::milli>(steady_clock::now() - playback_start_time).count();
+	double time = std::min<double>(start_ms + elapsed * playback_rate, std::numeric_limits<int>::max());
+	int next_frame = FrameAtTime(static_cast<int>(time));
 	if (next_frame == frame_n) return;
 
 	if (next_frame >= end_frame)

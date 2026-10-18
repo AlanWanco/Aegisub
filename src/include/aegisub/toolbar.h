@@ -33,4 +33,8 @@ namespace toolbar {
 	/// @param hotkey Hotkey context for the tooltip
 	void AttachToolbar(wxFrame *frame, std::string const& name, agi::Context *context, std::string const& hotkey);
 	wxToolBar *GetToolbar(wxWindow *parent, std::string const& name, agi::Context *context, std::string const& hotkey, bool vertical = false);
+	/// Apply high-contrast selection to the main visual-tool toolbar.
+	void RefreshVisualTools(wxToolBar *toolbar, std::string_view selected_command);
+	/// Apply high-contrast selection to vector-clip subtools.
+	void RefreshVectorTools(wxToolBar *toolbar, int selected_subtool);
 }

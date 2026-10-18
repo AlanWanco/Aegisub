@@ -22,6 +22,7 @@
 #include "libresrc/libresrc.h"
 #include "options.h"
 #include "selection_controller.h"
+#include "include/aegisub/toolbar.h"
 
 #include <algorithm>
 #include <boost/range/algorithm/copy.hpp>
@@ -76,6 +77,7 @@ void VisualToolVectorClip::SetSubTool(int subtool) {
 		toolBar->ToggleTool(BUTTON_ID_BASE + i, i == subtool);
 
 	mode = subtool;
+	toolbar::RefreshVectorTools(toolBar, mode);
 }
 
 int VisualToolVectorClip::GetSubTool() {

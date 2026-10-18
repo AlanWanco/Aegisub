@@ -35,16 +35,17 @@
 #include "toggle_bitmap.h"
 
 #include "command/command.h"
+#include "ui_theme.h"
 
 #include <wx/dcbuffer.h>
 #include <wx/settings.h>
 #include <wx/tglbtn.h>
 
 ToggleBitmap::ToggleBitmap(wxWindow *parent, agi::Context *context, const char *cmd_name, int icon_size, const char *ht_ctx, wxSize const& size)
-: wxControl(parent, -1, wxDefaultPosition, wxDefaultSize, wxSUNKEN_BORDER)
+: wxControl(parent, -1, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE)
 , context(context)
 , command(*cmd::get(cmd_name))
-, imgs(command.Icon(icon_size))
+, imgs(ui::CommandIcon(cmd_name, icon_size, command.Icon(icon_size)))
 , tool_tip_binding(this, command.StrHelp(), ht_ctx, cmd_name)
 {
 	wxBitmap img = imgs.GetBitmapFor(this);
@@ -68,13 +69,10 @@ void ToggleBitmap::OnMouseEvent(wxMouseEvent &) {
 void ToggleBitmap::OnPaint(wxPaintEvent &) {
 	wxAutoBufferedPaintDC dc(this);
 
-	// Get background color
-	wxColour bgColor = command.IsActive(context) ? wxColour(0,255,0) : wxColour(255,0,0);
-	wxColor sysCol = wxSystemSettings::GetColour(wxSYS_COLOUR_BTNHIGHLIGHT);
-	bgColor.Set(
-		(sysCol.Red() + bgColor.Red()) / 2,
-		(sysCol.Green() + bgColor.Green()) / 2,
-		(sysCol.Blue() + bgColor.Blue()) / 2);
+	// Match the editor's selection treatment rather than using red/green fills.
+	wxColour bgColor = command.IsActive(context)
+		? ui::OptionColour("Colour/Subtitle Grid/Background/Selection")
+		: ui::Surface();
 
 	dc.SetPen(*wxTRANSPARENT_PEN);
 	dc.SetBrush(wxBrush(bgColor));

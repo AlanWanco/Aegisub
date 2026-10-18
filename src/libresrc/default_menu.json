@@ -99,7 +99,20 @@
         {},
         { "command" : "video/jump" },
         { "command" : "video/jump/start" },
-        { "command" : "video/jump/end" }
+        { "command" : "video/jump/end" },
+        {},
+        { "submenu" : "main/playback speed", "text" : "Playback Speed" }
+    ],
+    "main/playback speed" : [
+        { "command" : "video/playback/rate/50" },
+        { "command" : "video/playback/rate/75" },
+        { "command" : "video/playback/rate/100" },
+        { "command" : "video/playback/rate/125" },
+        { "command" : "video/playback/rate/150" },
+        { "command" : "video/playback/rate/200" },
+        {},
+        { "command" : "video/playback/rate/decrease" },
+        { "command" : "video/playback/rate/increase" }
     ],
     "main/video/set zoom" : [
         { "command" : "video/zoom/50" },
@@ -122,7 +135,9 @@
         { "command" : "audio/view/spectrum" },
         { "command" : "audio/view/waveform" },
         { "command" : "audio/open/blank" },
-        { "command" : "audio/open/noise" }
+        { "command" : "audio/open/noise" },
+        {},
+        { "submenu" : "main/playback speed", "text" : "Playback Speed" }
     ],
     "main/view" : [
         { "command" : "app/language" },

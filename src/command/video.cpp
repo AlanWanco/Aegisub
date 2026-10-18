@@ -43,6 +43,7 @@
 #include "../include/aegisub/subtitles_provider.h"
 #include "../libresrc/libresrc.h"
 #include "../options.h"
+#include "../playback_rate.h"
 #include "../project.h"
 #include "../provider_file_formats.h"
 #include "../video_provider_manager.h"
@@ -654,6 +655,60 @@ struct video_play_line final : public validator_video_loaded {
 	}
 };
 
+struct video_playback_rate final : public Command {
+	std::string command_name;
+	size_t index;
+
+	video_playback_rate(size_t index)
+	: command_name("video/playback/rate/" + std::to_string(static_cast<int>(playback::rates[index] * 100)))
+	, index(index) { }
+
+	const char *name() const override { return command_name.c_str(); }
+	wxString StrMenu(const agi::Context *) const override { return wxString::FromUTF8(playback::labels[index]); }
+	wxString StrDisplay(const agi::Context *c) const override { return StrMenu(c); }
+	STR_HELP("Set audio and video playback speed (changes audio pitch)")
+	CMD_TYPE(COMMAND_RADIO)
+
+	bool IsActive(const agi::Context *c) override {
+		return c->videoController->GetPlaybackRate() == playback::rates[index];
+	}
+	void operator()(agi::Context *c) override {
+		c->videoController->SetPlaybackRate(playback::rates[index]);
+	}
+};
+
+struct video_playback_rate_increase final : public Command {
+	CMD_NAME("video/playback/rate/increase")
+	STR_MENU("Increase playback speed")
+	STR_DISP("Increase playback speed")
+	STR_HELP("Switch to the next faster audio and video playback speed")
+
+	void operator()(agi::Context *c) override {
+		for (auto rate : playback::rates) {
+			if (rate > c->videoController->GetPlaybackRate()) {
+				c->videoController->SetPlaybackRate(rate);
+				break;
+			}
+		}
+	}
+};
+
+struct video_playback_rate_decrease final : public Command {
+	CMD_NAME("video/playback/rate/decrease")
+	STR_MENU("Decrease playback speed")
+	STR_DISP("Decrease playback speed")
+	STR_HELP("Switch to the next slower audio and video playback speed")
+
+	void operator()(agi::Context *c) override {
+		for (auto it = playback::rates.rbegin(); it != playback::rates.rend(); ++it) {
+			if (*it < c->videoController->GetPlaybackRate()) {
+				c->videoController->SetPlaybackRate(*it);
+				break;
+			}
+		}
+	}
+};
+
 struct video_show_overscan final : public validator_video_loaded {
 	CMD_NAME("video/show_overscan")
 	STR_MENU("Show &Overscan Mask")
@@ -809,6 +864,10 @@ namespace cmd {
 		reg(std::make_unique<video_opt_autoscroll>());
 		reg(std::make_unique<video_play>());
 		reg(std::make_unique<video_play_line>());
+		for (size_t i = 0; i < playback::rates.size(); ++i)
+			reg(std::make_unique<video_playback_rate>(i));
+		reg(std::make_unique<video_playback_rate_increase>());
+		reg(std::make_unique<video_playback_rate_decrease>());
 		reg(std::make_unique<video_show_overscan>());
 		reg(std::make_unique<video_reset_pan>());
 		reg(std::make_unique<video_stop>());

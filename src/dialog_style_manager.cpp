@@ -44,6 +44,7 @@
 #include "persist_location.h"
 #include "selection_controller.h"
 #include "subtitle_format.h"
+#include "ui_dialog.h"
 
 #include <libaegisub/fs.h>
 #include <libaegisub/path.h>
@@ -59,7 +60,6 @@
 #include <wx/bmpbuttn.h>
 #include <wx/button.h>
 #include <wx/checkbox.h>
-#include <wx/combobox.h>
 #include <wx/combobox.h>
 #include <wx/filename.h>
 #include <wx/fontenum.h>
@@ -174,41 +174,39 @@ public:
 	DialogStyleManager(agi::Context *context);
 };
 
-wxBitmapButton *add_bitmap_button(wxWindow *parent, wxSizer *sizer, wxBitmapBundle const& img, wxString const& tooltip) {
-	wxBitmapButton *btn = new wxBitmapButton(parent, -1, img);
-	btn->SetToolTip(tooltip);
-	sizer->Add(btn, wxSizerFlags().Expand());
-	return btn;
-}
-
 wxSizer *make_move_buttons(wxWindow *parent, wxButton **up, wxButton **down, wxButton **top, wxButton **bottom, wxButton **sort) {
-	wxSizer *sizer = new wxBoxSizer(wxVERTICAL);
-	sizer->AddStretchSpacer(1);
-
-	*up     = add_bitmap_button(parent, sizer, GETBUNDLE(arrow_up, 24), _("Move style up"));
-	*down   = add_bitmap_button(parent, sizer, GETBUNDLE(arrow_down, 24), _("Move style down"));
-	*top    = add_bitmap_button(parent, sizer, GETBUNDLE(arrow_up_stop, 24), _("Move style to top"));
-	*bottom = add_bitmap_button(parent, sizer, GETBUNDLE(arrow_down_stop, 24), _("Move style to bottom"));
-	*sort   = add_bitmap_button(parent, sizer, GETBUNDLE(arrow_sort, 24), _("Sort styles alphabetically"));
-
-	sizer->AddStretchSpacer(1);
+	auto sizer = new wxBoxSizer(wxVERTICAL);
+	auto add = [&](std::string const& icon, wxBitmapBundle fallback, wxString const& label) {
+		auto button = ui::IconButton(parent, icon, fallback, label);
+		sizer->Add(button, 0, wxEXPAND | wxBOTTOM, parent->FromDIP(4));
+		return button;
+	};
+	*up     = add("ui/up", GETBUNDLE(arrow_up, 24), _("Move style up"));
+	*down   = add("ui/down", GETBUNDLE(arrow_down, 24), _("Move style down"));
+	sizer->AddSpacer(parent->FromDIP(4));
+	*top    = add("ui/top", GETBUNDLE(arrow_up_stop, 24), _("Move style to top"));
+	*bottom = add("ui/bottom", GETBUNDLE(arrow_down_stop, 24), _("Move style to bottom"));
+	sizer->AddSpacer(parent->FromDIP(4));
+	*sort   = add("ui/sort", GETBUNDLE(arrow_down_stop, 24), _("Sort styles alphabetically"));
 	return sizer;
 }
 
 wxSizer *make_edit_buttons(wxWindow *parent, wxString move_label, wxButton **move, wxButton **nw, wxButton **edit, wxButton **copy, wxButton **del) {
-	wxSizer *sizer = new wxBoxSizer(wxHORIZONTAL);
-
+	auto sizer = new wxBoxSizer(wxHORIZONTAL);
 	*move = new wxButton(parent, -1, move_label);
 	*nw = new wxButton(parent, -1, _("&New"));
 	*edit = new wxButton(parent, -1, _("&Edit"));
 	*copy = new wxButton(parent, -1, _("&Copy"));
 	*del = new wxButton(parent, -1, _("&Delete"));
 
-	sizer->Add(*nw, wxSizerFlags(1).Expand().Border(wxRIGHT));
-	sizer->Add(*edit, wxSizerFlags(1).Expand().Border(wxRIGHT));
-	sizer->Add(*copy, wxSizerFlags(1).Expand().Border(wxRIGHT));
-	sizer->Add(*del, wxSizerFlags(1).Expand());
-
+	ui::ButtonIcon(*nw, "ui/new", GETBUNDLE(new_toolbutton, 16));
+	ui::ButtonIcon(*edit, "ui/edit", GETBUNDLE(style_toolbutton, 16));
+	ui::ButtonIcon(*copy, "ui/copy", GETBUNDLE(copy_button, 16));
+	ui::ButtonIcon(*del, "ui/delete", GETBUNDLE(delete_button, 16));
+	sizer->Add(*nw, 1, wxEXPAND | wxRIGHT, parent->FromDIP(6));
+	sizer->Add(*edit, 1, wxEXPAND | wxRIGHT, parent->FromDIP(6));
+	sizer->Add(*copy, 1, wxEXPAND | wxRIGHT, parent->FromDIP(6));
+	sizer->Add(*del, 1, wxEXPAND);
 	return sizer;
 }
 
@@ -256,7 +254,7 @@ int get_single_sel(wxListBox *lb) {
 }
 
 DialogStyleManager::DialogStyleManager(agi::Context *context)
-: wxDialog(context->parent, -1, _("Styles Manager"))
+: wxDialog(context->parent, -1, _("Styles Manager"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 , c(context)
 , commit_connection(c->ass->AddCommitListener(&DialogStyleManager::LoadCurrentStyles, this))
 , active_line_connection(c->selectionController->AddActiveLineListener(&DialogStyleManager::OnActiveLineChanged, this))
@@ -268,11 +266,14 @@ DialogStyleManager::DialogStyleManager(agi::Context *context)
 {
 	using std::bind;
 	SetIcons(GETICONS(style_toolbutton));
+	ui::ApplySurface(this, true);
+	const int gap = FromDIP(12);
+	const int inset = FromDIP(16);
 
 	// Static box sizers
-	wxStaticBoxSizer *CatalogSizer = new wxStaticBoxSizer(wxHORIZONTAL,this,_("Catalog of available storages"));
-	wxStaticBoxSizer *StorageSizer = new wxStaticBoxSizer(wxVERTICAL, this, _("Storage"));
-	wxStaticBoxSizer *CurrentSizer = new wxStaticBoxSizer(wxVERTICAL, this, _("Current script"));
+	wxStaticBoxSizer *CatalogSizer = ui::DialogSection(this, wxHORIZONTAL, _("Catalog of available storages"));
+	wxStaticBoxSizer *StorageSizer = ui::DialogSection(this, wxVERTICAL, _("Storage"));
+	wxStaticBoxSizer *CurrentSizer = ui::DialogSection(this, wxVERTICAL, _("Current script"));
 
 	wxWindow *CatalogSizerBox = CatalogSizer->GetStaticBox();
 	wxWindow *StorageSizerBox = StorageSizer->GetStaticBox();
@@ -282,37 +283,42 @@ DialogStyleManager::DialogStyleManager(agi::Context *context)
 	CatalogList = new wxComboBox(CatalogSizerBox,-1, "", wxDefaultPosition, wxSize(-1,-1), 0, nullptr, wxCB_READONLY);
 	wxButton *CatalogNew = new wxButton(CatalogSizerBox, -1, _("New"));
 	CatalogDelete = new wxButton(CatalogSizerBox, -1, _("Delete"));
-	CatalogSizer->Add(CatalogList,1,wxEXPAND | wxRIGHT,5);
-	CatalogSizer->Add(CatalogNew,0,wxRIGHT,5);
+	ui::ButtonIcon(CatalogNew, "ui/new", GETBUNDLE(new_toolbutton, 16));
+	ui::ButtonIcon(CatalogDelete, "ui/delete", GETBUNDLE(delete_button, 16));
+	CatalogSizer->Add(CatalogList,1,wxEXPAND | wxRIGHT,gap);
+	CatalogSizer->Add(CatalogNew,0,wxRIGHT,gap);
 	CatalogSizer->Add(CatalogDelete,0,0,0);
 
 	// Storage styles list
-	wxSizer *StorageButtons = make_edit_buttons(StorageSizerBox, _("Copy to &current script ->"), &MoveToLocal, &StorageNew, &StorageEdit, &StorageCopy, &StorageDelete);
+	wxSizer *StorageButtons = make_edit_buttons(StorageSizerBox, _("Copy to &current script"), &MoveToLocal, &StorageNew, &StorageEdit, &StorageCopy, &StorageDelete);
+	ui::ButtonIcon(MoveToLocal, "ui/right", GETBUNDLE(button_next, 16));
 
 	wxSizer *StorageListSizer = new wxBoxSizer(wxHORIZONTAL);
-	StorageList = new wxListBox(StorageSizerBox, -1, wxDefaultPosition, wxSize(240,250), 0, nullptr, wxLB_EXTENDED);
+	StorageList = new wxListBox(StorageSizerBox, -1, wxDefaultPosition, FromDIP(wxSize(280, 260)), 0, nullptr, wxLB_EXTENDED);
 	StorageListSizer->Add(StorageList,1,wxEXPAND,0);
-	StorageListSizer->Add(make_move_buttons(StorageSizerBox, &StorageMoveUp, &StorageMoveDown, &StorageMoveTop, &StorageMoveBottom, &StorageSort), wxSizerFlags().Expand());
+	StorageListSizer->Add(make_move_buttons(StorageSizerBox, &StorageMoveUp, &StorageMoveDown, &StorageMoveTop, &StorageMoveBottom, &StorageSort), wxSizerFlags().Expand().Border(wxLEFT, gap));
 
-	StorageSizer->Add(StorageListSizer,1,wxEXPAND | wxBOTTOM,5);
-	StorageSizer->Add(MoveToLocal,0,wxEXPAND | wxBOTTOM,5);
+	StorageSizer->Add(StorageListSizer,1,wxEXPAND | wxBOTTOM,gap);
+	StorageSizer->Add(MoveToLocal,0,wxEXPAND | wxBOTTOM,gap);
 	StorageSizer->Add(StorageButtons,0,wxEXPAND,0);
 
 	// Local styles list
 	wxButton *CurrentImport = new wxButton(CurrentSizerBox, -1, _("&Import from script..."));
-	wxSizer *CurrentButtons = make_edit_buttons(CurrentSizerBox, _("<- Copy to &storage"), &MoveToStorage, &CurrentNew, &CurrentEdit, &CurrentCopy, &CurrentDelete);
+	wxSizer *CurrentButtons = make_edit_buttons(CurrentSizerBox, _("Copy to &storage"), &MoveToStorage, &CurrentNew, &CurrentEdit, &CurrentCopy, &CurrentDelete);
+	ui::ButtonIcon(MoveToStorage, "ui/left", GETBUNDLE(button_prev, 16));
 
+	ui::ButtonIcon(CurrentImport, "ui/import", GETBUNDLE(open_toolbutton, 16));
 	wxSizer *MoveImportSizer = new wxBoxSizer(wxHORIZONTAL);
-	MoveImportSizer->Add(MoveToStorage,1,wxEXPAND | wxRIGHT,5);
+	MoveImportSizer->Add(MoveToStorage,1,wxEXPAND | wxRIGHT,gap);
 	MoveImportSizer->Add(CurrentImport,1,wxEXPAND,0);
 
 	wxSizer *CurrentListSizer = new wxBoxSizer(wxHORIZONTAL);
-	CurrentList = new wxListBox(CurrentSizerBox, -1, wxDefaultPosition, wxSize(240,250), 0, nullptr, wxLB_EXTENDED);
+	CurrentList = new wxListBox(CurrentSizerBox, -1, wxDefaultPosition, FromDIP(wxSize(280, 260)), 0, nullptr, wxLB_EXTENDED);
 	CurrentListSizer->Add(CurrentList,1,wxEXPAND,0);
-	CurrentListSizer->Add(make_move_buttons(CurrentSizerBox, &CurrentMoveUp, &CurrentMoveDown, &CurrentMoveTop, &CurrentMoveBottom, &CurrentSort), wxSizerFlags().Expand());
+	CurrentListSizer->Add(make_move_buttons(CurrentSizerBox, &CurrentMoveUp, &CurrentMoveDown, &CurrentMoveTop, &CurrentMoveBottom, &CurrentSort), wxSizerFlags().Expand().Border(wxLEFT, gap));
 
-	CurrentSizer->Add(CurrentListSizer,1,wxEXPAND | wxBOTTOM,5);
-	CurrentSizer->Add(MoveImportSizer,0,wxEXPAND | wxBOTTOM,5);
+	CurrentSizer->Add(CurrentListSizer,1,wxEXPAND | wxBOTTOM,gap);
+	CurrentSizer->Add(MoveImportSizer,0,wxEXPAND | wxBOTTOM,gap);
 	CurrentSizer->Add(CurrentButtons,0,wxEXPAND,0);
 
 	// Buttons
@@ -322,12 +328,13 @@ DialogStyleManager::DialogStyleManager(agi::Context *context)
 
 	// General layout
 	wxSizer *StylesSizer = new wxBoxSizer(wxHORIZONTAL);
-	StylesSizer->Add(StorageSizer,0,wxRIGHT | wxEXPAND,5);
-	StylesSizer->Add(CurrentSizer,0,wxEXPAND,0);
+	StylesSizer->Add(StorageSizer,1,wxRIGHT | wxEXPAND,gap);
+	StylesSizer->Add(CurrentSizer,1,wxEXPAND,0);
 	wxSizer *MainSizer = new wxBoxSizer(wxVERTICAL);
-	MainSizer->Add(CatalogSizer,0,wxEXPAND | wxLEFT | wxRIGHT | wxTOP,5);
-	MainSizer->Add(StylesSizer,1,wxEXPAND | wxALL,5);
-	MainSizer->Add(buttonSizer,0,wxBOTTOM | wxEXPAND,5);
+	MainSizer->Add(ui::DialogHeading(this, _("Styles Manager"), "tool/style/manager", GETBUNDLE(style_toolbutton, 24)), 0, wxEXPAND | wxALL, inset);
+	MainSizer->Add(CatalogSizer,0,wxEXPAND | wxLEFT | wxRIGHT,inset);
+	MainSizer->Add(StylesSizer,1,wxEXPAND | wxALL,inset);
+	MainSizer->Add(buttonSizer,0,wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND,inset);
 
 	SetSizerAndFit(MainSizer);
 

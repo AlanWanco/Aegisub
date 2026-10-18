@@ -36,8 +36,10 @@
 #include "project.h"
 
 #include <libaegisub/audio/provider.h>
+#include <libaegisub/audio/provider_rate.h>
 
 #include <algorithm>
+#include <cmath>
 
 AudioController::AudioController(agi::Context *context)
 : context(context)
@@ -96,10 +98,13 @@ void AudioController::OnAudioPlayerChanged()
 
 	Stop();
 	player.reset();
+	playback_provider.reset();
 
 	try
 	{
-		player = AudioPlayerFactory::GetAudioPlayer(provider, context->parent);
+		playback_provider = std::make_unique<agi::PlaybackAudioProvider>(provider, playback_rate);
+		player = AudioPlayerFactory::GetAudioPlayer(playback_provider.get(), context->parent);
+		player->SetVolume(volume);
 	}
 	catch (...)
 	{
@@ -111,9 +116,10 @@ void AudioController::OnAudioPlayerChanged()
 
 void AudioController::OnAudioProvider(agi::AudioProvider *new_provider)
 {
-	provider = new_provider;
 	Stop();
 	player.reset();
+	playback_provider.reset();
+	provider = new_provider;
 	OnAudioPlayerChanged();
 }
 
@@ -138,7 +144,9 @@ void AudioController::PlayRange(const TimeRange &range)
 {
 	if (!player) return;
 
-	player->Play(SamplesFromMilliseconds(range.begin()), SamplesFromMilliseconds(range.length()));
+	int64_t start = SamplesFromMilliseconds(range.begin());
+	int64_t end = SamplesFromMilliseconds(range.end());
+	player->Play(start, std::max<int64_t>(0, end - start));
 	playback_mode = PM_Range;
 	playback_timer.Start(20);
 
@@ -164,7 +172,7 @@ void AudioController::PlayToEnd(int start_ms)
 	if (!player) return;
 
 	int64_t start_sample = SamplesFromMilliseconds(start_ms);
-	player->Play(start_sample, provider->GetNumSamples()-start_sample);
+	player->Play(start_sample, std::max<int64_t>(0, playback_provider->GetNumSamples() - start_sample));
 	playback_mode = PM_ToEnd;
 	playback_timer.Start(20);
 
@@ -210,18 +218,38 @@ TimeRange AudioController::GetPrimaryPlaybackRange() const
 
 void AudioController::SetVolume(double volume)
 {
-	if (!player) return;
-	player->SetVolume(volume);
+	this->volume = volume;
+	if (player) player->SetVolume(volume);
+}
+
+void AudioController::SetPlaybackRate(double rate, int source_position_ms)
+{
+	if (!std::isfinite(rate) || rate < 0.5 || rate > 2.0 || rate == playback_rate) return;
+
+	auto mode = playback_mode;
+	int position = source_position_ms >= 0 ? source_position_ms : GetPlaybackPosition();
+	int end = player ? MillisecondsFromSamples(player->GetEndPosition()) : 0;
+	playback_rate = rate;
+	OnAudioPlayerChanged();
+	if (!player || mode == PM_NotPlaying) return;
+
+	if (mode == PM_ToEnd)
+		PlayToEnd(position);
+	else {
+		PlayRange(TimeRange(position, std::max(position, end)));
+		playback_mode = mode;
+	}
 }
 
 int64_t AudioController::SamplesFromMilliseconds(int64_t ms) const
 {
-	if (!provider) return 0;
-	return (ms * provider->GetSampleRate() + 999) / 1000;
+	if (!provider || !playback_provider) return 0;
+	auto source_sample = (ms * provider->GetSampleRate() + 999) / 1000;
+	return playback_provider->SourceToPlayback(source_sample);
 }
 
 int64_t AudioController::MillisecondsFromSamples(int64_t samples) const
 {
-	if (!provider) return 0;
-	return samples * 1000 / provider->GetSampleRate();
+	if (!provider || !playback_provider) return 0;
+	return playback_provider->PlaybackToSource(samples) * 1000 / provider->GetSampleRate();
 }

@@ -38,6 +38,7 @@
 #include "subs_edit_ctrl.h"
 #include "selection_controller.h"
 #include "video_controller.h"
+#include "ui_dialog.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -70,30 +71,47 @@ DialogTranslation::DialogTranslation(agi::Context *c)
 , line_count(c->ass->Events.size())
 {
 	SetIcons(GETICONS(translation_toolbutton));
+	ui::ApplySurface(this, true);
+	const int gap = FromDIP(12);
+	const int inset = FromDIP(16);
 
 	wxSizer *main_sizer = new wxBoxSizer(wxVERTICAL);
 
 	wxSizer *translation_sizer = new wxBoxSizer(wxVERTICAL);
 	{
-		wxStaticBoxSizer *original_box = new wxStaticBoxSizer(wxVERTICAL, this, _("Original"));
+		wxStaticBoxSizer *original_box = ui::DialogSection(this, wxVERTICAL, _("Original"));
 
 		line_number_display = new wxStaticText(original_box->GetStaticBox(), -1, "");
-		original_box->Add(line_number_display, 0, wxBOTTOM, 5);
+		original_box->Add(line_number_display, 0, wxBOTTOM, gap);
 
-		original_text = new wxStyledTextCtrl(original_box->GetStaticBox(), -1, wxDefaultPosition, wxSize(320, 80));
+		original_text = new wxStyledTextCtrl(original_box->GetStaticBox(), -1, wxDefaultPosition, FromDIP(wxSize(420, 96)));
 		original_text->SetWrapMode(wxSTC_WRAP_WORD);
+		original_text->StyleSetBackground(wxSTC_STYLE_DEFAULT, ui::Surface());
+		original_text->StyleSetForeground(wxSTC_STYLE_DEFAULT, ui::Text());
+		original_text->StyleClearAll();
 		original_text->SetMarginWidth(1, 0);
-		original_text->StyleSetForeground(1, wxColour(10, 60, 200));
+		original_text->StyleSetForeground(1, ui::OnAccent());
+		original_text->StyleSetBackground(1, ui::Accent());
+		original_text->StyleSetBold(1, true);
 		original_text->SetReadOnly(true);
+		original_text->Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+			original_text->StyleSetBackground(wxSTC_STYLE_DEFAULT, ui::Surface());
+			original_text->StyleSetForeground(wxSTC_STYLE_DEFAULT, ui::Text());
+			original_text->StyleClearAll();
+			original_text->StyleSetForeground(1, ui::OnAccent());
+			original_text->StyleSetBackground(1, ui::Accent());
+			original_text->StyleSetBold(1, true);
+			event.Skip();
+		});
 		original_box->Add(original_text, 1, wxEXPAND, 0);
 
 		translation_sizer->Add(original_box, 1, wxEXPAND, 0);
 	}
 
 	{
-		wxStaticBoxSizer *translated_box = new wxStaticBoxSizer(wxVERTICAL, this, _("Translation"));
+		wxStaticBoxSizer *translated_box = ui::DialogSection(this, wxVERTICAL, _("Translation"));
 
-		translated_text = new SubsTextEditCtrl(translated_box->GetStaticBox(), wxSize(320, 80), 0, nullptr);
+		translated_text = new SubsTextEditCtrl(translated_box->GetStaticBox(), FromDIP(wxSize(420, 96)), 0, nullptr);
 		translated_text->SetWrapMode(wxSTC_WRAP_WORD);
 		translated_text->SetMarginWidth(1, 0);
 		translated_text->SetFocus();
@@ -101,16 +119,17 @@ DialogTranslation::DialogTranslation(agi::Context *c)
 		translated_text->CmdKeyAssign(wxSTC_KEY_RETURN, wxSTC_KEYMOD_SHIFT, wxSTC_CMD_NEWLINE);
 
 		translated_box->Add(translated_text, 1, wxEXPAND, 0);
-		translation_sizer->Add(translated_box, 1, wxTOP|wxEXPAND, 5);
+		translation_sizer->Add(translated_box, 1, wxTOP|wxEXPAND, gap);
 	}
-	main_sizer->Add(translation_sizer, 1, wxALL | wxEXPAND, 5);
+	main_sizer->Add(ui::DialogHeading(this, _("Translation Assistant"), "tool/translation_assistant", GETBUNDLE(translation_toolbutton, 24)), 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, inset);
+	main_sizer->Add(translation_sizer, 1, wxALL | wxEXPAND, inset);
 
 	wxSizer *right_box = new wxBoxSizer(wxHORIZONTAL);
 	{
-		wxStaticBoxSizer *hotkey_sizer = new wxStaticBoxSizer(wxVERTICAL, this, _("Keys"));
+		wxStaticBoxSizer *hotkey_sizer = ui::DialogSection(this, wxVERTICAL, _("Keys"));
 		wxWindow *hotkey_sizer_box = hotkey_sizer->GetStaticBox();
 
-		wxSizer *hotkey_grid = new wxGridSizer(2, 0, 5);
+		wxSizer *hotkey_grid = new wxFlexGridSizer(2, gap, FromDIP(12));
 		add_hotkey(hotkey_grid, hotkey_sizer_box, "tool/translation_assistant/commit", _("Accept changes"));
 		add_hotkey(hotkey_grid, hotkey_sizer_box, "tool/translation_assistant/preview", _("Preview changes"));
 		add_hotkey(hotkey_grid, hotkey_sizer_box, "tool/translation_assistant/prev", _("Previous line"));
@@ -123,34 +142,36 @@ DialogTranslation::DialogTranslation(agi::Context *c)
 
 		seek_video = new wxCheckBox(hotkey_sizer_box, -1, _("Enable &preview"));
 		seek_video->SetValue(true);
-		hotkey_sizer->Add(seek_video, 0, wxTOP, 5);
+		hotkey_sizer->Add(seek_video, 0, wxTOP, gap);
 
-		right_box->Add(hotkey_sizer, 1, wxRIGHT | wxEXPAND, 5);
+		right_box->Add(hotkey_sizer, 1, wxRIGHT | wxEXPAND, gap);
 	}
 
 	{
-		wxStaticBoxSizer *actions_box = new wxStaticBoxSizer(wxVERTICAL, this, _("Actions"));
+		wxStaticBoxSizer *actions_box = ui::DialogSection(this, wxVERTICAL, _("Actions"));
 
 		wxButton *play_audio = new wxButton(actions_box->GetStaticBox(), -1, _("Play &Audio"));
 		play_audio->Enable(!!c->project->AudioProvider());
 		play_audio->Bind(wxEVT_BUTTON, &DialogTranslation::OnPlayAudioButton, this);
-		actions_box->Add(play_audio, 0, wxALL, 5);
+		ui::ButtonIcon(play_audio, "ui/audio", GETBUNDLE(button_play, 16));
+		actions_box->Add(play_audio, 0, wxALL, gap);
 
 		wxButton *play_video = new wxButton(actions_box->GetStaticBox(), -1, _("Play &Video"));
 		play_video->Enable(!!c->project->VideoProvider());
 		play_video->Bind(wxEVT_BUTTON, &DialogTranslation::OnPlayVideoButton, this);
-		actions_box->Add(play_video, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+		ui::ButtonIcon(play_video, "video/play/line", GETBUNDLE(button_playline, 16));
+		actions_box->Add(play_video, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
 
 		right_box->Add(actions_box, 0);
 	}
-	main_sizer->Add(right_box, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
+	main_sizer->Add(right_box, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, inset);
 
 	{
 		auto standard_buttons = new wxStdDialogButtonSizer();
 		standard_buttons->AddButton(new wxButton(this, wxID_CANCEL));
 		standard_buttons->AddButton(new HelpButton(this, "Translation Assistant"));
 		standard_buttons->Realize();
-		main_sizer->Add(standard_buttons, 0, wxALIGN_RIGHT | wxLEFT | wxBOTTOM | wxRIGHT, 5);
+		main_sizer->Add(standard_buttons, 0, wxALIGN_RIGHT | wxLEFT | wxBOTTOM | wxRIGHT, inset);
 	}
 
 	SetSizerAndFit(main_sizer);

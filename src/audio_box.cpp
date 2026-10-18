@@ -37,7 +37,9 @@
 #include "audio_karaoke.h"
 #include "audio_timing.h"
 #include "options.h"
+#include "playback_rate.h"
 #include "project.h"
+#include "ui_theme.h"
 #include "toggle_bitmap.h"
 #include "utils.h"
 
@@ -57,16 +59,18 @@ enum {
 };
 
 AudioBox::AudioBox(wxWindow *parent, agi::Context *context)
-: wxSashWindow(parent, -1, wxDefaultPosition, wxDefaultSize, wxSW_3D | wxCLIP_CHILDREN)
+: wxSashWindow(parent, -1, wxDefaultPosition, wxDefaultSize, wxSW_NOBORDER | wxCLIP_CHILDREN)
 , controller(context->audioController.get())
 , context(context)
 , audio_open_connection(context->audioController->AddAudioPlayerOpenListener(&AudioBox::OnAudioOpen, this))
-, panel(new wxPanel(this, -1, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxBORDER_RAISED))
+, panel(new wxPanel(this, -1, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxBORDER_NONE))
 , audioDisplay(new AudioDisplay(panel, context->audioController.get(), context))
 , HorizontalZoom(new wxSlider(panel, Audio_Horizontal_Zoom, -OPT_GET("Audio/Zoom/Horizontal")->GetInt(), -50, 30, wxDefaultPosition, wxDefaultSize, wxSL_VERTICAL|wxSL_BOTH))
 , VerticalZoom(new wxSlider(panel, Audio_Vertical_Zoom, OPT_GET("Audio/Zoom/Vertical")->GetInt(), 0, 100, wxDefaultPosition, wxDefaultSize, wxSL_VERTICAL|wxSL_BOTH|wxSL_INVERSE))
 , VolumeBar(new wxSlider(panel, Audio_Volume, OPT_GET("Audio/Volume")->GetInt(), 0, 100, wxDefaultPosition, wxDefaultSize, wxSL_VERTICAL|wxSL_BOTH|wxSL_INVERSE))
 {
+	ui::ApplySurface(this);
+	ui::ApplySurface(panel);
 	SetSashVisible(wxSASH_BOTTOM, true);
 	Bind(wxEVT_SASH_DRAGGED, &AudioBox::OnSashDrag, this);
 
@@ -102,9 +106,13 @@ AudioBox::AudioBox(wxWindow *parent, agi::Context *context)
 
 	// Main sizer
 	auto MainSizer = new wxBoxSizer(wxVERTICAL);
-	MainSizer->Add(TopSizer,1,wxEXPAND|wxALL,3);
-	MainSizer->Add(toolbar::GetToolbar(panel, "audio", context, "Audio"),0,wxEXPAND|wxLEFT|wxRIGHT,3);
-	MainSizer->Add(context->karaoke,0,wxEXPAND|wxALL,3);
+	const int padding = FromDIP(6);
+	MainSizer->Add(TopSizer, 1, wxEXPAND | wxALL, padding);
+	auto playback_controls = new wxBoxSizer(wxHORIZONTAL);
+	playback_controls->Add(new playback::RateChoice(panel, context), wxSizerFlags(0).Center().Border(wxRIGHT));
+	playback_controls->Add(toolbar::GetToolbar(panel, "audio", context, "Audio"), wxSizerFlags(1).Expand());
+	MainSizer->Add(playback_controls, 0, wxEXPAND | wxLEFT | wxRIGHT, padding);
+	MainSizer->Add(context->karaoke, 0, wxEXPAND | wxALL, padding);
 	MainSizer->Show(context->karaoke, false);
 	panel->SetSizer(MainSizer);
 

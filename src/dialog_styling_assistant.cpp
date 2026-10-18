@@ -34,6 +34,7 @@
 #include "project.h"
 #include "selection_controller.h"
 #include "video_controller.h"
+#include "ui_dialog.h"
 
 #include <wx/checkbox.h>
 #include <wx/colour.h>
@@ -56,37 +57,41 @@ DialogStyling::DialogStyling(agi::Context *context)
 , active_line_connection(context->selectionController->AddActiveLineListener(&DialogStyling::OnActiveLineChanged, this))
 {
 	SetIcons(GETICONS(styling_toolbutton));
+	ui::ApplySurface(this, true);
+	const int gap = FromDIP(12);
+	const int inset = FromDIP(16);
 
 	wxSizer *main_sizer = new wxBoxSizer(wxVERTICAL);
 	wxSizer *bottom_sizer = new wxBoxSizer(wxHORIZONTAL);
 
 	{
-		wxStaticBoxSizer *cur_line_box = new wxStaticBoxSizer(wxHORIZONTAL, this, _("Current line"));
-		current_line_text = new wxTextCtrl(cur_line_box->GetStaticBox(), -1, _("Current line"), wxDefaultPosition, wxSize(300, 60), wxTE_MULTILINE | wxTE_READONLY);
+		wxStaticBoxSizer *cur_line_box = ui::DialogSection(this, wxHORIZONTAL, _("Current line"));
+		current_line_text = new wxTextCtrl(cur_line_box->GetStaticBox(), -1, _("Current line"), wxDefaultPosition, FromDIP(wxSize(360, 72)), wxTE_MULTILINE | wxTE_READONLY);
 		cur_line_box->Add(current_line_text, 1, wxEXPAND, 0);
-		main_sizer->Add(cur_line_box, 0, wxEXPAND | wxALL, 5);
+		main_sizer->Add(ui::DialogHeading(this, _("Styling Assistant"), "tool/style/assistant", GETBUNDLE(styling_toolbutton, 24)), 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, inset);
+		main_sizer->Add(cur_line_box, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, inset);
 	}
 
 	{
-		wxStaticBoxSizer *styles_box = new wxStaticBoxSizer(wxVERTICAL, this, _("Styles available"));
-		style_list = new wxListBox(styles_box->GetStaticBox(), -1, wxDefaultPosition, wxSize(150, 180), to_wx(context->ass->GetStyles()));
+		wxStaticBoxSizer *styles_box = ui::DialogSection(this, wxVERTICAL, _("Styles available"));
+		style_list = new wxListBox(styles_box->GetStaticBox(), -1, wxDefaultPosition, FromDIP(wxSize(200, 220)), to_wx(context->ass->GetStyles()));
 		styles_box->Add(style_list, 1, wxEXPAND, 0);
-		bottom_sizer->Add(styles_box, 1, wxEXPAND | wxRIGHT, 5);
+		bottom_sizer->Add(styles_box, 1, wxEXPAND | wxRIGHT, gap);
 	}
 
 	wxSizer *right_sizer = new wxBoxSizer(wxVERTICAL);
 	{
-		wxStaticBoxSizer *style_text_box = new wxStaticBoxSizer(wxHORIZONTAL, this, _("Set style"));
-		style_name = new wxTextCtrl(style_text_box->GetStaticBox(), -1, "", wxDefaultPosition, wxSize(180, -1), wxTE_PROCESS_ENTER);
+		wxStaticBoxSizer *style_text_box = ui::DialogSection(this, wxHORIZONTAL, _("Set style"));
+		style_name = new wxTextCtrl(style_text_box->GetStaticBox(), -1, "", wxDefaultPosition, FromDIP(wxSize(220, -1)), wxTE_PROCESS_ENTER);
 		style_text_box->Add(style_name, 1, wxEXPAND);
-		right_sizer->Add(style_text_box, 0, wxEXPAND | wxBOTTOM, 5);
+		right_sizer->Add(style_text_box, 0, wxEXPAND | wxBOTTOM, gap);
 	}
 
 	{
-		wxStaticBoxSizer *hotkey_sizer = new wxStaticBoxSizer(wxVERTICAL, this, _("Keys"));
+		wxStaticBoxSizer *hotkey_sizer = ui::DialogSection(this, wxVERTICAL, _("Keys"));
 		wxWindow *hotkey_sizer_box = hotkey_sizer->GetStaticBox();
 
-		wxSizer *hotkey_grid = new wxGridSizer(2, 0, 5);
+		wxSizer *hotkey_grid = new wxFlexGridSizer(2, gap, FromDIP(12));
 		add_hotkey(hotkey_grid, hotkey_sizer_box, "tool/styling_assistant/commit", _("Accept changes"));
 		add_hotkey(hotkey_grid, hotkey_sizer_box, "tool/styling_assistant/preview", _("Preview changes"));
 		add_hotkey(hotkey_grid, hotkey_sizer_box, "grid/line/prev", _("Previous line"));
@@ -96,33 +101,33 @@ DialogStyling::DialogStyling(agi::Context *context)
 		hotkey_grid->Add(new wxStaticText(hotkey_sizer_box, -1, _("Click on list")));
 		hotkey_grid->Add(new wxStaticText(hotkey_sizer_box, -1, _("Select style")));
 
-		hotkey_sizer->Add(hotkey_grid, 0, wxEXPAND | wxBOTTOM, 5);
+		hotkey_sizer->Add(hotkey_grid, 0, wxEXPAND | wxBOTTOM, gap);
 
 		auto_seek = new wxCheckBox(hotkey_sizer_box, -1, _("&Seek video to line start time"));
 		auto_seek->SetValue(true);
 		hotkey_sizer->Add(auto_seek, 0, 0, 0);
 		hotkey_sizer->AddStretchSpacer(1);
 
-		right_sizer->Add(hotkey_sizer, 0, wxEXPAND | wxBOTTOM, 5);
+		right_sizer->Add(hotkey_sizer, 0, wxEXPAND | wxBOTTOM, gap);
 	}
 
 	{
-		wxStaticBoxSizer *actions_box = new wxStaticBoxSizer(wxHORIZONTAL, this, _("Actions"));
+		wxStaticBoxSizer *actions_box = ui::DialogSection(this, wxHORIZONTAL, _("Actions"));
 		actions_box->AddStretchSpacer(1);
 
 		play_audio = new wxButton(actions_box->GetStaticBox(), -1, _("Play &Audio"));
 		play_audio->Enable(!!c->project->AudioProvider());
-		actions_box->Add(play_audio, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+		actions_box->Add(play_audio, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
 
 		play_video = new wxButton(actions_box->GetStaticBox(), -1, _("Play &Video"));
 		play_video->Enable(!!c->project->VideoProvider());
-		actions_box->Add(play_video, 0, wxBOTTOM | wxRIGHT, 5);
+		actions_box->Add(play_video, 0, wxBOTTOM | wxRIGHT, gap);
 
 		actions_box->AddStretchSpacer(1);
 		right_sizer->Add(actions_box, 0, wxEXPAND, 0);
 	}
 	bottom_sizer->Add(right_sizer);
-	main_sizer->Add(bottom_sizer, 1, wxEXPAND | wxLEFT | wxBOTTOM | wxRIGHT, 5);
+	main_sizer->Add(bottom_sizer, 1, wxEXPAND | wxLEFT | wxBOTTOM | wxRIGHT, gap);
 
 	{
 		auto button_sizer = new wxStdDialogButtonSizer;
@@ -130,7 +135,7 @@ DialogStyling::DialogStyling(agi::Context *context)
 		button_sizer->AddButton(new HelpButton(this, "Styling Assistant"));
 		button_sizer->Realize();
 
-		main_sizer->Add(button_sizer, 0, wxEXPAND | wxBOTTOM | wxLEFT | wxRIGHT, 5);
+		main_sizer->Add(button_sizer, 0, wxEXPAND | wxBOTTOM | wxLEFT | wxRIGHT, inset);
 	}
 
 	SetSizerAndFit(main_sizer);

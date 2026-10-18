@@ -40,7 +40,7 @@
 class AudioPlayer;
 class AudioTimingController;
 class TimeRange;
-namespace agi { class AudioProvider; }
+namespace agi { class AudioProvider; class PlaybackAudioProvider; }
 namespace agi { struct Context; }
 
 /// @class AudioController
@@ -67,8 +67,15 @@ class AudioController final : public wxEvtHandler, private agi::signal::Connecti
 	/// A new audio player was created
 	agi::signal::Signal<> AnnounceAudioPlayerOpened;
 
+	/// Rate-adjusted audio is only exposed to the playback backend.
+	/// Declared before player so the backend is destroyed first.
+	std::unique_ptr<agi::PlaybackAudioProvider> playback_provider;
+
 	/// The audio output object
 	std::unique_ptr<AudioPlayer> player;
+
+	double playback_rate = 1.0;
+	double volume = 1.0;
 
 	/// The current timing mode, if any; owned by the audio controller
 	std::unique_ptr<AudioTimingController> timing_controller;
@@ -179,6 +186,10 @@ public:
 	/// @brief Set the playback audio volume
 	/// @param volume The new amplification factor for the audio
 	void SetVolume(double volume);
+
+	/// Change playback speed, preserving the active range and source position.
+	void SetPlaybackRate(double rate, int source_position_ms = -1);
+	double GetPlaybackRate() const { return playback_rate; }
 
 	/// @brief Return the current timing controller
 	/// @return The current timing controller or 0

@@ -36,8 +36,10 @@
 #include "include/aegisub/context.h"
 #include "include/aegisub/toolbar.h"
 #include "options.h"
+#include "playback_rate.h"
 #include "project.h"
 #include "selection_controller.h"
+#include "ui_theme.h"
 #include "video_controller.h"
 #include "video_display.h"
 #include "video_slider.h"
@@ -53,6 +55,8 @@ VideoBox::VideoBox(wxWindow *parent, bool isDetached, agi::Context *context)
 : wxPanel(parent, -1)
 , context(context)
 {
+	ui::ApplySurface(this);
+	const int padding = FromDIP(6);
 	auto videoSlider = new VideoSlider(this, context);
 	videoSlider->SetToolTip(_("Seek video"));
 
@@ -70,9 +74,11 @@ VideoBox::VideoBox(wxWindow *parent, bool isDetached, agi::Context *context)
 	auto zoomBox = new wxComboBox(this, -1, "75%", wxDefaultPosition, wxDefaultSize, choices, wxCB_DROPDOWN | wxTE_PROCESS_ENTER);
 
 	auto visualToolBar = toolbar::GetToolbar(this, "visual_tools", context, "Video", true);
+	context->visualToolBar = visualToolBar;
 	auto visualSubToolBar = new wxToolBar(this, -1, wxDefaultPosition, wxDefaultSize, wxTB_VERTICAL | wxTB_BOTTOM | wxTB_NODIVIDER | wxTB_FLAT);
+	context->visualSubToolBar = visualSubToolBar;
 
-	auto videoDisplay = new VideoDisplay(visualSubToolBar, isDetached, zoomBox, this, context);
+	auto videoDisplay = new VideoDisplay(visualSubToolBar, visualToolBar, isDetached, zoomBox, this, context);
 	videoDisplay->MoveBeforeInTabOrder(videoSlider);
 
 	auto toolbarSizer = new wxBoxSizer(wxVERTICAL);
@@ -85,15 +91,15 @@ VideoBox::VideoBox(wxWindow *parent, bool isDetached, agi::Context *context)
 
 	auto videoBottomSizer = new wxBoxSizer(wxHORIZONTAL);
 	videoBottomSizer->Add(mainToolbar, wxSizerFlags(0).Center());
+	videoBottomSizer->Add(new playback::RateChoice(this, context), wxSizerFlags(0).Center().Border(wxLEFT));
 	videoBottomSizer->Add(VideoPosition, wxSizerFlags(1).Center().Border(wxLEFT));
 	videoBottomSizer->Add(VideoSubsPos, wxSizerFlags(1).Center().Border(wxLEFT));
 	videoBottomSizer->Add(zoomBox, wxSizerFlags(0).Center().Border(wxLEFT | wxRIGHT));
 
 	auto VideoSizer = new wxBoxSizer(wxVERTICAL);
-	VideoSizer->Add(topSizer, 1, wxEXPAND, 0);
-	VideoSizer->Add(new wxStaticLine(this), 0, wxEXPAND, 0);
-	VideoSizer->Add(videoSlider, 0, wxEXPAND, 0);
-	VideoSizer->Add(videoBottomSizer, 0, wxEXPAND | wxBOTTOM, 5);
+	VideoSizer->Add(topSizer, 1, wxEXPAND | wxALL, padding);
+	VideoSizer->Add(videoSlider, 0, wxEXPAND | wxLEFT | wxRIGHT, padding);
+	VideoSizer->Add(videoBottomSizer, 0, wxEXPAND | wxALL, padding);
 	SetSizer(VideoSizer);
 
 	UpdateTimeBoxes();
@@ -118,8 +124,8 @@ void VideoBox::UpdateTimeBoxes() {
 	VideoPosition->SetValue(fmt_wx("%s - %d", agi::Time(time).GetAssFormatted(true), frame));
 	if (boost::binary_search(context->project->Keyframes(), frame)) {
 		// Set the background color to indicate this is a keyframe
-		VideoPosition->SetBackgroundColour(to_wx(OPT_GET("Colour/Subtitle Grid/Background/Selection")->GetColor()));
-		VideoPosition->SetForegroundColour(to_wx(OPT_GET("Colour/Subtitle Grid/Selection")->GetColor()));
+		VideoPosition->SetBackgroundColour(ui::OptionColour("Colour/Subtitle Grid/Background/Selection"));
+		VideoPosition->SetForegroundColour(ui::OptionColour("Colour/Subtitle Grid/Selection"));
 	}
 	else {
 		VideoPosition->SetBackgroundColour(wxNullColour);

@@ -7,7 +7,7 @@ bitmap_manifest = '../bitmaps/manifest.respack'
 bitmap_files = []
 foreach bfile : fs.read(bitmap_manifest).strip().split('\n')
     bfile_s = bfile.strip()
-    if bfile_s != ''
+    if bfile_s != '' and not bfile_s.startswith('#')
         bitmap_files += files('../bitmaps' / bfile_s)
     endif
 endforeach
@@ -100,6 +100,5 @@ resrc += custom_target('default_config.{cpp,h}',
 
 
 libresrc_inc = include_directories('.')
-# Only the generated headers; libresrc compiles the generated sources
 libresrc_headers = [resrc[0][1], resrc[1][1]]
 libresrc = static_library('resrc', 'libresrc.cpp', resrc, dependencies: deps)

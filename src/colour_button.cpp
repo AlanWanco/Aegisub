@@ -17,6 +17,7 @@
 #include "colour_button.h"
 
 #include "dialogs.h"
+#include "ui_theme.h"
 
 #include <boost/gil.hpp>
 
@@ -46,4 +47,5 @@ void ColourButton::UpdateBitmap() {
 		(bgr8_pixel_t*)bmp.GetData(), 3 * bmp.GetWidth()),
 		bgr8_pixel_t(colour.r, colour.g, colour.b));
 	SetBitmapLabel(bmp);
+	if (GetParent()) SetForegroundColour(ui::Text());
 }

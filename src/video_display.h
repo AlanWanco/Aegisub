@@ -37,6 +37,12 @@
 #include <libaegisub/signal.h>
 
 #include "vector2d.h"
+#include "visual_tool_clip.h"
+#include "visual_tool_cross.h"
+#include "visual_tool_drag.h"
+#include "visual_tool_rotatexy.h"
+#include "visual_tool_rotatez.h"
+#include "visual_tool_scale.h"
 #include "visual_tool_vector_clip.h"
 
 #include <memory>
@@ -119,8 +125,10 @@ class VideoDisplay final : public wxGLCanvas {
 
 	/// The active visual typesetting tool
 	std::unique_ptr<VisualToolBase> tool;
+	/// The main toolbar that chooses the visual typesetting tool.
+	wxToolBar *visualToolToolbar;
 	/// The toolbar used by individual typesetting tools
-	wxToolBar* toolBar;
+	wxToolBar *toolBar;
 
 	/// The OpenGL context for this display
 	std::unique_ptr<wxGLContext> glContext;
@@ -160,6 +168,7 @@ class VideoDisplay final : public wxGLCanvas {
 	/// @param rescalePan Should the current pan be rescaled for the new viewport?
 	/// @param newSize The new size, ignored in free size mode
 	void UpdateViewportSize(bool rescalePan, wxSize newSize = wxDefaultSize);
+
 	/// @brief Update content size and position based on the current viewport size, content zoom and pan
 	///
 	/// Updates @ref content_left, @ref content_width, @ref content_bottom, @ref content_top and @ref content_height
@@ -215,6 +224,7 @@ public:
 	/// @brief Constructor
 	VideoDisplay(
 		wxToolBar *visualSubToolBar,
+		wxToolBar *visualToolToolbar,
 		bool isDetached,
 		wxComboBox *zoomBox,
 		wxWindow* parent,
@@ -223,6 +233,9 @@ public:
 
 	/// @brief Render the currently visible frame
 	void Render();
+
+	/// Refresh the high-contrast indicator for the active visual tool.
+	void RefreshVisualToolbar();
 
 	/// @brief Set the window zoom level
 	/// @param value The new zoom level

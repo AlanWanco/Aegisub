@@ -53,6 +53,7 @@
 #include "project.h"
 #include "subs_controller.h"
 #include "subs_edit_box.h"
+#include "ui_theme.h"
 #include "utils.h"
 #include "version.h"
 #include "video_box.h"
@@ -66,6 +67,7 @@
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
 #include <wx/statline.h>
+#include <wx/statusbr.h>
 #include <wx/sysopt.h>
 #include <wx/toolbar.h>
 
@@ -99,7 +101,7 @@ FrameMain::FrameMain()
 {
 	StartupLog("Entering FrameMain constructor");
 
-	SetSize(FromDIP(wxSize(920, 700)));
+	SetSize(FromDIP(wxSize(1200, 780)));
 
 #ifdef __WXGTK__
 	// XXX HACK XXX
@@ -134,6 +136,8 @@ FrameMain::FrameMain()
 
 	StartupLog("Create status bar");
 	CreateStatusBar(2);
+	ui::ApplySurface(GetStatusBar(), true);
+	GetStatusBar()->SetMinHeight(FromDIP(28));
 
 	StartupLog("Set icon");
 #ifdef _WIN32
@@ -186,6 +190,7 @@ void FrameMain::EnableToolBar(agi::OptionValue const& opt) {
 void FrameMain::InitContents() {
 	StartupLog("Create background panel");
 	auto Panel = new wxPanel(this, -1, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxCLIP_CHILDREN);
+	ui::ApplySurface(Panel, true);
 
 	StartupLog("Create subtitles grid");
 	context->subsGrid = new BaseGrid(Panel, context.get());
@@ -200,16 +205,16 @@ void FrameMain::InitContents() {
 	auto EditBox = new SubsEditBox(Panel, context.get());
 
 	StartupLog("Arrange main sizers");
+	const int gutter = Panel->FromDIP(10);
 	ToolsSizer = new wxBoxSizer(wxVERTICAL);
-	ToolsSizer->Add(audioBox, 0, wxEXPAND);
+	ToolsSizer->Add(audioBox, 0, wxEXPAND | wxBOTTOM, gutter);
 	ToolsSizer->Add(EditBox, 1, wxEXPAND);
 	TopSizer = new wxBoxSizer(wxHORIZONTAL);
-	TopSizer->Add(videoBox, 0, wxEXPAND, 0);
-	TopSizer->Add(ToolsSizer, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 5);
+	TopSizer->Add(videoBox, 0, wxEXPAND | wxRIGHT, gutter);
+	TopSizer->Add(ToolsSizer, 1, wxEXPAND);
 	MainSizer = new wxBoxSizer(wxVERTICAL);
-	MainSizer->Add(new wxStaticLine(Panel),0,wxEXPAND,0);
-	MainSizer->Add(TopSizer,0,wxEXPAND,0);
-	MainSizer->Add(context->subsGrid,1,wxEXPAND,0);
+	MainSizer->Add(TopSizer, 0, wxEXPAND | wxALL, gutter);
+	MainSizer->Add(context->subsGrid, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, gutter);
 	Panel->SetSizer(MainSizer);
 
 	StartupLog("Perform layout");

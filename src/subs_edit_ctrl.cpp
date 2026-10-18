@@ -39,6 +39,7 @@
 #include "selection_controller.h"
 #include "text_selection_controller.h"
 #include "thesaurus.h"
+#include "ui_theme.h"
 #include "utils.h"
 
 #include <libaegisub/ass/dialogue_parser.h>
@@ -92,8 +93,17 @@ SubsTextEditCtrl::SubsTextEditCtrl(wxWindow* parent, wxSize wsize, long style, a
 	// Set properties
 	SetWrapMode(wxSTC_WRAP_WORD);
 	SetMarginWidth(1,0);
+	SetMarginLeft(FromDIP(8));
+	SetMarginRight(FromDIP(8));
+	SetExtraAscent(FromDIP(3));
+	SetExtraDescent(FromDIP(3));
 	UsePopUp(wxSTC_POPUP_NEVER);
 	SetStyles();
+	Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+		SetStyles();
+		Refresh();
+		event.Skip();
+	});
 
 	// Set hotkeys
 	CmdKeyClear(wxSTC_KEY_RETURN,wxSTC_KEYMOD_CTRL);
@@ -227,10 +237,10 @@ void SubsTextEditCtrl::OnKeyDown(wxKeyEvent &event) {
 void SubsTextEditCtrl::SetSyntaxStyle(int id, wxFont &font, std::string const& name, wxColor const& default_background) {
 	StyleSetFont(id, font);
 	StyleSetBold(id, OPT_GET("Colour/Subtitle/Syntax/Bold/" + name)->GetBool());
-	StyleSetForeground(id, to_wx(OPT_GET("Colour/Subtitle/Syntax/" + name)->GetColor()));
+	StyleSetForeground(id, ui::OptionColour("Colour/Subtitle/Syntax/" + name));
 	const agi::OptionValue *background = OPT_GET("Colour/Subtitle/Syntax/Background/" + name);
 	if (background->GetType() == agi::OptionType::Color)
-		StyleSetBackground(id, to_wx(background->GetColor()));
+		StyleSetBackground(id, ui::OptionColour("Colour/Subtitle/Syntax/Background/" + name));
 	else
 		StyleSetBackground(id, default_background);
 }
@@ -242,7 +252,7 @@ void SubsTextEditCtrl::SetStyles() {
 	if (!fontname.empty()) font.SetFaceName(fontname);
 	font.SetPointSize(OPT_GET("Subtitle/Edit Box/Font Size")->GetInt());
 
-	auto default_background = to_wx(OPT_GET("Colour/Subtitle/Background")->GetColor());
+	auto default_background = ui::OptionColour("Colour/Subtitle/Background");
 
 	namespace ss = agi::ass::SyntaxStyle;
 	SetSyntaxStyle(ss::NORMAL, font, "Normal", default_background);

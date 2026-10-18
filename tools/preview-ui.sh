@@ -1,0 +1,48 @@
+#!/bin/sh
+# Run a local macOS build with a separate, persistent preview profile.
+set -eu
+
+if [ "$(uname -s)" != Darwin ]; then
+    echo "This preview launcher currently supports macOS only." >&2
+    exit 1
+fi
+
+SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+BUILD_DIR=${1:-"${SOURCE_DIR}/build-ui"}
+if [ "$#" -gt 0 ]; then shift; fi
+BUILD_DIR=$(CDPATH= cd -- "$BUILD_DIR" && pwd)
+APP_EXECUTABLE="${BUILD_DIR}/Aegisub.app/Contents/MacOS/aegisub"
+
+if [ ! -x "$APP_EXECUTABLE" ]; then
+    echo "Build and bundle Aegisub first; missing: ${APP_EXECUTABLE}" >&2
+    exit 1
+fi
+
+PREVIEW_HOME=${AEGISUB_UI_PREVIEW_HOME:-"${BUILD_DIR}/preview-home"}
+mkdir -p "$PREVIEW_HOME"
+PREVIEW_HOME=$(CDPATH= cd -- "$PREVIEW_HOME" && pwd)
+
+python3 - "$PREVIEW_HOME" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+profile = Path(sys.argv[1]) / "Library/Application Support/Aegisub"
+profile.mkdir(parents=True, exist_ok=True)
+config = profile / "config.json"
+try:
+    with config.open("x", encoding="utf-8") as stream:
+        json.dump({
+            "App": {
+                "First Start": False,
+                "Language": "en_US",
+                "Auto": {"Check For Updates": False},
+            }
+        }, stream, indent=2)
+except FileExistsError:
+    pass
+PY
+
+# CFFIXED_USER_HOME also redirects the Foundation Application Support lookup.
+export CFFIXED_USER_HOME="$PREVIEW_HOME"
+exec "$APP_EXECUTABLE" "$@"

@@ -62,6 +62,9 @@ class VideoController final : public wxEvtHandler {
 	agi::signal::Signal<int> Seek;
 	/// Aspect ratio was changed (type, value)
 	agi::signal::Signal<AspectRatio, double> ARChange;
+	/// Playback speed shared by the video and audio controls
+	agi::signal::Signal<double> PlaybackRateChange;
+	double playback_rate = 1.0;
 
 	agi::Context *context;
 
@@ -159,8 +162,13 @@ public:
 	/// Stop playing
 	void Stop();
 
+	/// Set the audio/video playback rate without changing subtitle timecodes.
+	void SetPlaybackRate(double rate);
+	double GetPlaybackRate() const { return playback_rate; }
+
 	DEFINE_SIGNAL_ADDERS(Seek, AddSeekListener)
 	DEFINE_SIGNAL_ADDERS(ARChange, AddARChangeListener)
+	DEFINE_SIGNAL_ADDERS(PlaybackRateChange, AddPlaybackRateListener)
 
 	int TimeAtFrame(int frame, agi::vfr::Time type = agi::vfr::EXACT) const;
 	int FrameAtTime(int time, agi::vfr::Time type = agi::vfr::EXACT) const;

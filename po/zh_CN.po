@@ -7504,3 +7504,35 @@ msgstr "音视频"
 #: ../packages/desktop/aegisub.metainfo.xml.in.in:51
 msgid "Audio timing"
 msgstr "音频时轴"
+
+#: ../src/playback_rate.h
+msgid "Playback speed"
+msgstr "播放速度"
+
+#: ../src/playback_rate.h
+msgid "Playback speed (changes audio pitch; subtitle timing is unchanged)"
+msgstr "播放速度（音调随速度变化，字幕时间码保持不变）"
+
+#: ../src/libresrc/default_menu.json
+msgid "Playback Speed"
+msgstr "播放速度"
+
+#: ../src/command/video.cpp
+msgid "Set audio and video playback speed (changes audio pitch)"
+msgstr "设置音视频播放速度（音调随速度变化）"
+
+#: ../src/command/video.cpp
+msgid "Increase playback speed"
+msgstr "加快播放速度"
+
+#: ../src/command/video.cpp
+msgid "Decrease playback speed"
+msgstr "减慢播放速度"
+
+#: ../src/command/video.cpp
+msgid "Switch to the next faster audio and video playback speed"
+msgstr "切换到下一档更快的音视频播放速度"
+
+#: ../src/command/video.cpp
+msgid "Switch to the next slower audio and video playback speed"
+msgstr "切换到下一档更慢的音视频播放速度"

@@ -23,6 +23,7 @@
 #include "include/aegisub/hotkey.h"
 #include "libresrc/libresrc.h"
 #include "options.h"
+#include "ui_theme.h"
 
 #include <libaegisub/hotkey.h>
 #include <libaegisub/json.h>
@@ -31,31 +32,37 @@
 #include <libaegisub/string.h>
 
 #include <boost/interprocess/streams/bufferstream.hpp>
+#include <array>
 #include <vector>
 
 #include <wx/frame.h>
 #include <wx/toolbar.h>
 
 namespace {
-	json::Object const& get_root() {
-		static json::Object root;
-		if (root.empty()) {
-			boost::interprocess::ibufferstream stream((const char *)default_toolbar, sizeof(default_toolbar));
-			root = std::move(static_cast<json::Object&>(agi::json_util::parse(stream)));
-		}
-		return root;
+constexpr int TOOL_ID_BASE = 5000;
+constexpr std::array<char const *, 7> visual_tool_commands = {
+	"video/tool/cross", "video/tool/drag", "video/tool/rotate/z", "video/tool/rotate/xy",
+	"video/tool/scale", "video/tool/clip", "video/tool/vector_clip"
+};
+
+json::Object const& get_root() {
+	static json::Object root;
+	if (root.empty()) {
+		boost::interprocess::ibufferstream stream((const char *)default_toolbar, sizeof(default_toolbar));
+		root = std::move(static_cast<json::Object&>(agi::json_util::parse(stream)));
 	}
+	return root;
+}
 
 	class Toolbar final : public wxToolBar {
 		/// Window ID of first toolbar control
-		static const int TOOL_ID_BASE = 5000;
-
 		/// Toolbar name in config file
 		std::string name;
 		/// Project context
 		agi::Context *context;
 		/// Commands for each of the buttons
 		std::vector<cmd::Command *> commands;
+		std::vector<bool> active_states;
 		/// Hotkey context
 		std::string ht_context;
 
@@ -73,8 +80,15 @@ namespace {
 			for (size_t i = 0; i < commands.size(); ++i) {
 				if (commands[i]->Type() & cmd::COMMAND_VALIDATE)
 					EnableTool(TOOL_ID_BASE + i, commands[i]->Validate(context));
-				if (commands[i]->Type() & cmd::COMMAND_TOGGLE || commands[i]->Type() & cmd::COMMAND_RADIO)
-					ToggleTool(TOOL_ID_BASE + i, commands[i]->IsActive(context));
+				if (commands[i]->Type() & cmd::COMMAND_TOGGLE || commands[i]->Type() & cmd::COMMAND_RADIO) {
+					bool active = commands[i]->IsActive(context);
+					ToggleTool(TOOL_ID_BASE + i, active);
+					if ((GetWindowStyleFlag() & wxTB_VERTICAL) && active_states[i] != active) {
+						SetToolNormalBitmap(TOOL_ID_BASE + i, ui::CommandIcon(commands[i]->name(), icon_size,
+							commands[i]->Icon(icon_size, GetLayoutDirection()), active));
+						active_states[i] = active;
+					}
+				}
 			}
 		}
 
@@ -94,6 +108,7 @@ namespace {
 			Unbind(wxEVT_IDLE, &Toolbar::OnIdle, this);
 			ClearTools();
 			commands.clear();
+			active_states.clear();
 			Populate();
 		}
 
@@ -136,9 +151,15 @@ namespace {
 					flags & cmd::COMMAND_TOGGLE ? wxITEM_CHECK :
 					wxITEM_NORMAL;
 
-				AddTool(TOOL_ID_BASE + commands.size(), command->StrDisplay(context), command->Icon(icon_size, GetLayoutDirection()), command->GetTooltip(ht_context), kind);
+				// The visual-toolbar owner does not exist yet while it is being
+				// populated. Initialize idle-tracked selections after construction.
+				bool active = false;
+				AddTool(TOOL_ID_BASE + commands.size(), command->StrDisplay(context),
+					ui::CommandIcon(command_name, icon_size, command->Icon(icon_size, GetLayoutDirection()), active),
+					command->GetTooltip(ht_context), kind);
 
 				commands.push_back(command);
+				active_states.push_back(active);
 				needs_onidle = needs_onidle || flags != cmd::COMMAND_NORMAL;
 			}
 
@@ -160,9 +181,13 @@ namespace {
 		, icon_size_slot(OPT_SUB("App/Toolbar Icon Size", &Toolbar::OnIconSizeChange, this))
 		, hotkeys_changed_slot(hotkey::inst->AddHotkeyChangeListener(&Toolbar::RegenerateToolbar, this))
 		{
+			ui::ApplySurface(this);
+			SetMargins(FromDIP(4), FromDIP(4));
+			SetToolPacking(FromDIP(3));
 			Populate();
 			Bind(wxEVT_TOOL, &Toolbar::OnClick, this);
 			Bind(wxEVT_DPI_CHANGED, [this] (wxDPIChangedEvent &e) { RegenerateToolbar(); e.Skip(); });
+			Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& e) { RegenerateToolbar(); e.Skip(); });
 		}
 
 		Toolbar(wxFrame *parent, std::string name, agi::Context *c, std::string ht_context)
@@ -174,14 +199,18 @@ namespace {
 		, icon_size(OPT_GET("App/Toolbar Icon Size")->GetInt())
 		, icon_size_slot(OPT_SUB("App/Toolbar Icon Size", &Toolbar::OnIconSizeChange, this))
 #else
-		, icon_size(32)
+		, icon_size(24)
 #endif
 		, hotkeys_changed_slot(hotkey::inst->AddHotkeyChangeListener(&Toolbar::RegenerateToolbar, this))
 		{
+			ui::ApplySurface(this, true);
+			SetMargins(FromDIP(8), FromDIP(6));
+			SetToolPacking(FromDIP(5));
 			parent->SetToolBar(this);
 			Populate();
 			Bind(wxEVT_TOOL, &Toolbar::OnClick, this);
 			Bind(wxEVT_DPI_CHANGED, [this] (wxDPIChangedEvent &e) { RegenerateToolbar(); e.Skip(); });
+			Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& e) { RegenerateToolbar(); e.Skip(); });
 		}
 	};
 }
@@ -189,6 +218,37 @@ namespace {
 namespace toolbar {
 	void AttachToolbar(wxFrame *frame, std::string const& name, agi::Context *c, std::string const& hotkey) {
 		new Toolbar(frame, name, c, hotkey);
+	}
+
+	void RefreshVisualTools(wxToolBar *toolbar, std::string_view selected_command) {
+		if (!toolbar) return;
+		for (size_t i = 0; i < visual_tool_commands.size(); ++i) {
+			int const id = TOOL_ID_BASE + i;
+			bool const active = selected_command == visual_tool_commands[i];
+			toolbar->ToggleTool(id, active);
+			auto command = cmd::get(visual_tool_commands[i]);
+			toolbar->SetToolNormalBitmap(id, ui::CommandIcon(command->name(),
+				toolbar->GetToolBitmapSize().GetHeight(), command->Icon(), active));
+		}
+	}
+
+	void RefreshVectorTools(wxToolBar *toolbar, int selected_subtool) {
+		if (!toolbar) return;
+		static constexpr char const *commands[] = {
+			"video/tool/vclip/drag", "video/tool/vclip/line", "video/tool/vclip/bicubic",
+			"video/tool/vclip/convert", "video/tool/vclip/insert", "video/tool/vclip/remove",
+			"video/tool/vclip/freehand", "video/tool/vclip/freehand_smooth"
+		};
+		for (size_t i = 0; i < std::size(commands); ++i) {
+			int const id = 1300 + i;
+			bool const active = static_cast<int>(i) == selected_subtool;
+			toolbar->ToggleTool(id, active);
+			auto command = cmd::get(commands[i]);
+			auto tool = toolbar->FindById(id);
+			int const size = tool->GetNormalBitmap().GetLogicalHeight();
+			toolbar->SetToolNormalBitmap(id,
+				ui::CommandIcon(command->name(), size, command->Icon(), active));
+		}
 	}
 
 	wxToolBar *GetToolbar(wxWindow *parent, std::string const& name, agi::Context *c, std::string const& hotkey, bool vertical) {

@@ -43,6 +43,7 @@
 #include "utils.h"
 #include "selection_controller.h"
 #include "subs_controller.h"
+#include "ui_theme.h"
 #include "video_controller.h"
 
 #include <libaegisub/util.h>
@@ -61,7 +62,7 @@ enum {
 };
 
 BaseGrid::BaseGrid(wxWindow* parent, agi::Context *context)
-: wxWindow(parent, -1, wxDefaultPosition, wxDefaultSize, wxWANTS_CHARS | wxSUNKEN_BORDER)
+: wxWindow(parent, -1, wxDefaultPosition, wxDefaultSize, wxWANTS_CHARS | wxBORDER_NONE)
 , scrollBar(new wxScrollBar(this, GRID_SCROLLBAR, wxDefaultPosition, wxDefaultSize, wxSB_VERTICAL))
 , context(context)
 , columns(GetGridColumns())
@@ -112,6 +113,10 @@ BaseGrid::BaseGrid(wxWindow* parent, agi::Context *context)
 	});
 
 	Bind(wxEVT_CONTEXT_MENU, &BaseGrid::OnContextMenu, this);
+	Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+		UpdateStyle();
+		event.Skip();
+	});
 }
 
 BaseGrid::~BaseGrid() { }
@@ -181,16 +186,16 @@ void BaseGrid::UpdateStyle() {
 	dc.SetFont(font);
 
 	// Set line height
-	lineHeight = dc.GetCharHeight() + 4;
+	lineHeight = dc.GetCharHeight() + FromDIP(10);
 
 	// Set row brushes
-	row_colors.Default.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Background/Background")->GetColor()));
-	row_colors.Header.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Header")->GetColor()));
-	row_colors.Selection.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Background/Selection")->GetColor()));
-	row_colors.Comment.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Background/Comment")->GetColor()));
-	row_colors.Visible.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Background/Inframe")->GetColor()));
-	row_colors.SelectedComment.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Background/Selected Comment")->GetColor()));
-	row_colors.LeftCol.SetColour(to_wx(OPT_GET("Colour/Subtitle Grid/Left Column")->GetColor()));
+	row_colors.Default.SetColour(ui::OptionColour("Colour/Subtitle Grid/Background/Background"));
+	row_colors.Header.SetColour(ui::OptionColour("Colour/Subtitle Grid/Header"));
+	row_colors.Selection.SetColour(ui::OptionColour("Colour/Subtitle Grid/Background/Selection"));
+	row_colors.Comment.SetColour(ui::OptionColour("Colour/Subtitle Grid/Background/Comment"));
+	row_colors.Visible.SetColour(ui::OptionColour("Colour/Subtitle Grid/Background/Inframe"));
+	row_colors.SelectedComment.SetColour(ui::OptionColour("Colour/Subtitle Grid/Background/Selected Comment"));
+	row_colors.LeftCol.SetColour(ui::OptionColour("Colour/Subtitle Grid/Left Column"));
 
 	if (width_helper)
 		width_helper->ClearCache();
@@ -308,12 +313,12 @@ void BaseGrid::OnPaint(wxPaintEvent &) {
 	dc.DrawRectangle(0, lineHeight, columns[0]->Width(), h-lineHeight);
 
 	// Row colors
-	wxColour text_standard(to_wx(OPT_GET("Colour/Subtitle Grid/Standard")->GetColor()));
-	wxColour text_selection(to_wx(OPT_GET("Colour/Subtitle Grid/Selection")->GetColor()));
-	wxColour text_collision(to_wx(OPT_GET("Colour/Subtitle Grid/Collision")->GetColor()));
+	wxColour text_standard(ui::OptionColour("Colour/Subtitle Grid/Standard"));
+	wxColour text_selection(ui::OptionColour("Colour/Subtitle Grid/Selection"));
+	wxColour text_collision(ui::OptionColour("Colour/Subtitle Grid/Collision"));
 
 	// First grid row
-	wxPen grid_pen(to_wx(OPT_GET("Colour/Subtitle Grid/Lines")->GetColor()));
+	wxPen grid_pen(ui::OptionColour("Colour/Subtitle Grid/Lines"));
 	dc.SetPen(grid_pen);
 	dc.DrawLine(0, 0, w, 0);
 	dc.SetPen(*wxTRANSPARENT_PEN);
@@ -325,7 +330,7 @@ void BaseGrid::OnPaint(wxPaintEvent &) {
 			left += (columns[col]->Width() - 6 - ext.GetWidth()) / 2;
 		}
 
-		dc.DrawText(str, left, y + 2);
+		dc.DrawText(str, left, y + (lineHeight - dc.GetCharHeight()) / 2);
 	};
 
 	// Paint header
@@ -391,7 +396,7 @@ void BaseGrid::OnPaint(wxPaintEvent &) {
 		int y = (i + 1) * lineHeight;
 		for (size_t j : agi::util::range(columns.size())) {
 			if (paint_columns[j])
-				columns[j]->Paint(dc, x, y, curDiag, context);
+				columns[j]->Paint(dc, x, y + (lineHeight - dc.GetCharHeight()) / 2 - 2, curDiag, context);
 			x += columns[j]->Width();
 		}
 
@@ -416,9 +421,14 @@ void BaseGrid::OnPaint(wxPaintEvent &) {
 	}
 
 	if (active_line && active_line->Row >= yPos && active_line->Row < yPos + nDraw) {
-		dc.SetPen(wxPen(to_wx(OPT_GET("Colour/Subtitle Grid/Active Border")->GetColor())));
+		auto accent = ui::OptionColour("Colour/Subtitle Grid/Active Border");
+		dc.SetPen(wxPen(accent));
 		dc.SetBrush(*wxTRANSPARENT_BRUSH);
-		dc.DrawRectangle(0, (active_line->Row - yPos + 1) * lineHeight, w, lineHeight + 1);
+		int y = (active_line->Row - yPos + 1) * lineHeight;
+		dc.DrawRectangle(0, y, w, lineHeight + 1);
+		dc.SetPen(*wxTRANSPARENT_PEN);
+		dc.SetBrush(wxBrush(accent));
+		dc.DrawRectangle(0, y + 1, FromDIP(3), lineHeight - 1);
 	}
 }
 
