@@ -161,10 +161,7 @@ VideoDisplay::VideoDisplay(wxToolBar *toolbar, wxToolBar *visualToolToolbar, boo
 	SetLayoutDirection(wxLayout_LeftToRight);
 
 	UpdateViewportSize(false, wxSize(1, 1));
-	Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
-		if (!tool) RefreshVisualToolbar();
-		event.Skip();
-	});
+	RefreshVisualToolbar();
 }
 
 VideoDisplay::~VideoDisplay () {
