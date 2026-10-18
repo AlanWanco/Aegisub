@@ -26,7 +26,7 @@
 // Keep the visual customizations here so upstream widgets and commands can
 // continue to be used without a parallel application or document model.
 namespace ui {
-inline wxColour RGB(unsigned value) {
+inline wxColour ColorFromHex(unsigned value) {
 	return wxColour((value >> 16) & 255, (value >> 8) & 255, value & 255);
 }
 
@@ -39,12 +39,12 @@ inline bool IsDark() {
 #endif
 }
 
-inline wxColour Canvas() { return RGB(IsDark() ? 0x202526 : 0xEDF1F0); }
-inline wxColour Surface() { return RGB(IsDark() ? 0x292F30 : 0xFFFFFF); }
-inline wxColour Text() { return RGB(IsDark() ? 0xE4ECE9 : 0x253C38); }
-inline wxColour Muted() { return RGB(IsDark() ? 0xAABAB5 : 0x566B65); }
-inline wxColour Accent() { return RGB(IsDark() ? 0x7BD7BC : 0x126C58); }
-inline wxColour OnAccent() { return RGB(IsDark() ? 0x173D32 : 0xFFFFFF); }
+inline wxColour Canvas() { return ColorFromHex(IsDark() ? 0x202526 : 0xEDF1F0); }
+inline wxColour Surface() { return ColorFromHex(IsDark() ? 0x292F30 : 0xFFFFFF); }
+inline wxColour Text() { return ColorFromHex(IsDark() ? 0xE4ECE9 : 0x253C38); }
+inline wxColour Muted() { return ColorFromHex(IsDark() ? 0xAABAB5 : 0x566B65); }
+inline wxColour Accent() { return ColorFromHex(IsDark() ? 0x7BD7BC : 0x126C58); }
+inline wxColour OnAccent() { return ColorFromHex(IsDark() ? 0x173D32 : 0xFFFFFF); }
 
 inline void ApplySurface(wxWindow *window, bool canvas = false) {
 	window->SetBackgroundColour(canvas ? Canvas() : Surface());
@@ -97,7 +97,7 @@ inline wxColour OptionColour(std::string const& key) {
 	unsigned value = (unsigned(color.r) << 16) | (unsigned(color.g) << 8) | color.b;
 	for (auto const& entry : defaults) {
 		if (entry.key == key && entry.legacy == value && color.a == 0)
-			return RGB(IsDark() ? entry.dark : entry.light);
+			return ColorFromHex(IsDark() ? entry.dark : entry.light);
 	}
 	return wxColour(color.r, color.g, color.b, 255 - color.a);
 }
@@ -219,7 +219,7 @@ inline wxBitmapBundle CommandIcon(std::string_view command, int size, wxBitmapBu
 	};
 	for (auto const& icon : icons) {
 		if (icon.command != command) continue;
-		auto foreground = active ? RGB(IsDark() ? 0x173D32 : 0xFFFFFF) : Text();
+		auto foreground = active ? ColorFromHex(IsDark() ? 0x173D32 : 0xFFFFFF) : Text();
 		auto color = foreground.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
 		std::string svg = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='" + color + "' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'>";
 		if (active) {
