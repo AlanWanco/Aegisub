@@ -105,6 +105,7 @@ class SubsEditBox final : public wxPanel {
 	wxSizer *top_sizer;
 	wxSizer *middle_right_sizer;
 	wxSizer *middle_left_sizer;
+	bool button_bar_split = true;
 	wxSizer *bottom_sizer;
 
 	void SetControlsState(bool state);

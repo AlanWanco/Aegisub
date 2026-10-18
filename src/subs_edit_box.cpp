@@ -69,7 +69,6 @@
 #include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/spinctrl.h>
-#include <wx/wrapsizer.h>
 
 namespace {
 
@@ -114,7 +113,7 @@ SubsEditBox::SubsEditBox(wxWindow *parent, agi::Context *context)
 	const int gap = FromDIP(6);
 
 	// Top controls
-	top_sizer = new wxWrapSizer(wxHORIZONTAL, wxREMOVE_LEADING_SPACES);
+	top_sizer = new wxBoxSizer(wxHORIZONTAL);
 
 	comment_box = new wxCheckBox(this,-1,_("&Comment"));
 	comment_box->SetToolTip(_("Comment this line out. Commented lines don't show up on screen."));
@@ -153,7 +152,7 @@ SubsEditBox::SubsEditBox(wxWindow *parent, agi::Context *context)
 	top_sizer->Add(char_count, 0, wxALIGN_CENTER | wxLEFT, gap);
 
 	// Middle controls
-	middle_left_sizer = new wxWrapSizer(wxHORIZONTAL, wxREMOVE_LEADING_SPACES);
+	middle_left_sizer = new wxBoxSizer(wxHORIZONTAL);
 
 	layer = new wxSpinCtrl(this,-1,"",wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS | wxTE_PROCESS_ENTER,0,999,0);
 	layer->SetToolTip(_("Layer number"));
@@ -172,7 +171,7 @@ SubsEditBox::SubsEditBox(wxWindow *parent, agi::Context *context)
 	middle_left_sizer->AddSpacer(5);
 
 	// Middle-bottom controls
-	middle_right_sizer = new wxWrapSizer(wxHORIZONTAL, wxREMOVE_LEADING_SPACES);
+	middle_right_sizer = new wxBoxSizer(wxHORIZONTAL);
 	MakeButton("edit/style/bold");
 	MakeButton("edit/style/italic");
 	MakeButton("edit/style/underline");
@@ -547,32 +546,25 @@ void SubsEditBox::SetDurationField() {
 }
 
 void SubsEditBox::OnSize(wxSizeEvent &evt) {
-	const int padding = FromDIP(10);
-	const int available_width = std::max(1, GetClientSize().GetWidth() - 2 * padding);
-	// Reserve the actual height of wrapped rows so they can't consume the
-	// text editor when the video preview leaves less horizontal space.
-	auto wrapped_height = [available_width](wxSizer *sizer) {
-		int height = 0, row_width = 0, row_height = 0;
-		for (auto item : sizer->GetChildren()) {
-			if (!item->IsShown()) continue;
-			auto size = item->GetMinSizeWithBorder();
-			if (row_width && row_width + size.x > available_width) {
-				height += row_height;
-				row_width = row_height = 0;
-			}
-			row_width += size.x;
-			row_height = std::max(row_height, size.y);
+	int availableWidth = GetVirtualSize().GetWidth();
+	int midMin = middle_left_sizer->GetMinSize().GetWidth();
+	int botMin = middle_right_sizer->GetMinSize().GetWidth();
+
+	if (button_bar_split) {
+		if (availableWidth > midMin + botMin) {
+			GetSizer()->Detach(middle_right_sizer);
+			middle_left_sizer->Add(middle_right_sizer, 0, wxALIGN_CENTER_VERTICAL);
+			button_bar_split = false;
 		}
-		return height + row_height;
-	};
-	int height = wrapped_height(top_sizer) + wrapped_height(middle_left_sizer)
-		+ wrapped_height(middle_right_sizer) + edit_ctrl->GetMinSize().y + 5 * padding;
-	if (GetSizer()->IsShown(secondary_editor))
-		height += secondary_editor->GetMinSize().y + bottom_sizer->GetMinSize().y + padding;
-	if (GetMinSize().y != height) {
-		SetMinSize(wxSize(FromDIP(320), height));
-		GetParent()->Layout();
 	}
+	else {
+		if (availableWidth < midMin) {
+			middle_left_sizer->Detach(middle_right_sizer);
+			GetSizer()->Insert(2, middle_right_sizer, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(3));
+			button_bar_split = true;
+		}
+	}
+
 	evt.Skip();
 }
 
