@@ -63,6 +63,7 @@ json::Object const& get_root() {
 		/// Commands for each of the buttons
 		std::vector<cmd::Command *> commands;
 		std::vector<bool> active_states;
+		bool updating = false;
 		/// Hotkey context
 		std::string ht_context;
 
@@ -77,16 +78,24 @@ json::Object const& get_root() {
 
 		/// Enable/disable the toolbar buttons
 		void OnIdle(wxIdleEvent &) {
+			if (updating) return;
+			updating = true;
+			struct ResetUpdating {
+				bool& updating;
+				~ResetUpdating() { updating = false; }
+			} reset{updating};
+
 			for (size_t i = 0; i < commands.size(); ++i) {
 				if (commands[i]->Type() & cmd::COMMAND_VALIDATE)
 					EnableTool(TOOL_ID_BASE + i, commands[i]->Validate(context));
 				if (commands[i]->Type() & cmd::COMMAND_TOGGLE || commands[i]->Type() & cmd::COMMAND_RADIO) {
 					bool active = commands[i]->IsActive(context);
+					bool changed = active_states[i] != active;
+					active_states[i] = active;
 					ToggleTool(TOOL_ID_BASE + i, active);
-					if ((GetWindowStyleFlag() & wxTB_VERTICAL) && active_states[i] != active) {
+					if ((GetWindowStyleFlag() & wxTB_VERTICAL) && changed) {
 						SetToolNormalBitmap(TOOL_ID_BASE + i, ui::CommandIcon(commands[i]->name(), icon_size,
 							commands[i]->Icon(icon_size, GetLayoutDirection()), active));
-						active_states[i] = active;
 					}
 				}
 			}
