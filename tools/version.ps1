@@ -29,8 +29,15 @@ if ([System.IO.Path]::GetFullPath([System.IO.Path]::Combine((pwd).Path, $BuildRo
   }
 $gitVersionHeaderPath = Join-Path $BuildRoot 'git_version.h'
 
-$version = @{}
+$version = @{
+  TAGGED_RELEASE = $false
+  INSTALLER_VERSION = '0.0.0'
+  RESOURCE_BASE_VERSION = @(0, 0, 0)
+}
+$versionHeaderHasResourceBase = $false
 if (Test-Path $gitVersionHeaderPath) {
+  $versionHeaderHasResourceBase = [bool](Select-String -Path $gitVersionHeaderPath `
+    -Pattern '^#define\s+RESOURCE_BASE_VERSION\s+' -Quiet)
   Get-Content $gitVersionHeaderPath | %{$_.Trim()} | ?{$_} | %{
     switch -regex ($_) {
       $defineNumberMatch {
@@ -56,9 +63,13 @@ $gitHash = git -C $repositoryRootPath rev-parse --short HEAD 2>$null
 $gitVersionString = $gitRevision, $gitBranch, $gitHash -join '-'
 $exactGitTag = git -C $repositoryRootPath describe --exact-match --tags 2>$null
 
-if ($gitVersionString -eq $version['BUILD_GIT_VERSION_STRING']) {
+if ($gitVersionString -eq $version['BUILD_GIT_VERSION_STRING'] -and $versionHeaderHasResourceBase) {
   exit 0
 }
+
+$version['TAGGED_RELEASE'] = $false
+$version['INSTALLER_VERSION'] = '0.0.0'
+$version['RESOURCE_BASE_VERSION'] = @(0, 0, 0)
 
 if ($exactGitTag -match $semVerMatch) {
   $version['TAGGED_RELEASE'] = $true
