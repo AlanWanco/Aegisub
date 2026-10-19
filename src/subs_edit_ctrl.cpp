@@ -99,7 +99,7 @@ SubsTextEditCtrl::SubsTextEditCtrl(wxWindow* parent, wxSize wsize, long style, a
 	SetExtraDescent(FromDIP(3));
 	UsePopUp(wxSTC_POPUP_NEVER);
 	SetStyles();
-	Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+	Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& event) {
 		SetStyles();
 		Refresh();
 		event.Skip();
@@ -163,6 +163,7 @@ SubsTextEditCtrl::SubsTextEditCtrl(wxWindow* parent, wxSize wsize, long style, a
 	Subscribe("Karaoke Template");
 	Subscribe("Karaoke Variable");
 
+	BindConnection(OPT_SUB("App/Theme", &SubsTextEditCtrl::SetStyles, this));
 	BindConnection(OPT_SUB("Colour/Subtitle/Background", &SubsTextEditCtrl::SetStyles, this));
 	BindConnection(OPT_SUB("Subtitle/Highlight/Syntax", &SubsTextEditCtrl::UpdateStyle, this));
 	BindConnection(OPT_SUB("App/Call Tips", &SubsTextEditCtrl::UpdateCallTip, this));
@@ -246,6 +247,8 @@ void SubsTextEditCtrl::SetSyntaxStyle(int id, wxFont &font, std::string const& n
 }
 
 void SubsTextEditCtrl::SetStyles() {
+	SetBackgroundColour(ui::OptionColour("Colour/Subtitle/Background"));
+	SetForegroundColour(ui::Text());
 	wxFont font = *wxNORMAL_FONT;
 	font.SetEncoding(wxFONTENCODING_DEFAULT); // this solves problems with some fonts not working properly
 	wxString fontname = FontFace("Subtitle/Edit Box");
@@ -273,7 +276,10 @@ void SubsTextEditCtrl::SetStyles() {
 	SetSyntaxStyle(ss::KARAOKE_TEMPLATE, font, "Karaoke Template", default_background);
 	SetSyntaxStyle(ss::KARAOKE_VARIABLE, font, "Karaoke Variable", default_background);
 
-	SetCaretForeground(StyleGetForeground(ss::NORMAL));
+	SetCaretForeground(ui::Focus());
+	SetSelBackground(true, ui::Accent());
+	SetSelForeground(true, ui::OnAccent());
+	SetEdgeColour(ui::Border());
 	StyleSetBackground(wxSTC_STYLE_DEFAULT, default_background);
 
 	// Misspelling indicator

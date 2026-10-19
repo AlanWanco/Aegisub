@@ -48,11 +48,12 @@
 #include "options.h"
 #include "project.h"
 #include "spline_curve.h"
+#include "ui_theme.h"
 #include "utils.h"
 #include "video_out_gl.h"
 #include "video_controller.h"
 #include "visual_tool.h"
-
+#include "visual_tool_vector_clip.h"
 
 #include <algorithm>
 #include <cmath>
@@ -150,6 +151,12 @@ VideoDisplay::VideoDisplay(wxToolBar *toolbar, wxToolBar *visualToolToolbar, boo
 		scale_factor = GetContentScaleFactor();
 		SetWindowZoom(new_zoom);
 		e.Skip();
+	});
+	Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& event) {
+		RefreshVisualToolbar();
+		if (tool && typeid(*tool) == typeid(VisualToolVectorClip))
+			static_cast<VisualToolVectorClip *>(tool.get())->RefreshToolbarTheme();
+		event.Skip();
 	});
 
 	SetCursor(wxNullCursor);

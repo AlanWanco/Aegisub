@@ -46,6 +46,7 @@
 #include "../options.h"
 #include "../project.h"
 #include "../utils.h"
+#include "../ui_theme.h"
 
 namespace {
 	using cmd::Command;
@@ -214,6 +215,39 @@ struct app_options final : public Command {
 	}
 };
 
+struct app_theme_system final : public Command {
+	CMD_NAME("app/theme/system")
+	STR_MENU("Follow system")
+	STR_DISP("Follow system")
+	STR_HELP("Use the system appearance")
+	CMD_TYPE(COMMAND_RADIO)
+
+	bool IsActive(const agi::Context *) override { return ui::Mode() == ui::ThemeMode::System; }
+	void operator()(agi::Context *) override { ui::SetThemeMode(ui::ThemeMode::System); }
+};
+
+struct app_theme_light final : public Command {
+	CMD_NAME("app/theme/light")
+	STR_MENU("Light")
+	STR_DISP("Light")
+	STR_HELP("Use the light appearance")
+	CMD_TYPE(COMMAND_RADIO)
+
+	bool IsActive(const agi::Context *) override { return ui::Mode() == ui::ThemeMode::Light; }
+	void operator()(agi::Context *) override { ui::SetThemeMode(ui::ThemeMode::Light); }
+};
+
+struct app_theme_dark final : public Command {
+	CMD_NAME("app/theme/dark")
+	STR_MENU("Dark")
+	STR_DISP("Dark")
+	STR_HELP("Use the dark appearance")
+	CMD_TYPE(COMMAND_RADIO)
+
+	bool IsActive(const agi::Context *) override { return ui::Mode() == ui::ThemeMode::Dark; }
+	void operator()(agi::Context *) override { ui::SetThemeMode(ui::ThemeMode::Dark); }
+};
+
 struct app_toggle_global_hotkeys final : public Command {
 	CMD_NAME("app/toggle/global_hotkeys")
 	CMD_ICON(toggle_audio_medusa)
@@ -346,6 +380,9 @@ namespace cmd {
 		reg(std::make_unique<app_log>());
 		reg(std::make_unique<app_new_window>());
 		reg(std::make_unique<app_options>());
+		reg(std::make_unique<app_theme_system>());
+		reg(std::make_unique<app_theme_light>());
+		reg(std::make_unique<app_theme_dark>());
 		reg(std::make_unique<app_toggle_global_hotkeys>());
 		reg(std::make_unique<app_toggle_toolbar>());
 #ifdef __WXMAC__

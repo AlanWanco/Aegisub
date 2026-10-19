@@ -7509,6 +7509,37 @@ msgstr "音频时轴"
 msgid "Playback speed"
 msgstr "播放速度"
 
+#: ../src/preferences.cpp
+msgid "Appearance"
+msgstr "外观"
+
+#: ../src/preferences.cpp
+#: ../src/command/app.cpp
+msgid "Follow system"
+msgstr "跟随系统"
+
+#: ../src/preferences.cpp
+#: ../src/command/app.cpp
+msgid "Light"
+msgstr "浅色"
+
+#: ../src/preferences.cpp
+#: ../src/command/app.cpp
+msgid "Dark"
+msgstr "深色"
+
+#: ../src/command/app.cpp
+msgid "Use the system appearance"
+msgstr "使用系统外观"
+
+#: ../src/command/app.cpp
+msgid "Use the light appearance"
+msgstr "使用浅色外观"
+
+#: ../src/command/app.cpp
+msgid "Use the dark appearance"
+msgstr "使用深色外观"
+
 #: ../src/playback_rate.h
 msgid "Playback speed (changes audio pitch; subtitle timing is unchanged)"
 msgstr "播放速度（音调随速度变化，字幕时间码保持不变）"

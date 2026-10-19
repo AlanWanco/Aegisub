@@ -39,6 +39,7 @@
 #include "selection_controller.h"
 #include "video_controller.h"
 #include "ui_dialog.h"
+#include "ui_theme.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -94,15 +95,19 @@ DialogTranslation::DialogTranslation(agi::Context *c)
 		original_text->StyleSetBackground(1, ui::Accent());
 		original_text->StyleSetBold(1, true);
 		original_text->SetReadOnly(true);
-		original_text->Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
-			original_text->StyleSetBackground(wxSTC_STYLE_DEFAULT, ui::Surface());
+		auto refresh_original_theme = [this] {
+			original_text->StyleSetBackground(wxSTC_STYLE_DEFAULT, ui::Raised());
 			original_text->StyleSetForeground(wxSTC_STYLE_DEFAULT, ui::Text());
 			original_text->StyleClearAll();
 			original_text->StyleSetForeground(1, ui::OnAccent());
 			original_text->StyleSetBackground(1, ui::Accent());
 			original_text->StyleSetBold(1, true);
+		};
+		original_text->Bind(ui::EVT_THEME_CHANGED, [refresh_original_theme](wxCommandEvent& event) {
+			refresh_original_theme();
 			event.Skip();
 		});
+
 		original_box->Add(original_text, 1, wxEXPAND, 0);
 
 		translation_sizer->Add(original_box, 1, wxEXPAND, 0);

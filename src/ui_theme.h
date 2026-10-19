@@ -14,23 +14,76 @@
 
 #pragma once
 
+#include "compat.h"
 #include "options.h"
 #include "ui_generated_icon_bitmaps.h"
+#include "utils.h"
 
 #include <string_view>
+#include <wx/app.h>
 #include <wx/bmpbndl.h>
+#include <wx/button.h>
+#include <wx/checkbox.h>
+#include <wx/choice.h>
+#include <wx/combobox.h>
+#include <wx/control.h>
+#include <wx/dialog.h>
+#include <wx/frame.h>
+#include <wx/listbox.h>
+#include <wx/list.h>
+#include <wx/menu.h>
+#include <wx/menuitem.h>
 #include <wx/mstream.h>
+#include <wx/nonownedwnd.h>
+#include <wx/panel.h>
 #include <wx/settings.h>
+#include <wx/sizer.h>
+#include <wx/slider.h>
+#include <wx/spinctrl.h>
+#include <wx/statbox.h>
+#include <wx/stc/stc.h>
+#include <wx/textctrl.h>
+#include <wx/toolbar.h>
+#include <wx/toplevel.h>
 #include <wx/window.h>
+#ifdef __WXMSW__
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winreg.h>
+#include <dwmapi.h>
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+#endif
 
 // Keep the visual customizations here so upstream widgets and commands can
 // continue to be used without a parallel application or document model.
 namespace ui {
+inline const wxEventTypeTag<wxCommandEvent> EVT_THEME_CHANGED(wxNewEventType());
+enum class ThemeMode { System, Light, Dark };
+
+inline ThemeMode Mode() {
+	auto value = OPT_GET("App/Theme")->GetInt();
+	if (value == static_cast<int>(ThemeMode::Light)) return ThemeMode::Light;
+	if (value == static_cast<int>(ThemeMode::Dark)) return ThemeMode::Dark;
+	return ThemeMode::System;
+}
+
 inline wxColour ColorFromHex(unsigned value) {
 	return wxColour((value >> 16) & 255, (value >> 8) & 255, value & 255);
 }
 
-inline bool IsDark() {
+inline bool SystemIsDark() {
+#ifdef __WXMSW__
+	DWORD value = 1;
+	DWORD size = sizeof(value);
+	if (RegGetValueW(HKEY_CURRENT_USER,
+		L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+		L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS)
+		return value == 0;
+#endif
 #if wxCHECK_VERSION(3, 3, 0)
 	return wxSystemSettings::GetAppearance().IsDark();
 #else
@@ -39,22 +92,201 @@ inline bool IsDark() {
 #endif
 }
 
-inline wxColour Canvas() { return ColorFromHex(IsDark() ? 0x202526 : 0xEDF1F0); }
-inline wxColour Surface() { return ColorFromHex(IsDark() ? 0x292F30 : 0xFFFFFF); }
-inline wxColour Text() { return ColorFromHex(IsDark() ? 0xE4ECE9 : 0x253C38); }
-inline wxColour Muted() { return ColorFromHex(IsDark() ? 0xAABAB5 : 0x566B65); }
-inline wxColour Accent() { return ColorFromHex(IsDark() ? 0x7BD7BC : 0x126C58); }
-inline wxColour OnAccent() { return ColorFromHex(IsDark() ? 0x173D32 : 0xFFFFFF); }
+inline bool IsDark() {
+	auto mode = Mode();
+	return mode == ThemeMode::Dark || (mode == ThemeMode::System && SystemIsDark());
+}
+
+inline wxColour Canvas() { return ColorFromHex(IsDark() ? 0x191F20 : 0xE7ECEA); }
+inline wxColour Surface() { return ColorFromHex(IsDark() ? 0x22292A : 0xF5F8F7); }
+inline wxColour Raised() { return ColorFromHex(IsDark() ? 0x2B3434 : 0xFFFFFF); }
+inline wxColour Text() { return ColorFromHex(IsDark() ? 0xE5EFEC : 0x233631); }
+inline wxColour Muted() { return ColorFromHex(IsDark() ? 0xA6B8B2 : 0x526761); }
+inline wxColour Accent() { return ColorFromHex(IsDark() ? 0x78D8B9 : 0x08785D); }
+inline wxColour OnAccent() { return ColorFromHex(IsDark() ? 0x142F27 : 0xFFFFFF); }
+inline wxColour Selection() { return ColorFromHex(IsDark() ? 0x23483B : 0xD5EEE4); }
+inline wxColour Border() { return ColorFromHex(IsDark() ? 0x3B4846 : 0xCCD7D2); }
+inline wxColour Focus() { return ColorFromHex(IsDark() ? 0x82E6C5 : 0x006C50); }
+
+inline wxColour ThemeColour(wxSystemColour index) {
+	switch (index) {
+		case wxSYS_COLOUR_WINDOW:
+		case wxSYS_COLOUR_LISTBOX: return Raised();
+		case wxSYS_COLOUR_DESKTOP:
+		case wxSYS_COLOUR_APPWORKSPACE: return Canvas();
+		case wxSYS_COLOUR_WINDOWTEXT:
+		case wxSYS_COLOUR_LISTBOXTEXT: return Text();
+		case wxSYS_COLOUR_HIGHLIGHT:
+		case wxSYS_COLOUR_LISTBOXHIGHLIGHT: return Accent();
+		case wxSYS_COLOUR_HIGHLIGHTTEXT:
+		case wxSYS_COLOUR_LISTBOXHIGHLIGHTTEXT: return OnAccent();
+		case wxSYS_COLOUR_BTNFACE:
+		case wxSYS_COLOUR_MENU:
+		case wxSYS_COLOUR_MENUBAR:
+		case wxSYS_COLOUR_ACTIVECAPTION:
+		case wxSYS_COLOUR_GRADIENTACTIVECAPTION:
+		case wxSYS_COLOUR_INACTIVECAPTION:
+		case wxSYS_COLOUR_GRADIENTINACTIVECAPTION: return Surface();
+		case wxSYS_COLOUR_BTNTEXT:
+		case wxSYS_COLOUR_MENUTEXT:
+		case wxSYS_COLOUR_CAPTIONTEXT:
+		case wxSYS_COLOUR_INACTIVECAPTIONTEXT: return Text();
+		case wxSYS_COLOUR_WINDOWFRAME:
+		case wxSYS_COLOUR_ACTIVEBORDER:
+		case wxSYS_COLOUR_INACTIVEBORDER:
+		case wxSYS_COLOUR_BTNSHADOW:
+		case wxSYS_COLOUR_3DLIGHT:
+		case wxSYS_COLOUR_SCROLLBAR:
+		case wxSYS_COLOUR_BTNHIGHLIGHT:
+		case wxSYS_COLOUR_3DDKSHADOW:
+		case wxSYS_COLOUR_MENUHILIGHT:
+		case wxSYS_COLOUR_GRIDLINES: return Border();
+		case wxSYS_COLOUR_GRAYTEXT: return Muted();
+		case wxSYS_COLOUR_HOTLIGHT: return Focus();
+		case wxSYS_COLOUR_INFOTEXT: return Text();
+		case wxSYS_COLOUR_INFOBK: return Surface();
+		default: return wxSystemSettings::GetColour(index);
+	}
+}
+
+inline wxColour OptionColour(std::string const& key);
+
+inline bool IsCanvasWindow(wxWindow *window) {
+	return window->GetName() == "AegisubMainCanvas" || window->GetName() == "AegisubAudioCanvas";
+}
+
+inline wxColour WindowBackground(wxWindow *window) {
+	if (IsCanvasWindow(window)) return Canvas();
+	if (wxDynamicCast(window, wxPanel)) return Surface();
+	return Raised();
+}
+
+inline void ApplyAppearanceToMenu(wxMenu *menu);
+inline void ApplyAppearanceToMenuBar(wxMenuBar *menu_bar);
+
+inline void ApplyWindow(wxWindow *window) {
+	if (!window || window->IsBeingDeleted()) return;
+	if (auto frame = wxDynamicCast(window, wxFrame)) {
+		ApplyAppearanceToMenuBar(frame->GetMenuBar());
+		if (frame->GetStatusBar() && frame->GetStatusBar() != window)
+			ApplyWindow(frame->GetStatusBar());
+	}
+#ifdef __WXMSW__
+	if (wxDynamicCast(window, wxTopLevelWindow)) {
+		BOOL const use_dark_title_bar = IsDark();
+		DwmSetWindowAttribute(static_cast<HWND>(window->GetHandle()), DWMWA_USE_IMMERSIVE_DARK_MODE,
+			&use_dark_title_bar, sizeof(use_dark_title_bar));
+	}
+#endif
+	if (OPT_GET("App/Theme")->GetInt() == static_cast<int>(ThemeMode::System)) {
+		window->SetBackgroundColour(wxNullColour);
+		window->SetForegroundColour(wxNullColour);
+	}
+	else {
+		if (wxDynamicCast(window, wxFrame) || wxDynamicCast(window, wxDialog))
+			window->SetBackgroundColour(Canvas());
+		else
+			window->SetBackgroundColour(WindowBackground(window));
+		window->SetForegroundColour(Text());
+	}
+
+	if (OPT_GET("App/Theme")->GetInt() != static_cast<int>(ThemeMode::System) &&
+		(wxDynamicCast(window, wxComboBox) || wxDynamicCast(window, wxChoice) ||
+		wxDynamicCast(window, wxTextCtrl) || wxDynamicCast(window, wxListBox) ||
+		wxDynamicCast(window, wxSpinCtrl) || wxDynamicCast(window, wxSpinCtrlDouble))) {
+		window->SetBackgroundColour(Raised());
+		window->SetForegroundColour(Text());
+	}
+	else if (Mode() != ThemeMode::System && !wxDynamicCast(window, wxToolBar) &&
+		!wxDynamicCast(window, wxButton) && !wxDynamicCast(window, wxCheckBox) &&
+		!wxDynamicCast(window, wxSlider)) {
+		window->SetForegroundColour(wxDynamicCast(window, wxStaticBox) ? Muted() : Text());
+	}
+	if (auto toolbar = wxDynamicCast(window, wxToolBar))
+		toolbar->SetBackgroundColour(Mode() == ThemeMode::System ? wxNullColour : Surface());
+	if (auto button = wxDynamicCast(window, wxButton)) {
+		button->SetBackgroundColour(Mode() == ThemeMode::System ? wxNullColour : Surface());
+		button->SetForegroundColour(Mode() == ThemeMode::System ? wxNullColour : Text());
+	}
+	if (auto checkbox = wxDynamicCast(window, wxCheckBox)) {
+		checkbox->SetBackgroundColour(Mode() == ThemeMode::System ? wxNullColour : WindowBackground(window));
+		checkbox->SetForegroundColour(Mode() == ThemeMode::System ? wxNullColour : Text());
+	}
+	if (auto slider = wxDynamicCast(window, wxSlider))
+		slider->SetBackgroundColour(Mode() == ThemeMode::System ? wxNullColour : WindowBackground(window));
+	if (wxDynamicCast(window, wxStaticBox) && Mode() != ThemeMode::System)
+		window->SetForegroundColour(Muted());
+	window->Refresh(false);
+}
+
+inline wxColour AudioCanvas() { return Canvas(); }
+inline wxColour AudioWaveform() { return ColorFromHex(IsDark() ? 0x263332 : 0xF7FAF8); }
+inline wxColour AudioAxis() { return ColorFromHex(IsDark() ? 0x647772 : 0x9BAAA4); }
+
+inline wxColour AudioSchemeColour(std::string const& scheme, std::string const& group,
+	std::string const& key) {
+	auto color = OPT_GET("Colour/Schemes/" + scheme + "/" + group + "/" + key)->GetColor();
+	bool recognized_default = false;
+	if (group.starts_with("UI") && (scheme == "Green" || scheme == "Icy Blue")) {
+		bool const focused = group == "UI Focused";
+		agi::Color legacy, themed;
+		if (key == "Light") {
+			legacy = scheme == "Green"
+				? (focused ? agi::Color(50, 255, 50) : agi::Color(0, 200, 0))
+				: (focused ? agi::Color(205, 240, 226) : agi::Color(89, 145, 220));
+			themed = focused ? agi::Color(130, 230, 197) : agi::Color(155, 170, 164);
+			recognized_default = true;
+		}
+		else if (key == "Dark") {
+			legacy = scheme == "Green" ? agi::Color(0, 10, 0) : agi::Color(8, 4, 13);
+			themed = agi::Color(38, 51, 50);
+			recognized_default = true;
+		}
+		else if (key == "Selection") {
+			legacy = scheme == "Green" ? agi::Color(0, 80, 0)
+				: (focused ? agi::Color(82, 107, 213) : agi::Color(65, 34, 103));
+			themed = focused ? agi::Color(130, 230, 197) : agi::Color(35, 72, 59);
+			recognized_default = true;
+		}
+		if (recognized_default && (color == legacy || color == themed)) {
+			if (key == "Light") return focused ? Focus() : AudioAxis();
+			if (key == "Dark") return AudioWaveform();
+			return focused ? Focus() : Selection();
+		}
+	}
+	return to_wx(color);
+}
+
+inline void ApplyThemeTree(wxWindow *window) {
+	if (!window || window->IsBeingDeleted()) return;
+	ApplyWindow(window);
+	wxCommandEvent theme_event(EVT_THEME_CHANGED);
+	theme_event.SetEventObject(window);
+	window->GetEventHandler()->ProcessEventLocally(theme_event);
+	for (auto child : window->GetChildren()) ApplyThemeTree(child);
+}
+
+inline void ApplyThemeToAllWindows() {
+	for (auto window : wxTopLevelWindows) ApplyThemeTree(window);
+}
+
+inline void ApplyNativeAppearance() {
+#if wxCHECK_VERSION(3, 3, 0) && defined(__WXMAC__)
+	wxApp::Appearance appearance = wxApp::Appearance::System;
+	if (Mode() == ThemeMode::Light) appearance = wxApp::Appearance::Light;
+	if (Mode() == ThemeMode::Dark) appearance = wxApp::Appearance::Dark;
+	wxTheApp->SetAppearance(appearance);
+#endif
+}
+
+inline void SetThemeMode(ThemeMode mode) {
+	OPT_SET("App/Theme")->SetInt(static_cast<int>(mode));
+}
 
 inline void ApplySurface(wxWindow *window, bool canvas = false) {
-	window->SetBackgroundColour(canvas ? Canvas() : Surface());
-	window->SetForegroundColour(Text());
-	window->Bind(wxEVT_SYS_COLOUR_CHANGED, [window, canvas](wxSysColourChangedEvent& event) {
-		window->SetBackgroundColour(canvas ? Canvas() : Surface());
-		window->SetForegroundColour(Text());
-		window->Refresh();
-		event.Skip();
-	});
+	if (!window) return;
+	if (canvas) window->SetName("AegisubMainCanvas");
+	ApplyWindow(window);
 }
 
 // Only replace the historical defaults. Explicit user color choices remain
@@ -96,10 +328,43 @@ inline wxColour OptionColour(std::string const& key) {
 	auto color = OPT_GET(key)->GetColor();
 	unsigned value = (unsigned(color.r) << 16) | (unsigned(color.g) << 8) | color.b;
 	for (auto const& entry : defaults) {
-		if (entry.key == key && entry.legacy == value && color.a == 0)
-			return ColorFromHex(IsDark() ? entry.dark : entry.light);
+		if (entry.key != key || entry.legacy != value || color.a != 0) continue;
+		bool const themed = Mode() != ThemeMode::System || IsDark();
+		if (key == "Colour/Subtitle Grid/Background/Background" || key == "Colour/Subtitle/Background")
+			return themed ? Raised() : ColorFromHex(entry.light);
+		if (key == "Colour/Subtitle Grid/Background/Selection")
+			return themed ? Selection() : ColorFromHex(entry.light);
+		return ColorFromHex(IsDark() ? entry.dark : entry.light);
 	}
+	if (Mode() == ThemeMode::System) return to_wx(color);
 	return wxColour(color.r, color.g, color.b, 255 - color.a);
+}
+
+inline void ApplyAppearanceToMenu(wxMenu *menu) {
+#ifdef __WXMSW__
+	if (!menu) return;
+	for (auto item : menu->GetMenuItems())
+		if (item->GetSubMenu()) ApplyAppearanceToMenu(item->GetSubMenu());
+#else
+	(void)menu;
+#endif
+}
+
+inline void ApplyAppearanceToMenuBar(wxMenuBar *menu_bar) {
+#ifdef __WXMSW__
+	if (!menu_bar) return;
+	if (Mode() == ThemeMode::System) {
+		menu_bar->SetBackgroundColour(wxNullColour);
+		menu_bar->SetForegroundColour(wxNullColour);
+		return;
+	}
+	menu_bar->SetBackgroundColour(Surface());
+	menu_bar->SetForegroundColour(Text());
+	for (int i = 0; i < static_cast<int>(menu_bar->GetMenuCount()); ++i)
+		ApplyAppearanceToMenu(menu_bar->GetMenu(i));
+#else
+	(void)menu_bar;
+#endif
 }
 
 inline wxBitmapBundle CommandIcon(std::string_view command, int size, wxBitmapBundle fallback, bool active = false) {

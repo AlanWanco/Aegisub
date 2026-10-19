@@ -29,6 +29,7 @@
 #include "options.h"
 #include "project.h"
 #include "selection_controller.h"
+#include "ui_theme.h"
 #include "utils.h"
 
 #include <libaegisub/ass/karaoke.h>
@@ -41,7 +42,6 @@
 #include <wx/dcmemory.h>
 #include <wx/menu.h>
 #include <wx/panel.h>
-#include <wx/settings.h>
 #include <wx/sizer.h>
 
 template<class Container, class Value>
@@ -82,6 +82,12 @@ AudioKaraoke::AudioKaraoke(wxWindow *parent, agi::Context *c)
 	SetStyle();
 	BindConnection(OPT_SUB("Audio/Karaoke/Font Face", &AudioKaraoke::SetStyle, this));
 	BindConnection(OPT_SUB("Audio/Karaoke/Font Size", &AudioKaraoke::SetStyle, this));
+	Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& event) {
+		SetStyle();
+		split_area->SetBackgroundColour(ui::AudioWaveform());
+		split_area->Refresh(false);
+		event.Skip();
+	});
 
 	split_area->Bind(wxEVT_SIZE, &AudioKaraoke::OnSize, this);
 	split_area->Bind(wxEVT_PAINT, &AudioKaraoke::OnPaint, this);
@@ -155,13 +161,13 @@ void AudioKaraoke::OnPaint(wxPaintEvent &) {
 	if (click_will_remove_split)
 		dc.SetPen(*wxRED);
 	else
-		dc.SetPen(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT));
+		dc.SetPen(ui::Accent());
 	dc.DrawLine(mouse_pos, 0, mouse_pos, h);
 
 	dc.SetPen(*wxTRANSPARENT_PEN);
 
 	int width_past_bmp = w + scroll_x - rendered_line.GetWidth();
-	dc.SetBrush(*wxWHITE_BRUSH);
+	dc.SetBrush(wxBrush(ui::AudioWaveform()));
 	if (width_past_bmp > 0)
 		dc.DrawRectangle(w - width_past_bmp, 0, width_past_bmp, h);
 
@@ -174,12 +180,12 @@ void AudioKaraoke::OnPaint(wxPaintEvent &) {
 			wxPoint(4, h / 2),
 			wxPoint(10, h / 2 + 6)
 		};
-		dc.SetBrush(*wxBLACK_BRUSH);
+		dc.SetBrush(wxBrush(ui::Text()));
 		dc.DrawPolygon(3, triangle);
 	}
 
 	if (rendered_line.GetWidth() - scroll_x > w) {
-		dc.SetBrush(*wxWHITE_BRUSH);
+		dc.SetBrush(wxBrush(ui::AudioWaveform()));
 		dc.DrawRectangle(w - 20, 0, 20, h);
 
 		wxPoint triangle[] = {
@@ -187,7 +193,7 @@ void AudioKaraoke::OnPaint(wxPaintEvent &) {
 			wxPoint(w - 4, h / 2),
 			wxPoint(w - 10, h / 2 + 6)
 		};
-		dc.SetBrush(*wxBLACK_BRUSH);
+		dc.SetBrush(wxBrush(ui::Text()));
 		dc.DrawPolygon(3, triangle);
 	}
 }
@@ -204,12 +210,12 @@ void AudioKaraoke::RenderText() {
 	wxMemoryDC dc(rendered_line);
 
 	// Draw background
-	dc.SetBrush(wxBrush(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW)));
+	dc.SetBrush(wxBrush(ui::AudioWaveform()));
 	dc.SetPen(*wxTRANSPARENT_PEN);
 	dc.DrawRectangle(wxPoint(), bmp_size);
 
 	dc.SetFont(split_font);
-	dc.SetTextForeground(wxColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT)));
+	dc.SetTextForeground(ui::Text());
 
 	// Draw each character in the line
 	int y = (bmp_size.GetHeight() - char_height) / 2;
@@ -217,7 +223,7 @@ void AudioKaraoke::RenderText() {
 		dc.DrawText(spaced_text[i], char_x[i], y);
 
 	// Draw the lines between each syllable
-	dc.SetPen(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT));
+	dc.SetPen(ui::Accent());
 	for (auto syl_line : syl_lines)
 		dc.DrawLine(syl_line, 0, syl_line, bmp_size.GetHeight());
 }

@@ -25,7 +25,7 @@ inline wxSizer *DialogHeading(wxWindow *parent, wxString const& title,
 	std::string const& icon, wxBitmapBundle fallback) {
 	auto row = new wxBoxSizer(wxHORIZONTAL);
 	auto image = new wxStaticBitmap(parent, wxID_ANY, CommandIcon(icon, 24, fallback));
-	image->Bind(wxEVT_SYS_COLOUR_CHANGED, [image, icon, fallback](wxSysColourChangedEvent& event) {
+	image->Bind(ui::EVT_THEME_CHANGED, [image, icon, fallback](wxCommandEvent& event) {
 		image->SetBitmap(CommandIcon(icon, 24, fallback));
 		event.Skip();
 	});
@@ -40,7 +40,7 @@ inline void ButtonIcon(wxButton *button, std::string const& icon,
 	wxBitmapBundle fallback, int size = 16) {
 	button->SetBitmap(CommandIcon(icon, size, fallback));
 	button->SetBitmapMargins(button->FromDIP(6), button->FromDIP(2));
-	button->Bind(wxEVT_SYS_COLOUR_CHANGED, [button, icon, fallback, size](wxSysColourChangedEvent& event) {
+	button->Bind(ui::EVT_THEME_CHANGED, [button, icon, fallback, size](wxCommandEvent& event) {
 		button->SetBitmap(CommandIcon(icon, size, fallback));
 		event.Skip();
 	});

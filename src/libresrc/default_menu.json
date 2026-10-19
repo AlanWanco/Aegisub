@@ -141,6 +141,7 @@
     ],
     "main/view" : [
         { "command" : "app/language" },
+        { "submenu" : "main/appearance", "text" : "Appearance" },
         { "command" : "app/options", "special" : "options" },
         {},
         { "command" : "app/display/subs" },
@@ -153,6 +154,11 @@
         { "command" : "grid/tags/hide" },
         {},
         { "command" : "app/toggle/toolbar" }
+    ],
+    "main/appearance" : [
+        { "command" : "app/theme/system" },
+        { "command" : "app/theme/light" },
+        { "command" : "app/theme/dark" }
     ],
     "main/help" : [
         { "command" : "help/contents" },

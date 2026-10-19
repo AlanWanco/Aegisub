@@ -197,6 +197,7 @@ json::Object const& get_root() {
 			Bind(wxEVT_TOOL, &Toolbar::OnClick, this);
 			Bind(wxEVT_DPI_CHANGED, [this] (wxDPIChangedEvent &e) { RegenerateToolbar(); e.Skip(); });
 			Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& e) { RegenerateToolbar(); e.Skip(); });
+			Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& e) { RegenerateToolbar(); e.Skip(); });
 		}
 
 		Toolbar(wxFrame *parent, std::string name, agi::Context *c, std::string ht_context)
@@ -220,6 +221,7 @@ json::Object const& get_root() {
 			Bind(wxEVT_TOOL, &Toolbar::OnClick, this);
 			Bind(wxEVT_DPI_CHANGED, [this] (wxDPIChangedEvent &e) { RegenerateToolbar(); e.Skip(); });
 			Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& e) { RegenerateToolbar(); e.Skip(); });
+			Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& e) { RegenerateToolbar(); e.Skip(); });
 		}
 	};
 }
@@ -235,13 +237,14 @@ namespace toolbar {
 			int const id = TOOL_ID_BASE + i;
 			bool const active = selected_command == visual_tool_commands[i];
 			auto tool = toolbar->FindById(id);
-			if (!tool || toolbar->GetToolState(id) == active) continue;
-
-			toolbar->ToggleTool(id, active);
+			if (!tool) continue;
+			if (toolbar->GetToolState(id) != active)
+				toolbar->ToggleTool(id, active);
 			auto command = cmd::get(visual_tool_commands[i]);
 			toolbar->SetToolNormalBitmap(id, ui::CommandIcon(command->name(),
 				toolbar->GetToolBitmapSize().GetHeight(), command->Icon(), active));
 		}
+		toolbar->Refresh();
 	}
 
 	void RefreshVectorTools(wxToolBar *toolbar, int selected_subtool) {

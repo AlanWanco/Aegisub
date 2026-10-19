@@ -36,6 +36,7 @@
 #include "include/aegisub/context.h"
 #include "libresrc/libresrc.h"
 #include "options.h"
+#include "ui_theme.h"
 
 #include <libaegisub/ass/karaoke.h>
 #include <libaegisub/karaoke_matcher.h>
@@ -161,13 +162,13 @@ void KaraokeLineMatchDisplay::OnPaint(wxPaintEvent &)
 {
 	wxPaintDC dc(this);
 
-	wxColour outer_text(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNTEXT));
-	wxColour outer_back(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE));
-	wxColour outer_frame(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNTEXT));
-	wxColour inner_back(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
-	wxColour inner_text(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT));
-	wxColour sel_back(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHT));
-	wxColour sel_text(wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHTTEXT));
+	wxColour outer_text(ui::ThemeColour(wxSYS_COLOUR_BTNTEXT));
+	wxColour outer_back(ui::ThemeColour(wxSYS_COLOUR_BTNFACE));
+	wxColour outer_frame(ui::ThemeColour(wxSYS_COLOUR_BTNTEXT));
+	wxColour inner_back(ui::ThemeColour(wxSYS_COLOUR_WINDOW));
+	wxColour inner_text(ui::ThemeColour(wxSYS_COLOUR_WINDOWTEXT));
+	wxColour sel_back(ui::ThemeColour(wxSYS_COLOUR_HIGHLIGHT));
+	wxColour sel_text(ui::ThemeColour(wxSYS_COLOUR_HIGHLIGHTTEXT));
 
 	// Y coordinates of the top and bottom lines
 	int y_line1, y_line2, y_line3;
@@ -193,7 +194,7 @@ void KaraokeLineMatchDisplay::OnPaint(wxPaintEvent &)
 	if (FindFocus() == this)
 		dc.SetTextForeground(outer_text);
 	else
-		dc.SetTextForeground(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+		dc.SetTextForeground(ui::ThemeColour(wxSYS_COLOUR_GRAYTEXT));
 	dc.SetFont(GetFont());
 	dc.SetBackgroundMode(wxTRANSPARENT);
 	dc.DrawText(label_source, wxPoint(0, y_line1));

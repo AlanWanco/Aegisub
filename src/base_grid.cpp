@@ -77,6 +77,8 @@ BaseGrid::BaseGrid(wxWindow* parent, agi::Context *context)
 
 	SetSizerAndFit(scrollbarpositioner);
 
+	SetName("AegisubSubtitleGrid");
+	SetBackgroundColour(ui::Raised());
 	SetBackgroundStyle(wxBG_STYLE_PAINT);
 
 	for (size_t i : agi::util::range(std::min(columns_visible.size(), columns.size()))) {
@@ -113,7 +115,7 @@ BaseGrid::BaseGrid(wxWindow* parent, agi::Context *context)
 	});
 
 	Bind(wxEVT_CONTEXT_MENU, &BaseGrid::OnContextMenu, this);
-	Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+	Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& event) {
 		UpdateStyle();
 		event.Skip();
 	});

@@ -100,6 +100,11 @@ FrameMain::FrameMain()
 , context(std::make_unique<agi::Context>())
 {
 	StartupLog("Entering FrameMain constructor");
+	ui::ApplySurface(this, true);
+	Bind(wxEVT_MENU_OPEN, [this](wxMenuEvent& event) {
+		ui::ApplyAppearanceToMenuBar(GetMenuBar());
+		event.Skip();
+	});
 
 	SetSize(FromDIP(wxSize(1200, 780)));
 
@@ -133,6 +138,7 @@ FrameMain::FrameMain()
 
 	StartupLog("Initialize menu bar");
 	menu::GetMenuBar("main", this, (wxID_HIGHEST + 1) + 10000, context.get());
+	ui::ApplyAppearanceToMenuBar(GetMenuBar());
 
 	StartupLog("Create status bar");
 	CreateStatusBar(2);
@@ -190,6 +196,7 @@ void FrameMain::EnableToolBar(agi::OptionValue const& opt) {
 void FrameMain::InitContents() {
 	StartupLog("Create background panel");
 	auto Panel = new wxPanel(this, -1, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxCLIP_CHILDREN);
+	Panel->SetName("AegisubMainCanvas");
 	ui::ApplySurface(Panel, true);
 
 	StartupLog("Create subtitles grid");

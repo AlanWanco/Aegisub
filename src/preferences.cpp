@@ -31,6 +31,7 @@
 #include "libresrc/libresrc.h"
 #include "options.h"
 #include "preferences_base.h"
+#include "ui_theme.h"
 #include "video_provider_manager.h"
 
 #ifdef WITH_PORTAUDIO
@@ -98,6 +99,8 @@ void General(wxTreebook *book, Preferences *parent) {
 	auto p = new OptionPage(book, parent, _("General"));
 
 	auto general = p->PageSizer(_("General"));
+	const wxString theme_names[] = { _("Follow system"), _("Light"), _("Dark") };
+	p->OptionChoice(general, _("Appearance"), wxArrayString(3, theme_names), "App/Theme");
 	p->OptionAdd(general, _("Check for updates on startup"), "App/Auto/Check For Updates");
 	p->OptionAdd(general, _("Show main toolbar"), "App/Show Toolbar");
 	p->OptionAdd(general, _("Save UI state in subtitles files"), "App/Save UI State");

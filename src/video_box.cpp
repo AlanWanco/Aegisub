@@ -123,13 +123,12 @@ void VideoBox::UpdateTimeBoxes() {
 	// Set the text box for frame number and time
 	VideoPosition->SetValue(fmt_wx("%s - %d", agi::Time(time).GetAssFormatted(true), frame));
 	if (boost::binary_search(context->project->Keyframes(), frame)) {
-		// Set the background color to indicate this is a keyframe
 		VideoPosition->SetBackgroundColour(ui::OptionColour("Colour/Subtitle Grid/Background/Selection"));
 		VideoPosition->SetForegroundColour(ui::OptionColour("Colour/Subtitle Grid/Selection"));
 	}
 	else {
-		VideoPosition->SetBackgroundColour(wxNullColour);
-		VideoPosition->SetForegroundColour(wxNullColour);
+		VideoPosition->SetBackgroundColour(ui::Raised());
+		VideoPosition->SetForegroundColour(ui::Muted());
 	}
 
 	AssDialogue *active_line = context->selectionController->GetActiveLine();

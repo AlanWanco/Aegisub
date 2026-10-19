@@ -33,6 +33,7 @@
 #include "libresrc/libresrc.h"
 #include "options.h"
 #include "persist_location.h"
+#include "ui_theme.h"
 #include "utils.h"
 #include "value_event.h"
 #include "xdg_desktop_portal_utils.h"
@@ -164,7 +165,7 @@ class ColorPickerSpectrum final : public wxControl {
 		}
 
 		// Border around the spectrum
-		wxPen blkpen(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT), 1);
+		wxPen blkpen(ui::Text(), 1);
 		blkpen.SetCap(wxCAP_BUTT);
 
 		dc.SetLogicalFunction(wxCOPY);

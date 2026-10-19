@@ -41,6 +41,7 @@
 #include "include/aegisub/hotkey.h"
 #include "options.h"
 #include "project.h"
+#include "ui_theme.h"
 #include "utils.h"
 #include "video_controller.h"
 
@@ -106,15 +107,12 @@ public:
 	/// @param name Name of the colour scheme
 	void SetColourScheme(std::string const& name)
 	{
-		std::string opt_prefix = "Colour/Schemes/" + name + "/UI/";
-		light_colour = to_wx(OPT_GET(opt_prefix + "Light")->GetColor());
-		dark_colour = to_wx(OPT_GET(opt_prefix + "Dark")->GetColor());
-		sel_colour = to_wx(OPT_GET(opt_prefix + "Selection")->GetColor());
-
-		opt_prefix = "Colour/Schemes/" + name + "/UI Focused/";
-		light_focused_colour = to_wx(OPT_GET(opt_prefix + "Light")->GetColor());
-		dark_focused_colour = to_wx(OPT_GET(opt_prefix + "Dark")->GetColor());
-		sel_focused_colour = to_wx(OPT_GET(opt_prefix + "Selection")->GetColor());
+		light_colour = ui::AudioSchemeColour(name, "UI", "Light");
+		dark_colour = ui::AudioSchemeColour(name, "UI", "Dark");
+		sel_colour = ui::AudioSchemeColour(name, "UI", "Selection");
+		light_focused_colour = ui::AudioSchemeColour(name, "UI Focused", "Light");
+		dark_focused_colour = ui::AudioSchemeColour(name, "UI Focused", "Dark");
+		sel_focused_colour = ui::AudioSchemeColour(name, "UI Focused", "Selection");
 	}
 
 	/// Set whether to use the focused or unfocused colours
@@ -182,6 +180,12 @@ public:
 	void SetColourScheme(std::string const& name)
 	{
 		colours.SetColourScheme(name);
+	}
+
+	void RefreshTheme() {
+		colours.SetColourScheme(OPT_GET("Audio/Spectrum")->GetBool()
+			? OPT_GET("Colour/Audio Display/Spectrum")->GetString()
+			: OPT_GET("Colour/Audio Display/Waveform")->GetString());
 	}
 
 	const wxRect & GetBounds() const { return bounds; }
@@ -313,6 +317,12 @@ public:
 	void SetColourScheme(std::string const& name)
 	{
 		colours.SetColourScheme(name);
+	}
+
+	void RefreshTheme() {
+		colours.SetColourScheme(OPT_GET("Audio/Spectrum")->GetBool()
+			? OPT_GET("Colour/Audio Display/Spectrum")->GetString()
+			: OPT_GET("Colour/Audio Display/Waveform")->GetString());
 	}
 
 	void SetDisplaySize(const wxSize &display_size)
@@ -587,6 +597,8 @@ AudioDisplay::AudioDisplay(wxWindow *parent, AudioController *controller, agi::C
 	SetZoomLevel(0);
 
 	SetMinClientSize(wxSize(-1, 70));
+	SetName("AegisubAudioCanvas");
+	SetBackgroundColour(ui::AudioCanvas());
 	SetBackgroundStyle(wxBG_STYLE_PAINT);
 	SetThemeEnabled(false);
 
@@ -601,6 +613,13 @@ AudioDisplay::AudioDisplay(wxWindow *parent, AudioController *controller, agi::C
 	Bind(wxEVT_LEAVE_WINDOW, &AudioDisplay::OnMouseLeave, this);
 	Bind(wxEVT_PAINT, &AudioDisplay::OnPaint, this);
 	Bind(wxEVT_SIZE, &AudioDisplay::OnSize, this);
+	Bind(ui::EVT_THEME_CHANGED, [this](wxCommandEvent& event) {
+		ReloadRenderingSettings();
+		scrollbar->RefreshTheme();
+		timeline->RefreshTheme();
+		Refresh();
+		event.Skip();
+	});
 	Bind(wxEVT_KILL_FOCUS, &AudioDisplay::OnFocus, this);
 	Bind(wxEVT_SET_FOCUS, &AudioDisplay::OnFocus, this);
 	Bind(wxEVT_CHAR_HOOK, &AudioDisplay::OnKeyDown, this);
@@ -792,7 +811,6 @@ void AudioDisplay::ReloadRenderingSettings()
 	audio_renderer->SetRenderer(audio_renderer_provider.get());
 	scrollbar->SetColourScheme(colour_scheme_name);
 	timeline->SetColourScheme(colour_scheme_name);
-
 	Refresh();
 }
 

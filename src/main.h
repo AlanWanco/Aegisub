@@ -30,6 +30,7 @@
 #pragma once
 
 #include <wx/app.h>
+#include <libaegisub/signal.h>
 
 #include "aegisublocale.h"
 
@@ -50,6 +51,7 @@ class AegisubApp : public wxApp {
 	bool OnInit() override;
 	int OnExit() override;
 	int OnRun() override;
+	int FilterEvent(wxEvent& event) override;
 
 	void OnUnhandledException() override;
 	void OnFatalException() override;
@@ -61,6 +63,7 @@ class AegisubApp : public wxApp {
 
 	void OpenFiles(wxArrayStringsAdapter filenames);
 
+	agi::signal::Connection theme_connection;
 	std::vector<FrameMain *> frames;
 public:
 	AegisubApp();

@@ -28,6 +28,7 @@
 #include "libresrc/libresrc.h"
 #include "options.h"
 #include "utils.h"
+#include "ui_theme.h"
 
 #include <libaegisub/cajun/reader.h>
 #include <libaegisub/hotkey.h>
@@ -362,7 +363,9 @@ void process_menu_item(wxMenu *parent, agi::Context *c, json::Object const& ele,
 
 	if (read_entry(ele, "submenu", &submenu) && read_entry(ele, "text", &text)) {
 		wxString tl_text = wxGetTranslation(to_wx(text), wxString(), to_wx(context));
-		parent->AppendSubMenu(build_menu(submenu, c, cm), tl_text);
+		auto sub_menu = build_menu(submenu, c, cm);
+		ui::ApplyAppearanceToMenu(sub_menu);
+		parent->AppendSubMenu(sub_menu, tl_text);
 #ifdef __WXMAC__
 		if (special == "help")
 			wxApp::s_macHelpMenuTitleName = tl_text;
@@ -557,12 +560,14 @@ namespace menu {
 		window->SetMenuBar(menu.get());
 #endif
 
+		ui::ApplyAppearanceToMenuBar(menu.get());
 		menu.release();
 	}
 
 	std::unique_ptr<wxMenu> GetMenu(std::string const& name, int id_base, agi::Context *c) {
 		auto menu = std::make_unique<CommandMenu>(id_base, c);
 		build_menu(name, c, &menu->cm, menu.get());
+		ui::ApplyAppearanceToMenu(menu.get());
 		menu->Bind(wxEVT_MENU_OPEN, &CommandManager::OnMenuOpen, &menu->cm);
 		menu->Bind(wxEVT_MENU, &CommandManager::OnMenuClick, &menu->cm);
 		return std::unique_ptr<wxMenu>(menu.release());

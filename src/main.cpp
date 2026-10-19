@@ -53,6 +53,7 @@
 #include "subs_controller.h"
 #include "subtitles_provider_libass.h"
 #include "utils.h"
+#include "ui_theme.h"
 #include "value_event.h"
 #include "version.h"
 #include "xdg_desktop_portal_utils.h"
@@ -213,6 +214,12 @@ bool AegisubApp::OnInit() {
 		}
 	}
 #endif
+
+	theme_connection = OPT_SUB("App/Theme", [](agi::OptionValue const&) {
+		ui::ApplyNativeAppearance();
+		ui::ApplyThemeToAllWindows();
+	});
+	ui::ApplyNativeAppearance();
 
 	// Init commands.
 	cmd::init_builtin_commands();
@@ -430,6 +437,19 @@ void AegisubApp::OnFatalException() {
 #define SHOW_EXCEPTION(str) \
 	wxMessageBox(fmt_tl("An unexpected error has occurred. Please save your work and restart Aegisub.\n\nError Message: %s", str), \
 				_("Exception in event handler"), wxOK | wxICON_ERROR | wxCENTER | wxSTAY_ON_TOP)
+int AegisubApp::FilterEvent(wxEvent& event) {
+	if (event.GetEventType() == wxEVT_CREATE) {
+		if (auto create = dynamic_cast<wxWindowCreateEvent *>(&event))
+			ui::ApplyWindow(create->GetWindow());
+	}
+
+#ifdef __WXMSW__
+	if (event.GetEventType() == wxEVT_SYS_COLOUR_CHANGED && ui::Mode() == ui::ThemeMode::System)
+		ui::ApplyThemeToAllWindows();
+#endif
+	return wxApp::FilterEvent(event);
+}
+
 bool AegisubApp::OnExceptionInMainLoop() {
 	try {
 		throw;

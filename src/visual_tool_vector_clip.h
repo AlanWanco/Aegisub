@@ -76,5 +76,6 @@ public:
 	void SetToolbar(wxToolBar *tb) override;
 
 	void SetSubTool(int subtool) override;
+	void RefreshToolbarTheme();
 	int GetSubTool() override;
 };

@@ -35,6 +35,7 @@
 #include "selection_controller.h"
 #include "video_controller.h"
 #include "ui_dialog.h"
+#include "ui_theme.h"
 
 #include <wx/checkbox.h>
 #include <wx/colour.h>
@@ -202,7 +203,7 @@ void DialogStyling::OnStyleBoxModified(wxCommandEvent &) {
 	wxString prefix = style_name->GetValue().Left(from).Lower();
 
 	if (prefix.empty()) {
-		style_name->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+		style_name->SetBackgroundColour(ui::Raised());
 		return;
 	}
 
@@ -213,13 +214,13 @@ void DialogStyling::OnStyleBoxModified(wxCommandEvent &) {
 		if (style.Lower().StartsWith(prefix)) {
 			style_name->ChangeValue(style);
 			style_name->SetSelection(prefix.size(), style.size());
-			style_name->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+			style_name->SetBackgroundColour(ui::Raised());
 			style_name->Refresh();
 			return;
 		}
 	}
 
-	style_name->SetBackgroundColour(wxColour(255, 108, 108));
+	style_name->SetBackgroundColour(ui::ColorFromHex(ui::IsDark() ? 0x59333A : 0xFBE6E9));
 	style_name->Refresh();
 }
 

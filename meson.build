@@ -407,6 +407,11 @@ if host_machine.system() == 'windows' and not get_option('directsound').disabled
     endif
 endif
 
+if host_machine.system() == 'windows'
+    deps += cc.find_library('advapi32', required: true)
+    deps += cc.find_library('dwmapi', required: true)
+endif
+
 if host_machine.system() == 'windows' and cc.has_header('dwrite_3.h')
     conf.set('HAVE_DWRITE_3', 1)
 endif
