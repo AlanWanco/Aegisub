@@ -62,3 +62,14 @@
 ## 维护边界
 
 `libaegisub/audio/provider_rate.cpp` 只包装传给播放器的音频，项目原始 provider 不变，因此无需分别修改各平台音频后端。构建配置修改前的备份保存在本机 `build-ui/backups`。应用包和截图属于本机构建产物，不应提交。
+
+
+## GPUI 工作区实验
+
+从 Aegisub 的“视图 → GPUI Workspace Prototype...”可启动独立 GPUI 窗口。原型通过仅绑定回环地址的临时 TCP 端口和每次启动随机令牌连接当前 `agi::Context`；文档与操作请求在 wx 主事件循环处理。字幕行、选择状态、保存状态和视频帧来自当前 C++ 项目，GPUI 的字幕文本编辑会提交为 Aegisub 撤销栈操作。视频帧由 `AsyncVideoProvider` 异步生成并返回，未引入第二个解码器。
+
+GPUI 主窗口目前提供字幕列表、选择与文本编辑、筛选、保存/另存、撤销/重做、视频打开与播放，以及当前视频画面预览。Demo 资源只作样例并在界面中注明。样式与项目页、波形与音频控制、时间轴拖动、完整 Aegisub 命令菜单尚未接入。macOS 下 GPUI 窗口、原生文件选择器以及打开字幕、实时帧预览和保存流程已完成桌面联调；Windows、Linux 尚未实机验收。
+
+本机验证：`cargo +1.95.0 fmt --manifest-path gpui-prototype/Cargo.toml -- --check`、`cargo +1.95.0 check --manifest-path gpui-prototype/Cargo.toml -q`、release 构建、`git diff --check` 和 Aegisub macOS arm64 增量构建均通过。macOS 桌面联调覆盖 GPUI 启动和原生文件选择器、真实字幕列表与编辑、Aegisub 撤销/重做、视频实时帧和播放、另存为及覆盖确认取消。Windows、Linux，以及项目要求的 wxWidgets 3.2 构建和运行仍未验证。GPUI 依赖当前要求 Rust 1.95；本机默认 Rust 1.93.1 会在 `gpui-pre` 的 `std::hint::cold_path` 编译失败。
+
+联调期间还修复了 GPUI 打开视频时的初始化时序：视频 provider 创建后，先将字幕副本排入其工作队列，再发送 provider 已打开通知和显示视频属性对话框。否则嵌套的原生对话框事件循环可能让 GPUI 的帧请求先于字幕副本初始化执行。

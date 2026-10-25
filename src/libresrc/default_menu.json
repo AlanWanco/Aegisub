@@ -142,6 +142,7 @@
     "main/view" : [
         { "command" : "app/language" },
         { "submenu" : "main/appearance", "text" : "Appearance" },
+        { "command" : "app/launch/gpui" },
         { "command" : "app/options", "special" : "options" },
         {},
         { "command" : "app/display/subs" },

@@ -51,6 +51,17 @@
 namespace {
 	using cmd::Command;
 
+struct app_launch_gpui final : public Command {
+	CMD_NAME("app/launch/gpui")
+	STR_MENU("GPUI Workspace Prototype...")
+	STR_DISP("GPUI Workspace Prototype")
+	STR_HELP("Open the experimental GPUI workspace connected to this project")
+
+	void operator()(agi::Context *c) override {
+		c->frame->LaunchGpui();
+	}
+};
+
 struct app_about final : public Command {
 	CMD_NAME("app/about")
 	CMD_ICON(about_menu)
@@ -377,6 +388,7 @@ namespace cmd {
 		reg(std::make_unique<app_display_video_subs>());
 		reg(std::make_unique<app_exit>());
 		reg(std::make_unique<app_language>());
+		reg(std::make_unique<app_launch_gpui>());
 		reg(std::make_unique<app_log>());
 		reg(std::make_unique<app_new_window>());
 		reg(std::make_unique<app_options>());

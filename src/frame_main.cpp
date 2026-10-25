@@ -33,6 +33,7 @@
 
 #include "frame_main.h"
 
+#include "gpui_bridge.h"
 #include "include/aegisub/context.h"
 #include "include/aegisub/menu.h"
 #include "include/aegisub/toolbar.h"
@@ -64,7 +65,10 @@
 #include <libaegisub/log.h>
 
 #include <wx/dnd.h>
+#include <wx/filename.h>
+#include <wx/filefn.h>
 #include <wx/msgdlg.h>
+#include <wx/stdpaths.h>
 #include <wx/sizer.h>
 #include <wx/statline.h>
 #include <wx/statusbr.h>
@@ -72,7 +76,8 @@
 #include <wx/toolbar.h>
 
 enum {
-	ID_APP_TIMER_STATUSCLEAR = 12002
+	ID_APP_TIMER_STATUSCLEAR = 12002,
+	ID_APP_LAUNCH_GPUI
 };
 
 #ifdef WITH_STARTUPLOG
@@ -173,6 +178,7 @@ FrameMain::FrameMain()
 }
 
 FrameMain::~FrameMain () {
+	StopGpui();
 	context->project->CloseAudio();
 	context->project->CloseVideo();
 
@@ -314,6 +320,67 @@ void FrameMain::StatusTimeout(wxString text,int ms) {
 	StatusClear.Start(ms,true);
 }
 
+void FrameMain::LaunchGpui() {
+	if (!gpuiBridge)
+		gpuiBridge = std::make_unique<GpuiBridge>(context.get());
+	if (!gpuiBridge->Start()) {
+		wxMessageBox(_("Could not start the GPUI prototype bridge."), _("GPUI prototype"), wxOK | wxICON_ERROR | wxCENTER, this);
+		return;
+	}
+
+	wxFileName executable(wxStandardPaths::Get().GetExecutablePath());
+	wxFileName prototype(executable.GetPath(), "aegisub-gpui-prototype");
+#ifdef _WIN32
+	prototype.SetExt("exe");
+#endif
+	if (!prototype.FileExists()) {
+		wxString sourceRoot = wxGetCwd();
+#ifdef __WXMAC__
+		if (executable.GetPath().Find("/Contents/MacOS") != wxNOT_FOUND)
+			sourceRoot = executable.GetPath() + "/../../../../";
+#endif
+		wxFileName sourceTree(sourceRoot + "/gpui-prototype/target/release/aegisub-gpui-prototype");
+#ifdef _WIN32
+		sourceTree.SetExt("exe");
+#endif
+		sourceTree.Normalize(wxPATH_NORM_DOTS | wxPATH_NORM_ABSOLUTE);
+		if (sourceTree.FileExists())
+			prototype = sourceTree;
+	}
+
+	wxExecuteEnv env;
+	wxGetEnvMap(&env.env);
+	const wxString executablePath = prototype.GetFullPath();
+	const std::string endpoint = gpuiBridge->Endpoint();
+	const std::string token = gpuiBridge->Token();
+	const wxScopedCharBuffer executableUtf8 = executablePath.utf8_str();
+	const char *const args[] = {
+		executableUtf8.data(),
+		"--bridge", endpoint.c_str(),
+		"--token", token.c_str(),
+		nullptr
+	};
+	long const pid = wxExecute(args, wxEXEC_ASYNC, nullptr, &env);
+	if (pid == 0) {
+		wxMessageBox(_("Could not launch the GPUI prototype. Build it with cargo build --release --manifest-path gpui-prototype/Cargo.toml."), _("GPUI prototype"), wxOK | wxICON_ERROR | wxCENTER, this);
+		return;
+	}
+	if (gpuiPid && gpuiPid != pid)
+		wxKill(gpuiPid, wxSIGTERM, nullptr, wxKILL_CHILDREN);
+	gpuiPid = pid;
+}
+
+void FrameMain::StopGpui() {
+	if (gpuiPid) {
+		wxKill(gpuiPid, wxSIGTERM, nullptr, wxKILL_CHILDREN);
+		gpuiPid = 0;
+	}
+	if (gpuiBridge) {
+		gpuiBridge->Stop();
+		gpuiBridge.reset();
+	}
+}
+
 BEGIN_EVENT_TABLE(FrameMain, wxFrame)
 	EVT_TIMER(ID_APP_TIMER_STATUSCLEAR, FrameMain::OnStatusClear)
 	EVT_CLOSE(FrameMain::OnCloseWindow)
@@ -333,6 +400,7 @@ void FrameMain::OnCloseWindow(wxCloseEvent &event) {
 		return;
 	}
 
+	StopGpui();
 	context->dialog.reset();
 
 	// Store maximization state

@@ -46,6 +46,8 @@ class FrameMain : public wxFrame, private agi::signal::ConnectionScope {
 	friend class AegisubApp;
 
 	std::unique_ptr<agi::Context> context;
+	std::unique_ptr<class GpuiBridge> gpuiBridge;
+	long gpuiPid = 0;
 
     // XXX: Make Freeze()/Thaw() noops on GTK, this seems to be buggy
 #ifdef __WXGTK__
@@ -66,6 +68,7 @@ class FrameMain : public wxFrame, private agi::signal::ConnectionScope {
 
 	void OnStatusClear(wxTimerEvent &event);
 	void OnCloseWindow (wxCloseEvent &event);
+	void StopGpui();
 
 	void OnAudioOpen(agi::AudioProvider *provider);
 	void OnVideoOpen(AsyncVideoProvider *provider);
@@ -89,6 +92,7 @@ public:
 	/// @param text New status bar text
 	/// @param ms Time in milliseconds that the message should be visible
 	void StatusTimeout(wxString text,int ms=10000);
+	void LaunchGpui();
 
 	/// @brief Set the video and audio display visibility
 	/// @param video -1: leave unchanged; 0: hide; 1: show

@@ -380,10 +380,10 @@ bool Project::DoLoadVideo(agi::fs::path const& path) {
 		return false;
 	}
 
+	video_provider->LoadSubtitles(context->ass.get());
 	AnnounceVideoProviderModified(video_provider.get());
 
 	UpdateVideoProperties(context->ass.get(), video_provider.get(), context->parent);
-	video_provider->LoadSubtitles(context->ass.get());
 
 	timecodes = video_provider->GetFPS();
 	keyframes = video_provider->GetKeyFrames();
