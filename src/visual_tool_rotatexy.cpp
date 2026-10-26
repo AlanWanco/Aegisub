@@ -30,7 +30,7 @@
 #include <cmath>
 #include <wx/colour.h>
 
-VisualToolRotateXY::VisualToolRotateXY(VideoDisplay *parent, agi::Context *context)
+VisualToolRotateXY::VisualToolRotateXY(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualDraggableFeature>(parent, context)
 {
 	org = new Feature;

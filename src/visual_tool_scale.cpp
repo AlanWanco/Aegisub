@@ -25,7 +25,7 @@
 
 #include <wx/colour.h>
 
-VisualToolScale::VisualToolScale(VideoDisplay *parent, agi::Context *context)
+VisualToolScale::VisualToolScale(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualDraggableFeature>(parent, context)
 {
 }

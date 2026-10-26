@@ -22,6 +22,7 @@
 #include <libaegisub/string.h>
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <algorithm>
 
 // Out-of-line to anchor vtable
 AssEntryGroup AssAttachment::Group() const { return group; }
@@ -75,4 +76,30 @@ std::string AssAttachment::GetFileName(bool raw) const {
 		return filename;
 
 	return filename.get().substr(0, last_under) + ".ttf";
+}
+
+bool IsSafeAttachmentFilename(std::string const& filename) {
+	if (filename.empty() || filename == "." || filename == "..")
+		return false;
+	if (filename.find_first_of("/\\:") != std::string::npos)
+		return false;
+	if (std::any_of(filename.begin(), filename.end(), [](unsigned char c) { return c < 0x20; }))
+		return false;
+
+#ifdef _WIN32
+	if (filename.back() == ' ' || filename.back() == '.')
+		return false;
+
+	auto basename = filename.substr(0, filename.find('.'));
+	for (auto& c : basename) {
+		if (c >= 'a' && c <= 'z')
+			c -= 'a' - 'A';
+	}
+	if (basename == "CON" || basename == "PRN" || basename == "AUX" || basename == "NUL" || basename == "CLOCK$")
+		return false;
+	if (basename.size() == 4 && (basename.starts_with("COM") || basename.starts_with("LPT")) && basename[3] >= '1' && basename[3] <= '9')
+		return false;
+#endif
+
+	return true;
 }

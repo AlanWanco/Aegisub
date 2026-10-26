@@ -49,3 +49,6 @@ public:
 	AssAttachment(std::string const& data, AssEntryGroup group);
 	AssAttachment(agi::fs::path const& name, AssEntryGroup group);
 };
+
+/// Whether an embedded filename can be used when extracting into a directory.
+bool IsSafeAttachmentFilename(std::string const& filename);

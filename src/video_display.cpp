@@ -137,6 +137,7 @@ VideoDisplay::VideoDisplay(wxToolBar *toolbar, wxToolBar *visualToolToolbar, boo
 	Bind(wxEVT_ENTER_WINDOW, &VideoDisplay::OnMouseEvent, this);
 	Bind(wxEVT_CHAR_HOOK, &VideoDisplay::OnKeyDown, this);
 	Bind(wxEVT_LEAVE_WINDOW, &VideoDisplay::OnMouseLeave, this);
+	Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) { if (tool) tool->CancelInteraction(); });
 	Bind(wxEVT_LEFT_DCLICK, &VideoDisplay::OnMouseEvent, this);
 	Bind(wxEVT_LEFT_DOWN, &VideoDisplay::OnMouseEvent, this);
 	Bind(wxEVT_LEFT_UP, &VideoDisplay::OnMouseEvent, this);
@@ -433,6 +434,10 @@ void VideoDisplay::OnSizeEvent(wxSizeEvent &) {
 	bool preserveContentSize = freeSize && IsContentZoomActive();
 	if (freeSize) UpdateViewportSize(false);
 	PositionVideo(preserveContentSize);
+}
+
+void VideoDisplay::SetCrosshairCursor(bool hidden) {
+	SetCursor(hidden ? wxCursor(wxCURSOR_BLANK) : wxNullCursor);
 }
 
 void VideoDisplay::OnMouseEvent(wxMouseEvent& event) {

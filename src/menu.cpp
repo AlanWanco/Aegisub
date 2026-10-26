@@ -160,7 +160,9 @@ class CommandManager {
 	void UpdateItemName(std::pair<std::string, wxMenuItem*> const& item) {
 		cmd::Command *c = cmd::get(item.first);
 		wxString text;
-		if (c->Type() & cmd::COMMAND_DYNAMIC_NAME)
+		// The macOS application menu has no active wx document while GPUI
+		// owns focus. Keep its last label and still refresh the shortcut.
+		if (context && (c->Type() & cmd::COMMAND_DYNAMIC_NAME))
 			text = c->StrMenu(context);
 		else
 			text = item.second->GetItemLabel().BeforeFirst('\t');
@@ -513,6 +515,10 @@ public:
 }
 
 namespace menu {
+	json::Object const& GetConfig() {
+		return get_menus_root();
+	}
+
 	void GetMenuBar(std::string const& name, wxFrame *window, int id_base, agi::Context *c) {
 #ifdef __WXMAC__
 		auto bind_events = [&](CommandMenuBar *menu) {

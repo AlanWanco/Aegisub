@@ -44,5 +44,5 @@ class VisualToolRotateXY final : public VisualTool<VisualDraggableFeature> {
 	bool InitializeHold() override;
 	void UpdateHold() override;
 public:
-	VisualToolRotateXY(VideoDisplay *parent, agi::Context *context);
+	VisualToolRotateXY(VisualToolHost *parent, agi::Context *context);
 };

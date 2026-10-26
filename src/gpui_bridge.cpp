@@ -2,26 +2,49 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #include "gpui_bridge.h"
+#include "gpui_audio.h"
+#include "gpui_automation.h"
+#include "gpui_command_catalog.h"
+#include "gpui_document.h"
+#include "gpui_translation.h"
+#include "gpui_timing.h"
+#include "gpui_search.h"
+#include "gpui_visual.h"
+#include "gpui_video.h"
+#include "gpui_preferences.h"
+#include "gpui_spelling.h"
+#include "ui_theme.h"
 
 #include "ass_dialogue.h"
 #include "ass_file.h"
 #include "async_video_provider.h"
+#include "auto4_base.h"
+#include "dialogs.h"
 #include "command/command.h"
+#include "command/edit.h"
 #include "compat.h"
+#include "grid_column.h"
 #include "include/aegisub/context.h"
 #include "main.h"
+#include "options.h"
 #include "project.h"
 #include "selection_controller.h"
+#include "utils.h"
+#include "subtitle_format.h"
 #include "subs_controller.h"
+#include "text_selection_controller.h"
 #include "video_controller.h"
+#include "video_display.h"
 #include "video_frame.h"
 
 #include <libaegisub/cajun/reader.h>
 #include <libaegisub/cajun/visitor.h>
+#include <libaegisub/charset_conv.h>
 #include <libaegisub/log.h>
 
 #include <wx/base64.h>
 #include <wx/filefn.h>
+#include <wx/choicdlg.h>
 #include <wx/image.h>
 #include <wx/mstream.h>
 #include <wx/sckaddr.h>
@@ -31,8 +54,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cmath>
 #include <iomanip>
 #include <map>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <string_view>
@@ -77,8 +102,10 @@ std::string quote_json(std::string_view value) {
 	return out.str();
 }
 
-std::string to_base64_png(VideoFrame const& frame) {
+std::string to_base64_png(VideoFrame const& frame, double aspect) {
 	wxImage image = GetImage(frame);
+	int const display_width = std::max(1, static_cast<int>(std::round(image.GetHeight() * aspect)));
+	if (display_width != image.GetWidth()) image.Rescale(display_width, image.GetHeight(), wxIMAGE_QUALITY_HIGH);
 	wxMemoryOutputStream stream;
 	if (!image.SaveFile(stream, wxBITMAP_TYPE_PNG))
 		return {};
@@ -120,18 +147,29 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 	};
 
 	agi::Context *context;
+	gpui::Audio audio;
+	gpui::Visual visual;
+	gpui::Spelling spelling;
 	std::unique_ptr<wxSocketInitializer> sockets;
 	wxSocketServer *server = nullptr;
 	std::map<wxSocketBase *, Client> clients;
 	wxTimer frame_poll;
 	unsigned short port = 0;
 	uint64_t video_epoch = 0;
+	uint64_t revision = 1;
+	uint64_t details_revision = 1;
+	agi::signal::Connection commit_connection;
 	AsyncVideoProvider *observed_provider = nullptr;
 	std::string token = make_token();
 
-	explicit Impl(agi::Context *context) : context(context), frame_poll(this, wxID_ANY) {
+	explicit Impl(agi::Context *context) : context(context), audio(context), visual(context), spelling(context), frame_poll(this, wxID_ANY) {
 		Bind(wxEVT_SOCKET, &Impl::OnSocket, this);
 		Bind(wxEVT_TIMER, &Impl::OnFramePoll, this, frame_poll.GetId());
+		commit_connection = context->ass->AddCommitListener([this](int type, const AssDialogue *) {
+			++revision;
+			if (type == AssFile::COMMIT_NEW || (type & (AssFile::COMMIT_STYLES | AssFile::COMMIT_SCRIPTINFO)))
+				++details_revision;
+		});
 	}
 
 	~Impl() {
@@ -286,7 +324,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			it->second.waiting_for_frame = false;
 			it->second.awaiting_current = false;
 			it->second.provider = nullptr;
-			std::string encoded = to_base64_png(*event.frame);
+			std::string encoded = to_base64_png(*event.frame, context->videoController->GetAspectRatioValue());
 			if (encoded.empty()) {
 				BeginResponse(socket, it->second, R"({"ok":false,"error":"could not encode preview frame"})");
 				continue;
@@ -335,10 +373,54 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		}
 		std::string const& op = op_it->second;
 
+		if (op == "spelling") { BeginResponse(socket, client, spelling.Request(object)); return; }
+		if (op == "file_tools") { BeginResponse(socket, client, gpui::FileTools(object)); return; }
+		if (op == "save_media") { BeginResponse(socket, client, gpui::SaveMedia(context, object)); return; }
+		if (op == "preferences") { BeginResponse(socket, client, gpui::Preferences(object)); return; }
+		if (op == "hotkeys") { BeginResponse(socket, client, gpui::Hotkeys(object)); return; }
 		if (op == "snapshot") { BeginResponse(socket, client, Snapshot()); return; }
+		if (op == "video_settings") { BeginResponse(socket, client, gpui::VideoSettings(context, object)); return; }
+		if (op == "visual") { BeginResponse(socket, client, visual.Interact(object)); return; }
+		if (op == "audio_render") { BeginResponse(socket, client, audio.Render(object)); return; }
+		if (op == "audio_action") { BeginResponse(socket, client, audio.Interact(object)); return; }
+		if (op == "automation_manager") { BeginResponse(socket, client, gpui::AutomationManager(context, object)); return; }
+		if (op == "catalog") { BeginResponse(socket, client, gpui::CommandCatalog(context, visual)); return; }
+		if (op == "attachments") {
+			if (auto expected = object.find("revision"); expected != object.end()) {
+				if (static_cast<json::Integer const&>(expected->second) != static_cast<int64_t>(revision)) { BeginResponse(socket, client, R"({"ok":false,"error":"document changed; refresh attachments first"})"); return; }
+			}
+			BeginResponse(socket, client, gpui::Attachments(context, object, revision)); return;
+		}
+		if (op == "resample") { BeginResponse(socket, client, gpui::Resample(context, object)); return; }
+		if (op == "document") { BeginResponse(socket, client, gpui::DocumentDetails(context)); return; }
+		if (op == "script_info") { BeginResponse(socket, client, gpui::EditScriptInfo(context, object)); return; }
+		if (op == "style") { BeginResponse(socket, client, gpui::EditStyle(context, object)); return; }
+		if (op == "styling") { BeginResponse(socket, client, gpui::Styling(context, object)); return; }
+		if (op == "style_library") { BeginResponse(socket, client, gpui::StyleLibrary(context, object)); return; }
+		if (op == "translation") { BeginResponse(socket, client, gpui::Translation(context, object)); return; }
+		if (op == "timing_processor") { BeginResponse(socket, client, gpui::TimingProcessor(context, object)); return; }
+		if (op == "paste_over") {
+			if (auto action = object.find("fields"); action != object.end()) {
+				std::vector<bool> fields;
+				for (auto const& value : static_cast<json::Array const&>(action->second)) fields.push_back(static_cast<json::Boolean const&>(value));
+				auto changed = cmd::PasteLinesOver(context, std::move(fields));
+				BeginResponse(socket, client, "{\"ok\":true,\"changed\":" + std::to_string(changed) + "}");
+			}
+			else {
+				auto fields = OPT_GET("Tool/Paste Lines Over/Fields")->GetListBool();
+				fields.resize(11, false);
+				std::string response = "{\"ok\":true,\"fields\":[";
+				for (size_t i = 0; i < fields.size(); ++i) { if (i) response += ','; response += fields[i] ? "true" : "false"; }
+				BeginResponse(socket, client, response + "]}");
+			}
+			return;
+		}
+		if (op == "search") { BeginResponse(socket, client, gpui::Search(context, object)); return; }
+		if (op == "shift_times") { BeginResponse(socket, client, gpui::ShiftTimesPanel(context, object)); return; }
 		if (op == "frame") { QueueFrame(object, socket, client); return; }
 		if (op == "select") { BeginResponse(socket, client, Select(object)); return; }
 		if (op == "edit") { BeginResponse(socket, client, Edit(object)); return; }
+		if (op == "line_fields") { BeginResponse(socket, client, LineFields(object)); return; }
 		if (op == "seek") { BeginResponse(socket, client, Seek(object)); return; }
 		if (op == "command") { BeginResponse(socket, client, Command(object)); return; }
 		if (op == "open") { BeginResponse(socket, client, Open(object)); return; }
@@ -356,7 +438,13 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		out << "{\"ok\":true,\"file\":"
 		    << quote_json(context->subsController->Filename().string())
 		    << ",\"modified\":" << (context->subsController->IsModified() ? "true" : "false")
+		    << ",\"dark\":" << (ui::IsDark() ? "true" : "false")
+		    << ",\"show_toolbar\":" << (OPT_GET("App/Show Toolbar")->GetBool() ? "true" : "false")
+		    << ",\"appearance\":" << gpui::Appearance()
+		    << ",\"can_save\":" << (context->subsController->CanSave() ? "true" : "false")
+		    << ",\"revision\":" << revision << ",\"details_revision\":" << details_revision
 		    << ",\"video\":" << (context->project->VideoProvider() ? "true" : "false")
+		    << ",\"timecodes\":" << (context->project->Timecodes().IsLoaded() ? "true" : "false")
 		    << ",\"playing\":" << (context->videoController->IsPlaying() ? "true" : "false")
 		    << ",\"frame\":" << context->videoController->GetFrameN()
 		    << ",\"video_epoch\":" << video_epoch
@@ -370,9 +458,29 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			out << provider->GetFPS().FPS();
 		else
 			out << "null";
+		out << ",\"video_time\":" << (current_provider ? context->videoController->TimeAtFrame(context->videoController->GetFrameN()) : 0)
+		    << ",\"video_duration\":" << (current_provider ? context->videoController->TimeAtFrame(current_provider->GetFrameCount() - 1, agi::vfr::END) : 0)
+		    << ",\"playback_rate\":" << context->videoController->GetPlaybackRate()
+		    << ",\"aspect\":" << (current_provider ? context->videoController->GetAspectRatioValue() : 1.0)
+		    << ",\"video_window_zoom\":" << context->videoDisplay->GetWindowZoom()
+		    << ",\"video_height\":" << (current_provider ? current_provider->GetHeight() : 0)
+		    << ",\"video_scroll\":" << OPT_GET("Video/Scroll Action")->GetInt()
+		    << ",\"video_ctrl_scroll\":" << OPT_GET("Video/Ctrl Scroll Action")->GetInt()
+		    << ",\"video_shift_scroll\":" << OPT_GET("Video/Shift Scroll Action")->GetInt()
+		    << ",\"video_overscan\":" << (OPT_GET("Video/Overscan Mask")->GetBool() ? "true" : "false");
+		out << ",\"audio\":" << audio.Snapshot();
 		out << ",\"active\":";
 		auto active = context->selectionController->GetActiveLine();
-		out << (active ? active->Id : -1) << ",\"lines\":[";
+		out << (active ? active->Id : -1) << ",\"selected\":[";
+		bool first_selected = true;
+		for (auto line : context->selectionController->GetSortedSelection()) {
+			if (!first_selected) out << ',';
+			first_selected = false;
+			out << line->Id;
+		}
+		out << "],\"text_selection\":[" << context->textSelectionController->GetSelectionStart()
+		    << ',' << context->textSelectionController->GetSelectionEnd() << "]";
+		out << ",\"lines\":[";
 		bool first = true;
 		for (auto const& line : context->ass->Events) {
 			if (!first) out << ',';
@@ -381,10 +489,15 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			    << ",\"row\":" << line.Row
 			    << ",\"start\":" << static_cast<int>(line.Start)
 			    << ",\"end\":" << static_cast<int>(line.End)
+			    << ",\"start_frame\":" << (current_provider ? context->videoController->FrameAtTime(line.Start, agi::vfr::START) : 0)
+			    << ",\"end_frame\":" << (current_provider ? context->videoController->FrameAtTime(line.End, agi::vfr::END) : 0)
 			    << ",\"layer\":" << line.Layer
 			    << ",\"comment\":" << (line.Comment ? "true" : "false")
 			    << ",\"style\":" << quote_json(line.Style.get())
 			    << ",\"actor\":" << quote_json(line.Actor.get())
+			    << ",\"effect\":" << quote_json(line.Effect.get())
+			    << ",\"margin\":[" << line.Margin[0] << ',' << line.Margin[1] << ',' << line.Margin[2] << ']'
+			    << ",\"display_text\":" << quote_json(from_wx(GetGridDisplayText(line)))
 			    << ",\"text\":" << quote_json(line.Text.get()) << '}';
 		}
 		out << "]}";
@@ -423,9 +536,21 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (id_it == object.end())
 			return R"({"ok":false,"error":"missing line id"})";
 		int id = static_cast<int>(static_cast<json::Integer const&>(id_it->second));
+		Selection selected;
+		if (auto ids = object.find("ids"); ids != object.end()) {
+			for (auto const& item : static_cast<json::Array const&>(ids->second)) {
+				int const selected_id = static_cast<int>(static_cast<json::Integer const&>(item));
+				auto line = std::find_if(context->ass->Events.begin(), context->ass->Events.end(),
+					[&](auto const& line) { return line.Id == selected_id; });
+				if (line == context->ass->Events.end())
+					return R"({"ok":false,"error":"selected line no longer exists"})";
+				selected.insert(&*line);
+			}
+		}
 		for (auto& line : context->ass->Events) {
 			if (line.Id != id) continue;
-			context->selectionController->SetSelectionAndActive({&line}, &line);
+			selected.insert(&line);
+			context->selectionController->SetSelectionAndActive(std::move(selected), &line);
 			return R"({"ok":true})";
 		}
 		return R"({"ok":false,"error":"line no longer exists"})";
@@ -438,23 +563,120 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			return R"({"ok":false,"error":"missing line id or text"})";
 		int id = static_cast<int>(static_cast<json::Integer const&>(id_it->second));
 		std::string const& text = text_it->second;
-		for (auto& line : context->ass->Events) {
-			if (line.Id != id) continue;
-			if (line.Text == text)
-				return R"({"ok":true,"unchanged":true})";
-			line.Text = text;
-			context->selectionController->SetSelectionAndActive({&line}, &line);
-			context->ass->Commit(_("GPUI subtitle edit"), AssFile::COMMIT_DIAG_TEXT, -1, &line);
-			return R"({"ok":true})";
+		Selection selected;
+		if (auto ids = object.find("ids"); ids != object.end()) {
+			for (auto const& item : static_cast<json::Array const&>(ids->second)) {
+				int const selected_id = static_cast<int>(static_cast<json::Integer const&>(item));
+				auto line = std::find_if(context->ass->Events.begin(), context->ass->Events.end(),
+					[&](auto const& line) { return line.Id == selected_id; });
+				if (line == context->ass->Events.end())
+					return R"({"ok":false,"error":"selected line no longer exists"})";
+				selected.insert(&*line);
+			}
 		}
-		return R"({"ok":false,"error":"line no longer exists"})";
+		auto active = std::find_if(context->ass->Events.begin(), context->ass->Events.end(),
+			[&](auto const& line) { return line.Id == id; });
+		if (active == context->ass->Events.end())
+			return R"({"ok":false,"error":"line no longer exists"})";
+		selected.insert(&*active);
+		bool changed = false;
+		for (auto line : selected) {
+			if (line->Text == text) continue;
+			line->Text = text;
+			changed = true;
+		}
+		if (changed)
+			context->ass->Commit(_("GPUI subtitle edit"), AssFile::COMMIT_DIAG_TEXT, -1,
+				selected.size() == 1 ? *selected.begin() : nullptr);
+		return changed ? R"({"ok":true})" : R"({"ok":true,"unchanged":true})";
+	}
+
+	std::string LineFields(json::Object const& object) {
+		auto ids = object.find("ids");
+		auto fields_it = object.find("fields");
+		if (ids == object.end() || fields_it == object.end())
+			return R"({"ok":false,"error":"missing line ids or fields"})";
+		std::vector<AssDialogue *> lines;
+		for (auto const& item : static_cast<json::Array const&>(ids->second)) {
+			int const id = static_cast<int>(static_cast<json::Integer const&>(item));
+			auto found = std::find_if(context->ass->Events.begin(), context->ass->Events.end(),
+				[&](auto const& line) { return line.Id == id; });
+			if (found == context->ass->Events.end())
+				return R"({"ok":false,"error":"line no longer exists"})";
+			if (std::find(lines.begin(), lines.end(), &*found) == lines.end()) lines.push_back(&*found);
+		}
+		if (lines.empty()) return R"({"ok":false,"error":"no lines selected"})";
+		auto const& fields = static_cast<json::Object const&>(fields_it->second);
+		// Parse the complete patch before changing the document.
+		AssDialogueBase patch = *lines.front();
+		int commit_type = 0;
+		for (auto const& [name, value] : fields) {
+			if (name == "style" || name == "actor" || name == "effect") {
+				std::string const& text = value;
+				if (name == "style") {
+					if (!context->ass->GetStyle(text)) return R"({"ok":false,"error":"style does not exist"})";
+					patch.Style = text;
+				}
+				if (name == "actor") patch.Actor = text;
+				if (name == "effect") patch.Effect = text;
+				commit_type |= AssFile::COMMIT_DIAG_META;
+			}
+			else if (name == "comment") {
+				patch.Comment = static_cast<json::Boolean const&>(value);
+				commit_type |= AssFile::COMMIT_DIAG_META;
+			}
+			else if (name == "start" || name == "end" || name == "layer" || name.starts_with("margin_")) {
+				int64_t const number = static_cast<json::Integer const&>(value);
+				int64_t const lower = name.starts_with("margin_") ? -9999 : 0;
+				int64_t const upper = name == "start" || name == "end" ? std::numeric_limits<int>::max() - 10 : 99999;
+				if (number < lower || number > upper) return R"({"ok":false,"error":"line field is out of range"})";
+				if (name == "start") { patch.Start = number; commit_type |= AssFile::COMMIT_DIAG_TIME; }
+				else if (name == "end") { patch.End = number; commit_type |= AssFile::COMMIT_DIAG_TIME; }
+				else {
+					commit_type |= AssFile::COMMIT_DIAG_META;
+					if (name == "layer") patch.Layer = number;
+					else if (name == "margin_left") patch.Margin[0] = number;
+					else if (name == "margin_right") patch.Margin[1] = number;
+					else if (name == "margin_vertical") patch.Margin[2] = number;
+					else return R"({"ok":false,"error":"unknown line field"})";
+				}
+			}
+			else return R"({"ok":false,"error":"unknown line field"})";
+		}
+		if (!commit_type) return R"({"ok":true,"unchanged":true})";
+		for (auto line : lines) {
+			int const start = fields.count("start") ? static_cast<int>(patch.Start) : static_cast<int>(line->Start);
+			int const end = fields.count("end") ? static_cast<int>(patch.End) : static_cast<int>(line->End);
+			if ((fields.count("start") || fields.count("end")) && end < start)
+				return R"({"ok":false,"error":"end time must not precede start time"})";
+		}
+		bool changed = false;
+		for (auto line : lines) {
+			if (fields.count("start") && line->Start != patch.Start) { line->Start = patch.Start; changed = true; }
+			if (fields.count("end") && line->End != patch.End) { line->End = patch.End; changed = true; }
+			if (fields.count("layer") && line->Layer != patch.Layer) { line->Layer = patch.Layer; changed = true; }
+			if (fields.count("style") && line->Style != patch.Style) { line->Style = patch.Style; changed = true; }
+			if (fields.count("actor") && line->Actor != patch.Actor) { line->Actor = patch.Actor; changed = true; }
+			if (fields.count("effect") && line->Effect != patch.Effect) { line->Effect = patch.Effect; changed = true; }
+			if (fields.count("comment") && line->Comment != patch.Comment) { line->Comment = patch.Comment; changed = true; }
+			const char *margin_keys[] = {"margin_left", "margin_right", "margin_vertical"};
+			for (size_t i = 0; i < 3; ++i) {
+				if (fields.count(margin_keys[i]) && line->Margin[i] != patch.Margin[i]) {
+					line->Margin[i] = patch.Margin[i]; changed = true;
+				}
+			}
+		}
+		if (changed) context->ass->Commit(_("GPUI line properties"), commit_type);
+		return changed ? R"({"ok":true})" : R"({"ok":true,"unchanged":true})";
 	}
 
 	std::string Seek(json::Object const& object) {
 		auto frame_it = object.find("frame");
 		if (frame_it == object.end())
 			return R"({"ok":false,"error":"missing frame"})";
-		context->videoController->JumpToFrame(static_cast<int>(static_cast<json::Integer const&>(frame_it->second)));
+		int64_t const frame = static_cast<json::Integer const&>(frame_it->second);
+		if (!context->project->VideoProvider()) return R"({"ok":false,"error":"no video is loaded"})";
+		context->videoController->JumpToFrame(static_cast<int>(std::clamp<int64_t>(frame, 0, context->project->VideoProvider()->GetFrameCount() - 1)));
 		return R"({"ok":true})";
 	}
 
@@ -468,13 +690,40 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		std::string const& kind = kind_it->second;
 		agi::fs::path path(static_cast<std::string const&>(path_it->second));
 		if (kind == "subtitle") {
+			if (auto recovery = object.find("recovery"); recovery != object.end() && static_cast<json::Boolean const&>(recovery->second)) {
+				auto versions = GetAutosaveFiles();
+				if (std::none_of(versions.begin(), versions.end(), [&](auto const& file) { return std::any_of(file.versions.begin(), file.versions.end(), [&](auto const& version) { return version.filename == path.string(); }); }))
+					return R"({"ok":false,"error":"selected recovery version is no longer available"})";
+			}
+			if (!agi::fs::FileExists(path)) return R"({"ok":false,"error":"subtitle file is no longer available"})";
+			std::string encoding;
+			if (auto item = object.find("encoding"); item != object.end()) {
+				encoding = static_cast<std::string const&>(item->second);
+				if (!encoding.empty()) {
+					// The menu uses display names, which IconvWrapper resolves to
+					// real encoding names before validating them.
+					agi::charset::IconvWrapper validate(encoding.c_str(), "UTF-8", false);
+				}
+			}
 			if (context->subsController->TryToClose() == wxCANCEL)
 				return R"({"ok":false,"error":"opening subtitles was cancelled"})";
-			context->project->LoadSubtitles(path);
+			context->project->LoadSubtitles(path, encoding);
 			return R"({"ok":true})";
 		}
 		if (kind == "video") {
 			context->project->LoadVideo(path);
+			return R"({"ok":true})";
+		}
+		if (kind == "audio") {
+			context->project->LoadAudio(path);
+			return R"({"ok":true})";
+		}
+		if (kind == "keyframes") {
+			context->project->LoadKeyframes(path);
+			return R"({"ok":true})";
+		}
+		if (kind == "timecodes") {
+			context->project->LoadTimecodes(path);
 			return R"({"ok":true})";
 		}
 		return R"({"ok":false,"error":"unsupported file kind"})";
@@ -508,15 +757,70 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (name_it == object.end())
 			return R"({"ok":false,"error":"missing command name"})";
 		std::string const& name = name_it->second;
-		static const std::vector<std::string> allowed = {
-			"subtitle/open", "subtitle/save", "subtitle/save/as", "subtitle/new",
-			"video/close", "video/play", "video/stop",
-			"edit/undo", "edit/redo", "video/tool/drag", "video/tool/clip",
-			"video/tool/scale", "video/tool/rotate/z", "video/tool/rotate/xy",
-			"video/tool/vector_clip"
-		};
-		if (std::find(allowed.begin(), allowed.end(), name) == allowed.end())
-			return R"({"ok":false,"error":"command is not available in the GPUI prototype"})";
+		std::string_view const surface = gpui::CommandSurface(name);
+		if (surface == "internal" || surface == "wx-control")
+			return R"({"ok":false,"error":"this command still requires the original Aegisub control"})";
+		if (surface == "automation") {
+			auto macros = config::global_scripts->GetMacros();
+			auto local = context->local_scripts->GetMacros();
+			macros.insert(macros.end(), local.begin(), local.end());
+			if (std::none_of(macros.begin(), macros.end(), [&](auto macro) { return name == macro->name(); }))
+				return R"({"ok":false,"error":"macro is not loaded for this project"})";
+		}
+		auto command = cmd::get(name);
+		if (!command->Validate(context))
+			return R"({"ok":false,"error":"command is not available in the current project state"})";
+		if (name.starts_with("video/tool/")) {
+			visual.SelectCommand(name);
+			return R"({"ok":true})";
+		}
+		if (auto selection = object.find("text_selection"); selection != object.end()) {
+			auto const& range = static_cast<json::Array const&>(selection->second);
+			auto line = context->selectionController->GetActiveLine();
+			if (range.size() != 2 || !line) return R"({"ok":false,"error":"no active text selection"})";
+			int64_t const start = static_cast<json::Integer const&>(range[0]);
+			int64_t const end = static_cast<json::Integer const&>(range[1]);
+			auto const& text = line->Text.get();
+			auto boundary = [&](int64_t offset) {
+				return offset >= 0 && static_cast<size_t>(offset) <= text.size() &&
+					(static_cast<size_t>(offset) == text.size() || (static_cast<unsigned char>(text[offset]) & 0xc0) != 0x80);
+			};
+			if (start > end || !boundary(start) || !boundary(end)) return R"({"ok":false,"error":"invalid UTF-8 text selection"})";
+			context->textSelectionController->SetSelection(start, end);
+		}
+		if (name == "edit/line/copy") { cmd::CopySelectedLines(context); return R"({"ok":true})"; }
+		if (name == "edit/line/cut") { cmd::CutSelectedLines(context); return R"({"ok":true})"; }
+		if (name == "edit/line/paste") { cmd::PasteLines(context); return R"({"ok":true})"; }
+		if (name == "subtitle/open" || name == "subtitle/open/charset" || name == "subtitle/open/autosave" || name.starts_with("recent/subtitle/")) {
+			if (context->subsController->TryToClose() == wxCANCEL)
+				return R"({"ok":false,"error":"opening subtitles was cancelled"})";
+			agi::fs::path path;
+			std::string encoding;
+			if (name.starts_with("recent/subtitle/")) {
+				int const index = std::stoi(name.substr(16));
+				if (index < 0 || static_cast<size_t>(index) >= config::mru->Get("Subtitle")->size())
+					return R"({"ok":false,"error":"recent subtitle is no longer available"})";
+				path = config::mru->GetEntry("Subtitle", index);
+			}
+			else if (name == "subtitle/open/autosave") path = PickAutosaveFile(context->parent);
+			else {
+				path = OpenFileSelector(context, _("Open Subtitles File"), "Path/Last/Subtitles", "", "", SubtitleFormat::GetWildcards(0), context->parent);
+				if (!path.empty() && name == "subtitle/open/charset") {
+					auto charset = wxGetSingleChoice(_("Choose charset code:"), _("Charset"), agi::charset::GetEncodingsList<wxArrayString>(), context->parent);
+					if (charset.empty()) return R"({"ok":false,"error":"opening subtitles was cancelled"})";
+					encoding = from_wx(charset);
+				}
+			}
+			if (path.empty()) return R"({"ok":false,"error":"opening subtitles was cancelled"})";
+			context->project->LoadSubtitles(path, encoding);
+			return R"({"ok":true})";
+		}
+		if (name == "subtitle/new") {
+			if (context->subsController->TryToClose() == wxCANCEL)
+				return R"({"ok":false,"error":"new subtitles was cancelled"})";
+			context->project->CloseSubtitles();
+			return R"({"ok":true})";
+		}
 		if (name == "video/play") {
 			context->videoController->Play();
 			return R"({"ok":true})";

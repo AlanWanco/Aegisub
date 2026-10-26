@@ -38,6 +38,7 @@
 #include "options.h"
 #include "project.h"
 #include "selection_controller.h"
+#include "timing_processor.h"
 #include "utils.h"
 
 #include <libaegisub/address_of_adaptor.h>
@@ -98,9 +99,6 @@ struct DialogTimingProcessor {
 
 	/// Process the file
 	void Process();
-
-	/// Get a list of dialogue lines in the file sorted by start time
-	std::vector<AssDialogue*> SortDialogues();
 
 	DialogTimingProcessor(agi::Context *c);
 };
@@ -327,125 +325,28 @@ void DialogTimingProcessor::OnApply(wxCommandEvent &) {
 	d.EndModal(0);
 }
 
-std::vector<AssDialogue*> DialogTimingProcessor::SortDialogues() {
-	std::set<boost::flyweight<std::string>> styles;
-	for (size_t i = 0; i < StyleList->GetCount(); ++i) {
-		if (StyleList->IsChecked(i))
-			styles.insert(boost::flyweight<std::string>(from_wx(StyleList->GetString(i))));
-	}
-
-	std::vector<AssDialogue*> sorted;
-
-	auto valid_line = [&](const AssDialogue *d) { return !d->Comment && styles.count(d->Style); };
-	if (onlySelection->IsChecked())
-		boost::copy(c->selectionController->GetSelectedSet() | filtered(valid_line),
-		    back_inserter(sorted));
-	else {
-		sorted.reserve(c->ass->Events.size());
-		boost::push_back(sorted, c->ass->Events | agi::address_of | filtered(valid_line));
-	}
-
-	// Check if rows are valid
-	for (auto diag : sorted) {
-		if (diag->Start > diag->End) {
-			wxMessageBox(
-				fmt_tl("One of the lines in the file (%i) has negative duration. Aborting.", diag->Row),
-				_("Invalid script"),
-				wxOK | wxICON_ERROR | wxCENTER);
-			sorted.clear();
-			break;
-		}
-	}
-
-	boost::sort(sorted, [](const AssDialogue *a, const AssDialogue *b) {
-		return a->Start < b->Start;
-	});
-	return sorted;
-}
-
-static int get_closest_kf(std::vector<int> const& kf, int frame) {
-	const auto pos = boost::upper_bound(kf, frame);
-	// Return last keyframe if this is after the last one
-	if (pos == end(kf)) return kf.back();
-	// *pos is greater than frame, and *(pos - 1) is less than or equal to frame
-	return (pos == begin(kf) || *pos - frame < frame - *(pos - 1)) ? *pos : *(pos - 1);
-}
-
-template<class Iter, class Field>
-static int safe_time(Iter begin, Iter end, AssDialogue *comp, int initial, Field field, int const& (*cmp)(int const&, int const&)) {
-	// Compare to every previous line (yay for O(n^2)!) to see if it's OK to add lead-in
-	for (; begin != end; ++begin) {
-		// If the line doesn't already collide with this line, extend it only
-		// to the edge of the line
-		if (!comp->CollidesWith(*begin))
-			initial = cmp(initial, (*begin)->*field);
-	}
-	return initial;
-}
-
 void DialogTimingProcessor::Process() {
-	std::vector<AssDialogue*> sorted = SortDialogues();
-	if (sorted.empty()) return;
-
-	// Add lead-in/out
-	if (hasLeadIn->IsChecked() && leadIn) {
-		for (size_t i = 0; i < sorted.size(); ++i)
-			sorted[i]->Start = safe_time(sorted.rend() - i, sorted.rend(),
-				sorted[i], sorted[i]->Start - leadIn,
-				&AssDialogue::End, &std::max<int>);
+	TimingProcessorSettings settings;
+	for (size_t i = 0; i < StyleList->GetCount(); ++i)
+		if (StyleList->IsChecked(i)) settings.styles.insert(from_wx(StyleList->GetString(i)));
+	settings.only_selection = onlySelection->IsChecked();
+	settings.has_lead_in = hasLeadIn->IsChecked();
+	settings.has_lead_out = hasLeadOut->IsChecked();
+	settings.adjacent = adjsEnable->IsChecked();
+	settings.keyframes = keysEnable->IsChecked();
+	settings.lead_in = leadIn;
+	settings.lead_out = leadOut;
+	settings.before_start = beforeStart;
+	settings.after_start = afterStart;
+	settings.before_end = beforeEnd;
+	settings.after_end = afterEnd;
+	settings.adjacent_gap = adjGap;
+	settings.adjacent_overlap = adjOverlap;
+	settings.adjacent_bias = adjacentBias->GetValue() / 100.0;
+	try { ProcessTiming(c, settings); }
+	catch (std::exception const& error) {
+		wxMessageBox(to_wx(error.what()), _("Invalid script"), wxOK | wxICON_ERROR, &d);
 	}
-
-	if (hasLeadOut->IsChecked() && leadOut) {
-		for (size_t i = 0; i < sorted.size(); ++i)
-			sorted[i]->End = safe_time(sorted.begin() + i + 1, sorted.end(),
-				sorted[i], sorted[i]->End + leadOut,
-				&AssDialogue::Start, &std::min<int>);
-	}
-
-	// Make adjacent
-	if (adjsEnable->IsChecked()) {
-		double bias = adjacentBias->GetValue() / 100.0;
-
-		for (size_t i = 1; i < sorted.size(); ++i) {
-			AssDialogue *prev = sorted[i - 1];
-			AssDialogue *cur = sorted[i];
-
-			int dist = cur->Start - prev->End;
-			if ((dist < 0 && -dist <= adjOverlap) || (dist > 0 && dist <= adjGap)) {
-				int setPos = prev->End + int(dist * bias);
-				cur->Start = setPos;
-				prev->End = setPos;
-			}
-		}
-	}
-
-	// Keyframe snapping
-	if (keysEnable->IsChecked()) {
-		std::vector<int> kf = c->project->Keyframes();
-		auto fps = c->project->Timecodes();
-		if (auto provider = c->project->VideoProvider())
-			kf.push_back(provider->GetFrameCount() - 1);
-
-		for (AssDialogue *cur : sorted) {
-			// Get start/end frames
-			int startF = fps.FrameAtTime(cur->Start, agi::vfr::START);
-			int endF = fps.FrameAtTime(cur->End, agi::vfr::END);
-
-			// Get closest for start
-			int closest = get_closest_kf(kf, startF);
-			int time = fps.TimeAtFrame(closest, agi::vfr::START);
-			if ((closest > startF && time - cur->Start <= beforeStart) || (closest < startF && cur->Start - time <= afterStart))
-				cur->Start = time;
-
-			// Get closest for end
-			closest = get_closest_kf(kf, endF) - 1;
-			time = fps.TimeAtFrame(closest, agi::vfr::END);
-			if ((closest > endF && time - cur->End <= beforeEnd) || (closest < endF && cur->End - time <= afterEnd))
-				cur->End = time;
-		}
-	}
-
-	c->ass->Commit(_("timing processor"), AssFile::COMMIT_DIAG_TIME);
 }
 }
 

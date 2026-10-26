@@ -72,7 +72,7 @@ class VisualToolVectorClip final : public VisualTool<VisualToolVectorClipDraggab
 	void Draw() override;
 
 public:
-	VisualToolVectorClip(VideoDisplay *parent, agi::Context *context);
+	VisualToolVectorClip(VisualToolHost *parent, agi::Context *context);
 	void SetToolbar(wxToolBar *tb) override;
 
 	void SetSubTool(int subtool) override;

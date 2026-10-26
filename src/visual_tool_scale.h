@@ -39,5 +39,5 @@ class VisualToolScale final : public VisualTool<VisualDraggableFeature> {
 	void DoRefresh() override;
 	void Draw() override;
 public:
-	VisualToolScale(VideoDisplay *parent, agi::Context *context);
+	VisualToolScale(VisualToolHost *parent, agi::Context *context);
 };

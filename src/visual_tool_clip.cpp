@@ -30,7 +30,7 @@
 
 #include <wx/colour.h>
 
-VisualToolClip::VisualToolClip(VideoDisplay *parent, agi::Context *context)
+VisualToolClip::VisualToolClip(VisualToolHost *parent, agi::Context *context)
 : VisualTool<ClipCorner>(parent, context)
 , cur_1(0, 0)
 , cur_2(video_size)

@@ -47,11 +47,11 @@
 #include "persist_location.h"
 #include "selection_controller.h"
 #include "subs_preview.h"
+#include "style_renamer.h"
 #include "utils.h"
 #include "validators.h"
 #include "ui_dialog.h"
 
-#include <libaegisub/of_type_adaptor.h>
 
 #include <algorithm>
 
@@ -62,68 +62,6 @@
 #include <wx/spinctrl.h>
 #include <wx/statbox.h>
 #include <wx/stattext.h>
-
-/// Style rename helper that walks a file searching for a style and optionally
-/// updating references to it
-class StyleRenamer {
-	agi::Context *c;
-	bool found_any = false;
-	bool do_replace = false;
-	std::string source_name;
-	std::string new_name;
-
-	/// Process a single override parameter to check if it's \r with this style name
-	static void ProcessTag(std::string const& tag, AssOverrideParameter* param, void *userData) {
-		StyleRenamer *self = static_cast<StyleRenamer*>(userData);
-		if (tag == "\\r" && param->GetType() == VariableDataType::TEXT && param->Get<std::string>() == self->source_name) {
-			if (self->do_replace)
-				param->Set(self->new_name);
-			else
-				self->found_any = true;
-		}
-	}
-
-	void Walk(bool replace) {
-		found_any = false;
-		do_replace = replace;
-
-		for (auto& diag : c->ass->Events) {
-			if (diag.Style == source_name) {
-				if (replace)
-					diag.Style = new_name;
-				else
-					found_any = true;
-			}
-
-			auto blocks = diag.ParseTags();
-			for (auto block : blocks | agi::of_type<AssDialogueBlockOverride>())
-				block->ProcessParameters(&StyleRenamer::ProcessTag, this);
-			if (replace)
-				diag.UpdateText(blocks);
-
-			if (found_any) return;
-		}
-	}
-
-public:
-	StyleRenamer(agi::Context *c, std::string source_name, std::string new_name)
-	: c(c)
-	, source_name(std::move(source_name))
-	, new_name(std::move(new_name))
-	{
-	}
-
-	/// Check if there are any uses of the original style name in the file
-	bool NeedsReplace() {
-		Walk(false);
-		return found_any;
-	}
-
-	/// Replace all uses of the original style name with the new one
-	void Replace() {
-		Walk(true);
-	}
-};
 
 DialogStyleEditor::DialogStyleEditor(wxWindow *parent, AssStyle *style, agi::Context *c, AssStyleStorage *store, std::string const& new_name, wxArrayString const& font_list)
 : wxDialog (parent, -1, _("Style Editor"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)

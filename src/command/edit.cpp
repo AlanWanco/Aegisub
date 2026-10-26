@@ -30,6 +30,7 @@
 // Aegisub Project http://www.aegisub.org/
 
 #include "command.h"
+#include "edit.h"
 
 #include "../ass_dialogue.h"
 #include "../ass_file.h"
@@ -52,10 +53,12 @@
 
 #include <libaegisub/address_of_adaptor.h>
 #include <libaegisub/ass/karaoke.h>
+#include <libaegisub/character_count.h>
 #include <libaegisub/of_type_adaptor.h>
 #include <libaegisub/string.h>
 
 #include <algorithm>
+#include <stdexcept>
 #include <boost/algorithm/string.hpp>
 #include <boost/range/algorithm.hpp>
 #include <boost/range/adaptor/filtered.hpp>
@@ -143,6 +146,7 @@ bool paste_over(wxWindow *parent, std::vector<bool>& pasteOverOptions, AssDialog
 	if (pasteOverOptions.empty()) {
 		if (!ShowPasteOverDialog(parent)) return false;
 		pasteOverOptions = OPT_GET("Tool/Paste Lines Over/Fields")->GetListBool();
+		pasteOverOptions.resize(11, false);
 	}
 
 	if (pasteOverOptions[0])  old_line.Comment   = new_line.Comment;
@@ -240,6 +244,14 @@ struct parsed_line {
 		if (blockn < 0)
 			orig_pos = 0;
 
+		// A multi-line selection can have different UTF-8 byte lengths. Always
+		// keep insertion offsets within the target line and on character boundaries.
+		auto const& target_text = line->Text.get();
+		orig_pos = std::clamp(orig_pos, 0, static_cast<int>(target_text.size()));
+		while (orig_pos > 0 && orig_pos < static_cast<int>(target_text.size()) &&
+			(static_cast<unsigned char>(target_text[orig_pos]) & 0xc0) == 0x80)
+			--orig_pos;
+
 		std::string insert(tag + value);
 		int shift = insert.size();
 		if (plain || blockn < 0) {
@@ -300,12 +312,17 @@ void update_lines(const agi::Context *c, wxString const& undo_msg, Func&& f) {
 	const auto active_line = c->selectionController->GetActiveLine();
 	const int sel_start = c->textSelectionController->GetSelectionStart();
 	const int sel_end = c->textSelectionController->GetSelectionEnd();
-	const int norm_sel_start = normalize_pos(active_line->Text, sel_start);
-	const int norm_sel_end = normalize_pos(active_line->Text, sel_end);
+	auto const& active_text = active_line->Text.get();
+	size_t const start_character = agi::CharacterCount(std::string_view(active_text).substr(0, sel_start), agi::IGNORE_NONE);
+	size_t const end_character = agi::CharacterCount(std::string_view(active_text).substr(0, sel_end), agi::IGNORE_NONE);
 	int active_sel_shift = 0;
 
 	for (const auto line : c->selectionController->GetSelectedSet()) {
-		int shift = f(line, sel_start, sel_end, norm_sel_start, norm_sel_end);
+		// Map logical characters, rather than reusing a byte offset from another
+		// language. Keep the active line's original byte selection unchanged.
+		int const line_start = line == active_line ? sel_start : agi::IndexOfCharacter(line->Text.get(), start_character);
+		int const line_end = line == active_line ? sel_end : agi::IndexOfCharacter(line->Text.get(), end_character);
+		int shift = f(line, line_start, line_end, normalize_pos(line->Text, line_start), normalize_pos(line->Text, line_end));
 		if (line == active_line)
 			active_sel_shift = shift;
 	}
@@ -1269,6 +1286,52 @@ struct edit_insert_original final : public Command {
 }
 
 namespace cmd {
+	void CopySelectedLines(agi::Context *context) {
+		copy_lines(context);
+	}
+
+	void CutSelectedLines(agi::Context *context) {
+		copy_lines(context);
+		delete_lines(context, _("cut lines"));
+	}
+
+	void PasteLines(agi::Context *context) {
+		auto pos = context->ass->iterator_to(*context->selectionController->GetActiveLine());
+		paste_lines(context, false, [=](std::unique_ptr<AssDialogue> line) -> AssDialogue * {
+			context->ass->Events.insert(pos, *line);
+			return line.release();
+		});
+	}
+
+	std::size_t PasteLinesOver(agi::Context *context, std::vector<bool> fields) {
+		if (fields.size() != 11) throw std::invalid_argument("choose the eleven paste-over fields");
+		if (std::none_of(fields.begin(), fields.end(), [](bool field) { return field; })) return 0;
+		auto const& selected = context->selectionController->GetSelectedSet();
+		auto active = context->selectionController->GetActiveLine();
+		if (selected.empty() || !active) throw std::invalid_argument("select subtitle rows to paste over");
+		std::vector<AssDialogue *> targets;
+		if (selected.size() > 1) targets = context->selectionController->GetSortedSelection();
+		else {
+			for (auto it = context->ass->iterator_to(*active); it != context->ass->Events.end(); ++it) targets.push_back(&*it);
+		}
+		std::vector<std::pair<AssDialogue *, AssDialogueBase>> changes;
+		std::string const data = GetClipboard();
+		boost::char_separator<char> separator("\r\n");
+		size_t index = 0;
+		for (auto value : boost::tokenizer<boost::char_separator<char>>(data, separator)) {
+			if (index == targets.size()) break;
+			auto source = get_dialogue(value);
+			auto target = targets[index++];
+			AssDialogue patch(static_cast<AssDialogueBase const&>(*target));
+			paste_over(nullptr, fields, *source, patch);
+			if (patch.GetEntryData() != target->GetEntryData()) changes.emplace_back(target, static_cast<AssDialogueBase const&>(patch));
+		}
+		for (auto const& [line, patch] : changes) static_cast<AssDialogueBase&>(*line) = patch;
+		if (!changes.empty()) context->ass->Commit(_("paste"), AssFile::COMMIT_DIAG_FULL);
+		OPT_SET("Tool/Paste Lines Over/Fields")->SetListBool(std::move(fields));
+		return changes.size();
+	}
+
 	void init_edit() {
 		reg(std::make_unique<edit_color_primary>());
 		reg(std::make_unique<edit_color_secondary>());

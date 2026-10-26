@@ -1,0 +1,258 @@
+// Copyright (c) 2026, Aegisub Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+#include "gpui_audio.h"
+
+#include "audio_controller.h"
+#include "audio_karaoke.h"
+#include "ass_dialogue.h"
+#include "audio_renderer.h"
+#include "audio_renderer_spectrum.h"
+#include "audio_renderer_waveform.h"
+#include "audio_timing.h"
+#include "include/aegisub/context.h"
+#include "options.h"
+#include "project.h"
+#include "selection_controller.h"
+#include "video_controller.h"
+
+#include <libaegisub/audio/provider.h>
+#include <libaegisub/ass/karaoke.h>
+#include <libaegisub/character_count.h>
+#include <libaegisub/cajun/writer.h>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <sstream>
+#include <wx/base64.h>
+#include <wx/bitmap.h>
+#include <wx/dcmemory.h>
+#include <wx/image.h>
+#include <wx/mstream.h>
+
+namespace {
+std::string encode(json::Object const& object) {
+	std::ostringstream stream;
+	agi::JsonWriter::Write(object, stream);
+	auto response = stream.str();
+	response.erase(std::remove(response.begin(), response.end(), '\n'), response.end());
+	return response;
+}
+
+int integer(json::Object const& object, const char *key, int lower, int upper) {
+	int64_t number = static_cast<json::Integer const&>(object.at(key));
+	if (number < lower || number > upper) throw std::invalid_argument("audio value is out of range");
+	return static_cast<int>(number);
+}
+
+bool flag(json::Object const& object, const char *key) {
+	auto value = object.find(key);
+	return value != object.end() && static_cast<json::Boolean const&>(value->second);
+}
+}
+
+namespace gpui {
+struct Audio::Impl {
+	agi::Context *context;
+	std::unique_ptr<AudioRendererBitmapProvider> bitmap_provider;
+	AudioRenderer renderer;
+	std::string mode;
+	uint64_t epoch = 1;
+	uint64_t render_revision = 1;
+	std::vector<agi::signal::Connection> option_connections;
+	agi::signal::Connection provider_connection;
+	agi::signal::Connection timing_connection;
+	agi::signal::Connection selection_connection;
+	std::vector<AudioMarker *> dragging;
+	uint64_t gesture = 0;
+
+	explicit Impl(agi::Context *context) : context(context) {
+		renderer.SetAmplitudeScale(1);
+		renderer.SetCacheMaxSize(32 * 1024 * 1024);
+		provider_connection = context->project->AddAudioProviderListener([this](agi::AudioProvider *provider) {
+			renderer.SetAudioProvider(provider);
+			dragging.clear(); ++gesture; ++epoch;
+		});
+		timing_connection = context->audioController->AddTimingControllerListener([this] {
+			dragging.clear(); ++gesture;
+		});
+		selection_connection = context->selectionController->AddSelectionListener([this] {
+			dragging.clear(); ++gesture;
+		});
+		renderer.SetAudioProvider(context->project->AudioProvider());
+		for (auto name : {"Colour/Audio Display/Spectrum", "Colour/Audio Display/Waveform", "Audio/Display/Waveform Style", "Audio/Renderer/Spectrum/Quality", "Audio/Renderer/Spectrum/FreqCurve", "Audio/Renderer/Spectrum/Memory Max"})
+			option_connections.emplace_back(OPT_SUB(name, [this](auto const&) { mode.clear(); ++render_revision; }));
+	}
+
+	json::Object State() {
+		json::Object result;
+		result["loaded"] = !!context->project->AudioProvider();
+		result["epoch"] = static_cast<int64_t>(epoch);
+		result["render_revision"] = static_cast<int64_t>(render_revision);
+		result["snap_distance"] = OPT_GET("Audio/Snap/Distance")->GetInt();
+		result["drag_sensitivity"] = OPT_GET("Audio/Start Drag Sensitivity")->GetInt();
+		auto provider = context->project->AudioProvider();
+		result["duration"] = provider ? static_cast<int64_t>(std::min<int64_t>(provider->GetNumSamples() * 1000 / provider->GetSampleRate(), std::numeric_limits<int>::max() - 1)) : 0;
+		result["decoded"] = provider ? static_cast<int64_t>(provider->GetDecodedSamples() * 1000 / provider->GetSampleRate()) : 0;
+		result["playing"] = context->audioController->IsPlaying();
+		result["position"] = context->audioController->GetPlaybackPosition();
+		result["rate"] = context->audioController->GetPlaybackRate();
+		result["volume"] = static_cast<int>(std::lround(context->audioController->GetVolume() * 100));
+		result["autocommit"] = OPT_GET("Audio/Auto/Commit")->GetBool();
+		result["autonext"] = OPT_GET("Audio/Next Line on Commit")->GetBool();
+		result["autoscroll"] = OPT_GET("Audio/Auto/Scroll")->GetBool();
+		result["snap"] = OPT_GET("Audio/Snap/Enable")->GetBool();
+		result["spectrum"] = OPT_GET("Audio/Spectrum")->GetBool();
+		result["karaoke"] = context->karaoke->IsEnabled();
+		json::Array syllables;
+		if (context->karaoke->IsEnabled()) {
+			auto active = context->selectionController->GetActiveLine();
+			result["pending_splits"] = active && context->karaoke->GetModel().GetText() != active->Text.get();
+			for (auto const& syllable : context->karaoke->GetModel()) {
+				json::Object syl;
+				syl["text"] = syllable.text;
+				syl["start"] = syllable.start_time;
+				syl["duration"] = syllable.duration;
+				syl["tag"] = syllable.tag_type;
+				syl["characters"] = static_cast<int64_t>(agi::CharacterCount(syllable.text, agi::IGNORE_NONE));
+				syllables.emplace_back(std::move(syl));
+			}
+		}
+		result["syllables"] = std::move(syllables);
+		json::Array markers;
+		if (auto timing = context->audioController->GetTimingController()) {
+			AudioMarkerVector positions;
+			timing->GetMarkers(timing->GetIdealVisibleTimeRange(), positions);
+			for (auto marker : positions) markers.emplace_back(marker->GetPosition());
+		}
+		result["markers"] = std::move(markers);
+		TimeRange range = context->audioController->GetPrimaryPlaybackRange();
+		result["start"] = range.begin();
+		result["end"] = range.end();
+		return result;
+	}
+
+	void SetMode(std::string const& next_mode) {
+		if (mode == next_mode) return;
+		std::unique_ptr<AudioRendererBitmapProvider> next;
+		if (next_mode == "spectrum") {
+			auto spectrum = std::make_unique<AudioSpectrumRenderer>(OPT_GET("Colour/Audio Display/Spectrum")->GetString());
+			int const quality = std::clamp<int>(OPT_GET("Audio/Renderer/Spectrum/Quality")->GetInt(), 0, 5);
+			int const widths[] = {8, 9, 9, 9, 10, 11};
+			int const distances[] = {8, 8, 7, 6, 6, 5};
+			spectrum->SetResolution(widths[quality], distances[quality]);
+			float const curves[] = {0.001f, 0.125f, 0.333f, 0.425f, 0.999f};
+			spectrum->set_reference_frequency_position(curves[std::clamp<int>(OPT_GET("Audio/Renderer/Spectrum/FreqCurve")->GetInt(), 0, 4)]);
+			next = std::move(spectrum);
+		}
+		else if (next_mode == "waveform")
+			next = std::make_unique<AudioWaveformRenderer>(OPT_GET("Colour/Audio Display/Waveform")->GetString());
+		else throw std::invalid_argument("audio mode must be waveform or spectrum");
+		renderer.SetCacheMaxSize(static_cast<size_t>(std::clamp<int64_t>(OPT_GET("Audio/Renderer/Spectrum/Memory Max")->GetInt(), 2, 1024)) * 1024 * 1024);
+		renderer.SetRenderer(next.get());
+		bitmap_provider = std::move(next);
+		mode = next_mode;
+	}
+};
+
+Audio::Audio(agi::Context *context) : impl(std::make_unique<Impl>(context)) { }
+Audio::~Audio() = default;
+
+std::string Audio::Snapshot() { return encode(impl->State()); }
+
+std::string Audio::Render(json::Object const& request) {
+	auto result = impl->State();
+	result["ok"] = true;
+	auto provider = impl->context->project->AudioProvider();
+	if (!provider) return encode(result);
+	int const width = integer(request, "width", 128, 2048);
+	int const height = integer(request, "height", 64, 512);
+	int const start = integer(request, "start", 0, std::numeric_limits<int>::max() - 1);
+	int const span = integer(request, "span", 100, 600000);
+	int const gain = integer(request, "gain", 10, 1000);
+	impl->SetMode(static_cast<std::string const&>(request.at("mode")));
+	impl->renderer.SetHeight(height);
+	impl->renderer.SetMillisecondsPerPixel(static_cast<double>(span) / width);
+	impl->renderer.SetAmplitudeScale(gain / 100.f);
+	wxBitmap bitmap(width, height, 24);
+	wxMemoryDC dc(bitmap);
+	impl->renderer.Render(dc, wxPoint(0, 0), static_cast<int>(static_cast<int64_t>(start) * width / span), width, AudioStyle_Normal);
+	dc.SelectObject(wxNullBitmap);
+	wxMemoryOutputStream stream;
+	if (!bitmap.ConvertToImage().SaveFile(stream, wxBITMAP_TYPE_PNG)) throw std::runtime_error("could not encode audio display");
+	std::vector<unsigned char> bytes(stream.GetSize());
+	stream.CopyTo(bytes.data(), bytes.size());
+	result["image"] = std::string(wxBase64Encode(bytes.data(), bytes.size()).utf8_str());
+	result["view_start"] = static_cast<int>(static_cast<int64_t>(start) * width / span) * static_cast<double>(span) / width;
+	result["span"] = span;
+	return encode(result);
+}
+
+std::string Audio::Interact(json::Object const& request) {
+	auto context = impl->context;
+	if (!context->project->AudioProvider()) throw std::invalid_argument("no audio is loaded");
+	auto timing = context->audioController->GetTimingController();
+	if (!timing) throw std::invalid_argument("no audio timing controller is available");
+	std::string const& action = request.at("action");
+	if (action == "down") {
+		int const ms = integer(request, "ms", 0, std::numeric_limits<int>::max() - 1);
+		int const sensitivity = integer(request, "sensitivity", 0, 10000);
+		int const snap = OPT_GET("Audio/Snap/Enable")->GetBool() ? integer(request, "snap", 0, 10000) : 0;
+		bool const right = flag(request, "right");
+		impl->dragging = right ? timing->OnRightClick(ms, flag(request, "control"), sensitivity, snap)
+			: timing->OnLeftClick(ms, flag(request, "control"), flag(request, "alt"), sensitivity, snap);
+		++impl->gesture;
+	}
+	else if (action == "drag" || action == "up") {
+		uint64_t const gesture = static_cast<json::Integer const&>(request.at("gesture"));
+		if (gesture != impl->gesture) throw std::invalid_argument("audio selection changed during this gesture");
+		int const ms = integer(request, "ms", 0, std::numeric_limits<int>::max() - 1);
+		int const snap = OPT_GET("Audio/Snap/Enable")->GetBool() ? integer(request, "snap", 0, 10000) : 0;
+		timing->OnMarkerDrag(impl->dragging, ms, snap);
+		if (action == "up") impl->dragging.clear();
+	}
+	else if (action == "karaoke") {
+		if (!context->selectionController->GetActiveLine()) throw std::invalid_argument("no line is selected");
+		context->karaoke->SetEnabled(flag(request, "enabled"));
+	}
+	else if (action == "karaoke_split" || action == "karaoke_merge" || action == "karaoke_accept" || action == "karaoke_cancel" || action == "karaoke_tag") {
+		if (!context->karaoke->IsEnabled()) throw std::invalid_argument("karaoke mode is not enabled");
+		impl->dragging.clear(); ++impl->gesture;
+		if (action == "karaoke_accept") context->karaoke->CommitSplit();
+		else if (action == "karaoke_cancel") context->karaoke->RevertSplit();
+		else if (action == "karaoke_tag") {
+			std::string const& tag = request.at("tag");
+			if (tag != "\\k" && tag != "\\kf" && tag != "\\ko") throw std::invalid_argument("invalid karaoke tag");
+			context->karaoke->ChangeTagType(tag);
+		}
+		else {
+			auto const& model = context->karaoke->GetModel();
+			int const index = integer(request, "syllable", action == "karaoke_merge" ? 1 : 0, static_cast<int>(model.size()) - 1);
+			size_t position = 0;
+			if (action == "karaoke_split") {
+				auto syllable = model.begin() + index;
+				int const character = integer(request, "character", 0, agi::CharacterCount(syllable->text, agi::IGNORE_NONE));
+				position = agi::IndexOfCharacter(syllable->text, character);
+			}
+			context->karaoke->EditSplit(index, position, action == "karaoke_merge");
+		}
+	}
+	else if (action == "snap") OPT_SET("Audio/Snap/Enable")->SetBool(flag(request, "enabled"));
+	else if (action == "play") context->audioController->PlayPrimaryRange();
+	else if (action == "stop") context->audioController->Stop();
+	else if (action == "commit") timing->Commit();
+	else if (action == "revert") { impl->dragging.clear(); timing->Revert(); }
+	else if (action == "volume") context->audioController->SetVolume(integer(request, "value", 0, 200) / 100.);
+	else if (action == "rate") {
+		double const rate = integer(request, "value", 50, 200) / 100.;
+		context->videoController->SetPlaybackRate(rate);
+	}
+	else throw std::invalid_argument("unknown audio action");
+	auto result = impl->State();
+	result["ok"] = true;
+	result["gesture"] = static_cast<int64_t>(impl->gesture);
+	return encode(result);
+}
+}

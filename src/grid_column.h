@@ -80,3 +80,6 @@ public:
 };
 
 std::vector<std::unique_ptr<GridColumn>> GetGridColumns();
+
+/// Subtitle grid text using the configured override-tag display mode.
+wxString GetGridDisplayText(AssDialogue const& line);

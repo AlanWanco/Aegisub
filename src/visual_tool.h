@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "visual_tool_host.h"
+
 #include "gl_wrap.h"
 #include "vector2d.h"
 #include "options.h"
@@ -46,8 +48,6 @@ class VisualToolBase {
 	void SetResolutions();
 	void OnCommit(int type);
 	void OnSeek(int new_frame);
-
-	void OnMouseCaptureLost(wxMouseCaptureLostEvent &);
 
 	/// @brief Get the dialogue line currently in the edit box
 	/// @return nullptr if the line is not active on the current frame
@@ -84,7 +84,7 @@ protected:
 	virtual void OnDoubleClick() { }
 
 	agi::Context *c;
-	VideoDisplay *parent;
+	VisualToolHost *parent;
 
 	bool holding = false; ///< Is a hold currently in progress?
 	AssDialogue *active_line = nullptr; ///< Active dialogue line; nullptr if it is not visible on the current frame
@@ -132,7 +132,7 @@ protected:
 	void SetOverride(AssDialogue* line, std::string const& tag, std::string const& value);
 	void SetSelectedOverride(std::string const& tag, std::string const& value);
 
-	VisualToolBase(VideoDisplay *parent, agi::Context *context);
+	VisualToolBase(VisualToolHost *parent, agi::Context *context);
 
 public:
 	/// Convert a point from video to script coordinates
@@ -149,6 +149,8 @@ public:
 	virtual void SetDisplayArea(int x, int y, int w, int h);
 	virtual void SetToolbar(wxToolBar *) { }
 	virtual void SetSubTool([[maybe_unused]] int subtool) { }
+	virtual void ToggleMove() { }
+	void CancelInteraction();
 	virtual int GetSubTool() { return 0; }
 	virtual ~VisualToolBase() = default;
 };
@@ -206,5 +208,5 @@ public:
 	/// @brief Constructor
 	/// @param parent The VideoDisplay to use for coordinate conversion
 	/// @param video Video and mouse information passing blob
-	VisualTool(VideoDisplay *parent, agi::Context *context);
+	VisualTool(VisualToolHost *parent, agi::Context *context);
 };

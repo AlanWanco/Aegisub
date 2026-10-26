@@ -168,4 +168,11 @@ public:
 
 	/// Enable or disable karaoke mode
 	void SetEnabled(bool enable);
+
+	/// Shared karaoke model and split workflow for other frontends.
+	agi::ass::Karaoke const& GetModel() const { return *kara; }
+	void EditSplit(size_t syllable, size_t position, bool remove);
+	void CommitSplit() { AcceptSplit(); }
+	void RevertSplit() { CancelSplit(); }
+	void ChangeTagType(std::string_view tag) { SetTagType(tag); }
 };

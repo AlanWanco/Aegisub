@@ -65,7 +65,7 @@ namespace agi {
 	class OptionValue;
 }
 
-class VideoDisplay final : public wxGLCanvas {
+class VideoDisplay final : public wxGLCanvas, public VisualToolHost {
 	/// Signals the display is connected to
 	std::vector<agi::signal::Connection> connections;
 
@@ -232,7 +232,12 @@ public:
 	~VideoDisplay();
 
 	/// @brief Render the currently visible frame
-	void Render();
+	void Render() override;
+	bool HasCapture() const override { return wxGLCanvas::HasCapture(); }
+	void CaptureMouse() override { wxGLCanvas::CaptureMouse(); }
+	void ReleaseMouse() override { wxGLCanvas::ReleaseMouse(); }
+	void SetFocus() override { wxGLCanvas::SetFocus(); }
+	void SetCrosshairCursor(bool hidden) override;
 
 	/// Refresh the high-contrast indicator for the active visual tool.
 	void RefreshVisualToolbar();

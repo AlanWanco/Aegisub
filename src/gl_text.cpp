@@ -33,6 +33,7 @@
 ///
 
 #include "gl_text.h"
+#include "visual_render.h"
 
 #include "compat.h"
 #include "utils.h"
@@ -245,6 +246,7 @@ void OpenGLText::SetColour(agi::Color col) {
 }
 
 void OpenGLText::Print(const std::string &text, int x, int y) {
+	if (auto capture = VisualRenderCapture::Current()) { capture->Text(text, x, y, fontSize, r, g, b, a); return; }
 	glEnable(GL_BLEND);
 	glEnable(GL_TEXTURE_2D);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -274,6 +276,13 @@ void OpenGLText::DrawString(const std::string &text, int x, int y) {
 }
 
 void OpenGLText::GetExtent(std::string const& text, int &w, int &h) {
+	if (VisualRenderCapture::Current()) {
+		wxBitmap bitmap(1, 1, 24);
+		wxMemoryDC dc(bitmap);
+		dc.SetFont(font);
+		dc.GetTextExtent(to_wx(text), &w, &h);
+		return;
+	}
 	w = h = 0;
 
 	for (char curChar : text) {

@@ -32,7 +32,7 @@
 
 int BUTTON_ID_BASE = 1300;
 
-VisualToolVectorClip::VisualToolVectorClip(VideoDisplay *parent, agi::Context *context)
+VisualToolVectorClip::VisualToolVectorClip(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualToolVectorClipDraggableFeature>(parent, context)
 , spline(*this)
 {
@@ -70,9 +70,8 @@ void VisualToolVectorClip::SetToolbar(wxToolBar *toolBar) {
 }
 
 void VisualToolVectorClip::SetSubTool(int subtool) {
-	if (toolBar == nullptr) {
-		throw agi::InternalError("Vector clip toolbar hasn't been set yet!");
-	}
+	if (subtool < 0 || subtool >= VCLIP_LAST) return;
+	if (!toolBar) { mode = subtool; return; }
 	// Manually enforce radio behavior as we want one selection in the bar
 	// rather than one per group
 	for (int i = 0; i < VCLIP_LAST; i++)

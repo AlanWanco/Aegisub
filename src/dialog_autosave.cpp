@@ -14,6 +14,7 @@
 //
 // Aegisub Project http://www.aegisub.org/
 
+#include "autosave.h"
 #include "compat.h"
 #include "format.h"
 #include "libresrc/libresrc.h"
@@ -21,7 +22,8 @@
 
 #include <libaegisub/path.h>
 
-#include <boost/range/adaptor/map.hpp>
+#include <algorithm>
+#include <wx/intl.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -35,17 +37,6 @@
 #include <wx/string.h>
 
 namespace {
-struct Version {
-	wxString filename;
-	wxDateTime date;
-	wxString display;
-};
-
-struct AutosaveFile {
-	wxString name;
-	std::vector<Version> versions;
-};
-
 class DialogAutosave {
 	wxDialog d;
 	std::vector<AutosaveFile> files;
@@ -53,7 +44,6 @@ class DialogAutosave {
 	wxListBox *file_list;
 	wxListBox *version_list;
 
-	void Populate(std::map<wxString, AutosaveFile> &files_map, std::string const& path, wxString const& filter, wxString const& name_fmt);
 	void OnSelectFile(wxCommandEvent&);
 
 public:
@@ -90,24 +80,10 @@ DialogAutosave::DialogAutosave(wxWindow *parent)
 	main_sizer->Add(btn_sizer, wxSizerFlags().Expand().Border(wxALL & ~wxTOP));
 	d.SetSizer(main_sizer);
 
-	std::map<wxString, AutosaveFile> files_map;
-	Populate(files_map, OPT_GET("Path/Auto/Save")->GetString(), ".AUTOSAVE.ass", "%s");
-	Populate(files_map, OPT_GET("Path/Auto/Backup")->GetString(), ".ORIGINAL.ass", _("%s [ORIGINAL BACKUP]"));
-	Populate(files_map, "?user/recovered", ".ass", _("%s [RECOVERED]"));
-
-	for (auto& file : files_map | boost::adaptors::map_values)
-		files.emplace_back(std::move(file));
-
-	for (auto& file : files) {
-		sort(begin(file.versions), end(file.versions),
-			[](Version const& a, Version const& b) { return a.date > b.date; });
-	}
-
-	sort(begin(files), end(files),
-		[](AutosaveFile const& a, AutosaveFile const& b) { return a.versions[0].date > b.versions[0].date; });
+	files = GetAutosaveFiles();
 
 	for (auto const& file : files)
-		file_list->Append(file.name);
+		file_list->Append(to_wx(file.name));
 
 	if (file_list->IsEmpty())
 		btn_sizer->GetAffirmativeButton()->Disable();
@@ -118,44 +94,13 @@ DialogAutosave::DialogAutosave(wxWindow *parent)
 	}
 }
 
-void DialogAutosave::Populate(std::map<wxString, AutosaveFile> &files_map, std::string const& path, wxString const& filter, wxString const& name_fmt) {
-	wxString directory(config::path->Decode(path).wstring());
-
-	wxDir dir;
-	if (!dir.Open(directory)) return;
-
-	wxString fn;
-	if (!dir.GetFirst(&fn, "*" + filter, wxDIR_FILES))
-		return;
-
-	do {
-		wxDateTime date;
-
-		wxString date_str;
-		wxString name = fn.Left(fn.size() - filter.size()).BeforeLast('.', &date_str);
-		if (!name)
-			name = date_str;
-		else {
-			if (!date.ParseFormat(date_str, "%Y-%m-%d-%H-%M-%S"))
-				name += "." + date_str;
-		}
-		if (!date.IsValid())
-			date = wxFileName(directory, fn).GetModificationTime();
-
-		auto it = files_map.find(name);
-		if (it == files_map.end())
-			it = files_map.insert({name, AutosaveFile{name, {}}}).first;
-		it->second.versions.push_back(Version{wxFileName(directory, fn).GetFullPath(), date, agi::wxformat(name_fmt, date.Format())});
-	} while (dir.GetNext(&fn));
-}
-
 void DialogAutosave::OnSelectFile(wxCommandEvent&) {
 	version_list->Clear();
 	int sel_file = file_list->GetSelection();
 	if (sel_file < 0) return;
 
 	for (auto const& version : files[sel_file].versions)
-		version_list->Append(version.display);
+		version_list->Append(to_wx(version.display));
 	version_list->SetSelection(0);
 }
 
@@ -166,8 +111,39 @@ std::string DialogAutosave::ChosenFile() const {
 	int sel_version = version_list->GetSelection();
 	if (sel_version < 0) return "";
 
-	return from_wx(files[sel_file].versions[sel_version].filename);
+	return files[sel_file].versions[sel_version].filename;
 }
+}
+
+std::vector<AutosaveFile> GetAutosaveFiles() {
+	std::map<wxString, AutosaveFile> files_map;
+	auto populate = [&](std::string const& path, wxString const& filter, wxString const& name_fmt, const char *kind) {
+		wxString directory(config::path->Decode(path).wstring());
+		wxDir dir;
+		if (!dir.Open(directory)) return;
+		wxString fn;
+		if (!dir.GetFirst(&fn, "*" + filter, wxDIR_FILES)) return;
+		do {
+			wxDateTime date;
+			wxString date_str;
+			wxString name = fn.Left(fn.size() - filter.size()).BeforeLast('.', &date_str);
+			if (!name) name = date_str;
+			else if (!date.ParseFormat(date_str, "%Y-%m-%d-%H-%M-%S")) name += "." + date_str;
+			if (!date.IsValid()) date = wxFileName(directory, fn).GetModificationTime();
+			auto it = files_map.try_emplace(name, AutosaveFile{from_wx(name), {}}).first;
+			it->second.versions.push_back({from_wx(wxFileName(directory, fn).GetFullPath()), from_wx(agi::wxformat(name_fmt, date.Format())), kind, date.IsValid() ? static_cast<int64_t>(date.GetTicks()) : 0});
+		} while (dir.GetNext(&fn));
+	};
+	populate(OPT_GET("Path/Auto/Save")->GetString(), ".AUTOSAVE.ass", "%s", "autosave");
+	populate(OPT_GET("Path/Auto/Backup")->GetString(), ".ORIGINAL.ass", _("%s [ORIGINAL BACKUP]"), "backup");
+	populate("?user/recovered", ".ass", _("%s [RECOVERED]"), "recovered");
+	std::vector<AutosaveFile> files;
+	for (auto& [name, file] : files_map) {
+		std::stable_sort(file.versions.begin(), file.versions.end(), [](auto const& a, auto const& b) { return a.timestamp > b.timestamp; });
+		files.push_back(std::move(file));
+	}
+	std::stable_sort(files.begin(), files.end(), [](auto const& a, auto const& b) { return a.versions[0].timestamp > b.versions[0].timestamp; });
+	return files;
 }
 
 std::string PickAutosaveFile(wxWindow *parent) {

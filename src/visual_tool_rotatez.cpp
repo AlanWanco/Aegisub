@@ -33,7 +33,7 @@
 static const float deg2rad = 3.1415926536f / 180.f;
 static const float rad2deg = 180.f / 3.1415926536f;
 
-VisualToolRotateZ::VisualToolRotateZ(VideoDisplay *parent, agi::Context *context)
+VisualToolRotateZ::VisualToolRotateZ(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualDraggableFeature>(parent, context)
 , org(new Feature)
 {

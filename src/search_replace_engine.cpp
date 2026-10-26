@@ -29,10 +29,14 @@
 #include <boost/locale/conversion.hpp>
 
 #include <wx/msgdlg.h>
+#include <unicode/normalizer2.h>
+#include <unicode/edits.h>
+#include <unicode/bytestream.h>
+#include <limits>
 
 namespace {
 static const size_t bad_pos = -1;
-static const MatchState bad_match{nullptr, 0, bad_pos};
+static const MatchState bad_match{nullptr, 0, bad_pos, {}};
 
 auto get_dialogue_field(SearchReplaceSettings::Field field) -> decltype(&AssDialogueBase::Text) {
 	switch (field) {
@@ -44,47 +48,46 @@ auto get_dialogue_field(SearchReplaceSettings::Field field) -> decltype(&AssDial
 	throw agi::InternalError("Bad field for search");
 }
 
-std::string const& get_normalized(const AssDialogue *diag, decltype(&AssDialogueBase::Text) field) {
-	auto& value = const_cast<AssDialogue*>(diag)->*field;
-	auto normalized = boost::locale::normalize(value.get());
-	if (normalized != value)
-		value = normalized;
-	return value.get();
-}
-
 typedef std::function<MatchState (const AssDialogue*, size_t)> matcher;
 
-class noop_accessor {
+class normalized_accessor {
 	boost::flyweight<std::string> AssDialogueBase::*field;
-	size_t start = 0;
-
-public:
-	noop_accessor(SearchReplaceSettings::Field f) : field(get_dialogue_field(f)) { }
-
-	std::string get(const AssDialogue *d, size_t s) {
-		start = s;
-		return get_normalized(d, field).substr(s);
-	}
-
-	MatchState make_match_state(size_t s, size_t e, boost::u32regex *r = nullptr) {
-		return {r, s + start, e + start};
-	}
-};
-
-class skip_tags_accessor {
-	boost::flyweight<std::string> AssDialogueBase::*field;
+	bool skip_tags;
+	icu::Edits edits;
 	agi::util::tagless_find_helper helper;
 
 public:
-	skip_tags_accessor(SearchReplaceSettings::Field f) : field(get_dialogue_field(f)) { }
+	size_t position = 0;
+	normalized_accessor(SearchReplaceSettings::Field field, bool skip_tags)
+	: field(get_dialogue_field(field)), skip_tags(skip_tags) { }
 
-	std::string get(const AssDialogue *d, size_t s) {
-		return helper.strip_tags(get_normalized(d, field), s);
+	std::string get(AssDialogue const* line, size_t offset) {
+		auto const& raw = (line->*field).get();
+		if (raw.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max()) || offset > raw.size())
+			throw agi::InvalidInputException("Search position is outside the text");
+		std::string normalized;
+		icu::StringByteSink sink(&normalized);
+		UErrorCode error = U_ZERO_ERROR;
+		auto normalizer = icu::Normalizer2::getNFCInstance(error);
+		if (U_FAILURE(error)) throw agi::InvalidInputException(u_errorName(error));
+		normalizer->normalizeUTF8(0, icu::StringPiece(raw.data(), static_cast<int32_t>(raw.size())), sink, &edits, error);
+		position = edits.getFineIterator().destinationIndexFromSourceIndex(static_cast<int32_t>(offset), error);
+		if (U_FAILURE(error)) throw agi::InvalidInputException(u_errorName(error));
+		if (!skip_tags) return normalized;
+		auto text = helper.strip_tags(normalized, 0);
+		agi::util::tagless_find_helper suffix;
+		position = text.size() - suffix.strip_tags(normalized, position).size();
+		return text;
 	}
 
-	MatchState make_match_state(size_t s, size_t e, boost::u32regex *r = nullptr) {
-		helper.map_range(s, e);
-		return {r, s, e};
+	MatchState make_match_state(size_t begin, size_t end, boost::u32regex *regex = nullptr) {
+		if (skip_tags) helper.map_range(begin, end);
+		UErrorCode error = U_ZERO_ERROR;
+		auto mapping = edits.getFineIterator();
+		begin = mapping.sourceIndexFromDestinationIndex(static_cast<int32_t>(begin), error);
+		end = mapping.sourceIndexFromDestinationIndex(static_cast<int32_t>(end), error);
+		if (U_FAILURE(error)) throw agi::InvalidInputException(u_errorName(error));
+		return {regex, begin, end, {}};
 	}
 };
 
@@ -100,9 +103,14 @@ matcher get_matcher(SearchReplaceSettings const& settings, Accessor&& a) {
 		return [=](const AssDialogue *diag, size_t start) mutable -> MatchState {
 			boost::smatch result;
 			auto const& str = a.get(diag, start);
-			if (!u32regex_search(str, result, regex, start > 0 ? boost::match_not_bol : boost::match_default))
+			auto flags = a.position ? boost::match_not_bol | boost::match_prev_avail : boost::match_default;
+			if (!u32regex_search(str.begin() + a.position, str.end(), result, regex, flags, str.begin()))
 				return bad_match;
-			return a.make_match_state(result.position(), result.position() + result.length(), &regex);
+			auto const begin = std::distance(str.begin(), result[0].first);
+			auto const end = std::distance(str.begin(), result[0].second);
+			auto match = a.make_match_state(begin, end, &regex);
+			match.replacement = result.format(settings.replace_with);
+			return match;
 		};
 	}
 
@@ -114,17 +122,18 @@ matcher get_matcher(SearchReplaceSettings const& settings, Accessor&& a) {
 		look_for = boost::locale::fold_case(look_for);
 
 	return [=](const AssDialogue *diag, size_t start) mutable -> MatchState {
-		const auto str = a.get(diag, start);
+		const auto full = a.get(diag, start);
+		const auto str = full.substr(a.position);
 		if (full_match_only && str.size() != look_for.size())
 			return bad_match;
 
 		if (match_case) {
 			const auto pos = str.find(look_for);
-			return pos == std::string::npos ? bad_match : a.make_match_state(pos, pos + look_for.size());
+			return pos == std::string::npos ? bad_match : a.make_match_state(pos + a.position, pos + a.position + look_for.size());
 		}
 
 		const auto pos = agi::util::ifind(str, look_for);
-		return pos.first == bad_pos ? bad_match : a.make_match_state(pos.first, pos.second);
+		return pos.first == bad_pos ? bad_match : a.make_match_state(pos.first + a.position, pos.second + a.position);
 	};
 }
 
@@ -139,9 +148,9 @@ Iterator circular_next(Iterator it, Container& c) {
 }
 
 std::function<MatchState (const AssDialogue*, size_t)> SearchReplaceEngine::GetMatcher(SearchReplaceSettings const& settings) {
-	if (settings.skip_tags)
-		return get_matcher(settings, skip_tags_accessor(settings.field));
-	return get_matcher(settings, noop_accessor(settings.field));
+	auto normalized = settings;
+	normalized.find = boost::locale::normalize(normalized.find);
+	return get_matcher(normalized, normalized_accessor(settings.field, settings.skip_tags));
 }
 
 SearchReplaceEngine::SearchReplaceEngine(agi::Context *c)
@@ -149,18 +158,16 @@ SearchReplaceEngine::SearchReplaceEngine(agi::Context *c)
 {
 }
 
-void SearchReplaceEngine::Replace(AssDialogue *diag, MatchState &ms) {
+void SearchReplaceEngine::ApplyReplacement(AssDialogue *diag, MatchState &ms, SearchReplaceSettings const& settings) {
 	auto& diag_field = diag->*get_dialogue_field(settings.field);
 	auto text = diag_field.get();
-
-	std::string replacement = settings.replace_with;
-	if (ms.re) {
-		auto to_replace = text.substr(ms.start, ms.end - ms.start);
-		replacement = u32regex_replace(to_replace, *ms.re, replacement, boost::format_first_only);
-	}
-
+	std::string const& replacement = ms.re ? ms.replacement : settings.replace_with;
 	diag_field = text.substr(0, ms.start) + replacement + text.substr(ms.end);
 	ms.end = ms.start + replacement.size();
+}
+
+void SearchReplaceEngine::Replace(AssDialogue *diag, MatchState &ms) {
+	ApplyReplacement(diag, ms, settings);
 }
 
 bool SearchReplaceEngine::FindReplace(bool replace) {
@@ -234,49 +241,43 @@ bool SearchReplaceEngine::FindReplace(bool replace) {
 	return true;
 }
 
-bool SearchReplaceEngine::ReplaceAll() {
-	if (!initialized)
-		return false;
-
+size_t SearchReplaceEngine::ReplaceAllMatches() {
+	if (!initialized || settings.find.empty()) return 0;
 	size_t count = 0;
-
 	auto matches = GetMatcher(settings);
-
-	auto const& sel = context->selectionController->GetSelectedSet();
-	bool selection_only = settings.limit_to == SearchReplaceSettings::Limit::SELECTED;
-
-	for (auto& diag : context->ass->Events) {
-		if (selection_only && !sel.count(&diag)) continue;
-		if (settings.ignore_comments && diag.Comment) continue;
-
-		if (settings.use_regex) {
-			if (MatchState ms = matches(&diag, 0)) {
-				auto& diag_field = diag.*get_dialogue_field(settings.field);
-				std::string const& text = diag_field.get();
-				count += std::distance(
-					boost::u32regex_iterator<std::string::const_iterator>(begin(text), end(text), *ms.re),
-					boost::u32regex_iterator<std::string::const_iterator>());
-				diag_field = u32regex_replace(text, *ms.re, settings.replace_with);
-			}
-			continue;
-		}
-
-		size_t pos = 0;
-		while (MatchState ms = matches(&diag, pos)) {
+	auto const& selection = context->selectionController->GetSelectedSet();
+	auto field = get_dialogue_field(settings.field);
+	std::vector<std::pair<AssDialogue *, std::string>> changes;
+	for (auto& line : context->ass->Events) {
+		if (settings.limit_to == SearchReplaceSettings::Limit::SELECTED && !selection.count(&line)) continue;
+		if (settings.ignore_comments && line.Comment) continue;
+		auto const& original = (line.*field).get();
+		std::string replacement;
+		size_t position = 0, previous = 0;
+		while (MatchState match = matches(&line, position)) {
 			++count;
-			Replace(&diag, ms);
-			pos = ms.end;
+			replacement.append(original, previous, match.start - previous);
+			replacement += match.re ? match.replacement : settings.replace_with;
+			previous = match.end;
+			position = match.end;
+			if (match.start == match.end) {
+				if (position >= original.size()) break;
+				do { ++position; } while (position < original.size() && (static_cast<unsigned char>(original[position]) & 0xc0) == 0x80);
+			}
 		}
+		replacement.append(original, previous, std::string::npos);
+		if (replacement != original) changes.emplace_back(&line, std::move(replacement));
 	}
+	for (auto& [line, value] : changes) line->*field = std::move(value);
+	if (!changes.empty()) context->ass->Commit(_("replace"), settings.field == SearchReplaceSettings::Field::TEXT ? AssFile::COMMIT_DIAG_TEXT : AssFile::COMMIT_DIAG_META);
+	return count;
+}
 
-	if (count > 0) {
-		context->ass->Commit(_("replace"), AssFile::COMMIT_DIAG_TEXT);
-		wxMessageBox(fmt_plural(count, "One match was replaced.", "%d matches were replaced.", (int)count));
-	}
-	else {
-		wxMessageBox(_("No matches found."));
-	}
-
+bool SearchReplaceEngine::ReplaceAll() {
+	if (!initialized) return false;
+	auto count = ReplaceAllMatches();
+	if (count) wxMessageBox(fmt_plural(count, "One match was replaced.", "%d matches were replaced.", static_cast<int>(count)));
+	else wxMessageBox(_("No matches found."));
 	return true;
 }
 

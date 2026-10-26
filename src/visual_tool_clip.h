@@ -49,5 +49,5 @@ class VisualToolClip final : public VisualTool<ClipCorner> {
 
 	void Draw() override;
 public:
-	VisualToolClip(VideoDisplay *parent, agi::Context *context);
+	VisualToolClip(VisualToolHost *parent, agi::Context *context);
 };

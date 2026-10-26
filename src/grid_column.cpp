@@ -346,21 +346,30 @@ public:
 	}
 };
 
-class GridColumnText final : public GridColumn {
-	const agi::OptionValue *override_mode;
-	wxString replace_char;
-
-	agi::signal::Connection replace_char_connection;
-
-public:
-	GridColumnText()
-	: override_mode(OPT_GET("Subtitle/Grid/Hide Overrides"))
-	, replace_char(to_wx(OPT_GET("Subtitle/Grid/Hide Overrides Char")->GetString()))
-	, replace_char_connection(OPT_SUB("Subtitle/Grid/Hide Overrides Char",
-		[&](agi::OptionValue const& v) { replace_char = to_wx(v.GetString()); }))
-	{
+wxString grid_display_text(AssDialogue const& line) {
+	std::string text;
+	auto const& raw = line.Text.get();
+	int const mode = OPT_GET("Subtitle/Grid/Hide Overrides")->GetInt();
+	if (!mode) text = raw;
+	else {
+		size_t start = 0;
+		while (start < raw.size()) {
+			auto open = raw.find('{', start);
+			if (open == raw.npos) { text.append(raw, start, raw.npos); break; }
+			text.append(raw, start, open - start);
+			if (mode == 1) text += OPT_GET("Subtitle/Grid/Hide Overrides Char")->GetString();
+			auto close = raw.find('}', open);
+			if (close == raw.npos) break;
+			start = close + 1;
+		}
 	}
+	wxString result = to_wx(text);
+	if (result.size() > 512) result = result.Left(512) + "...";
+	return result;
+}
 
+class GridColumnText final : public GridColumn {
+public:
 	COLUMN_HEADER(_("Text"))
 	COLUMN_DESCRIPTION(_("Text"))
 	bool Centered() const override { return false; }
@@ -368,32 +377,7 @@ public:
 	bool RefreshOnTextChange() const override { return true; }
 
 	wxString Value(const AssDialogue *d, const agi::Context *) const override {
-		wxString str;
-		int mode = override_mode->GetInt();
-
-		// Show overrides
-		if (mode == 0)
-			str = to_wx(d->Text);
-		// Hidden overrides
-		else {
-			auto const& text = d->Text.get();
-			str.reserve(text.size());
-			size_t start = 0, pos;
-			while ((pos = text.find('{', start)) != std::string::npos) {
-				str += to_wx(text.substr(start, pos - start));
-				if (mode == 1)
-					str += replace_char;
-				start = text.find('}', pos);
-				if (start != std::string::npos) ++start;
-			}
-			if (start != std::string::npos)
-				str += to_wx(text.substr(start));
-		}
-
-		// Cap length and set text
-		if (str.size() > 512)
-			str = str.Left(512) + "...";
-		return str;
+		return grid_display_text(*d);
 	}
 
 	int Width(const agi::Context *, WidthHelper &) const override {
@@ -423,4 +407,8 @@ std::vector<std::unique_ptr<GridColumn>> GetGridColumns() {
 	ret.push_back(make<GridColumnMarginVert>());
 	ret.push_back(make<GridColumnText>());
 	return ret;
+}
+
+wxString GetGridDisplayText(AssDialogue const& line) {
+	return grid_display_text(line);
 }

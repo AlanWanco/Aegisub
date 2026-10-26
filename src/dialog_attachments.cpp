@@ -49,34 +49,9 @@
 #include <wx/sizer.h>
 
 namespace {
-bool is_safe_attachment_filename(std::string const& filename) {
-	if (filename.empty() || filename == "." || filename == "..")
-		return false;
-	if (filename.find_first_of("/\\:") != std::string::npos)
-		return false;
-	if (std::any_of(filename.begin(), filename.end(), [](unsigned char c) { return c < 0x20; }))
-		return false;
-
-#ifdef _WIN32
-	if (filename.back() == ' ' || filename.back() == '.')
-		return false;
-
-	auto basename = filename.substr(0, filename.find('.'));
-	for (auto& c : basename) {
-		if (c >= 'a' && c <= 'z')
-			c -= 'a' - 'A';
-	}
-	if (basename == "CON" || basename == "PRN" || basename == "AUX" || basename == "NUL" || basename == "CLOCK$")
-		return false;
-	if (basename.size() == 4 && (basename.starts_with("COM") || basename.starts_with("LPT")) && basename[3] >= '1' && basename[3] <= '9')
-		return false;
-#endif
-
-	return true;
-}
 
 std::optional<agi::fs::path> attachment_destination(agi::fs::path const& directory, std::string const& filename) {
-	if (!is_safe_attachment_filename(filename))
+	if (!IsSafeAttachmentFilename(filename))
 		return {};
 
 	return directory / agi::fs::path(filename);
@@ -203,7 +178,7 @@ void DialogAttachments::OnExtract(wxCommandEvent &) {
 		path = wxDirSelector(_("Select the path to save the files to:"), to_wx(OPT_GET("Path/Fonts Collector Destination")->GetString())).utf8_str().data();
 	else {
 		auto default_filename = c->ass->Attachments[i].GetFileName();
-		if (!is_safe_attachment_filename(default_filename))
+		if (!IsSafeAttachmentFilename(default_filename))
 			default_filename = "attachment";
 		path = SaveFileSelector(
 			c,

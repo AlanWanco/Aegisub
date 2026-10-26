@@ -20,6 +20,7 @@
 ///
 
 #include "gl_wrap.h"
+#include "visual_render.h"
 
 #include <wx/colour.h>
 
@@ -87,6 +88,11 @@ public:
 	}
 
 	void Draw(GLenum mode, bool clear = true) {
+		if (auto capture = VisualRenderCapture::Current()) {
+			capture->Record(mode, dim, data.data(), data.size() / dim);
+			if (clear) data.clear();
+			return;
+		}
 		glEnableClientState(GL_VERTEX_ARRAY);
 		glVertexPointer(dim, GL_FLOAT, 0, &data[0]);
 		glDrawArrays(mode, 0, data.size() / dim);
@@ -117,7 +123,9 @@ static inline Vector2D interp(Vector2D p1, Vector2D p2, float t) {
 }
 
 void OpenGLWrapper::DrawDashedLine(Vector2D p1, Vector2D p2, float step) const {
-	step /= (p2 - p1).Len();
+	float const length = (p2 - p1).Len();
+	if (length == 0.f) return;
+	step /= length;
 	for (float t = 0; t < 1.f; t += 2 * step) {
 		DrawLine(interp(p1, p2, t), interp(p1, p2, t + step));
 	}
@@ -264,6 +272,9 @@ void OpenGLWrapper::SetFillColour(wxColour col, float alpha) {
 }
 
 void OpenGLWrapper::SetModeLine() const {
+	if (auto capture = VisualRenderCapture::Current()) {
+		capture->Style(line_r, line_g, line_b, line_a, line_width, false); return;
+	}
 	glColor4f(line_r, line_g, line_b, line_a);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -275,6 +286,9 @@ void OpenGLWrapper::SetModeLine() const {
 }
 
 void OpenGLWrapper::SetModeFill() const {
+	if (auto capture = VisualRenderCapture::Current()) {
+		capture->Style(fill_r, fill_g, fill_b, fill_a, line_width, true); return;
+	}
 	glColor4f(fill_r, fill_g, fill_b, fill_a);
 	if (fill_a == 1.f) glDisable(GL_BLEND);
 	else {
@@ -284,6 +298,7 @@ void OpenGLWrapper::SetModeFill() const {
 }
 
 void OpenGLWrapper::SetInvert() {
+	if (VisualRenderCapture::Current()) return;
 	glEnable(GL_COLOR_LOGIC_OP);
 	glLogicOp(GL_INVERT);
 
@@ -292,6 +307,7 @@ void OpenGLWrapper::SetInvert() {
 }
 
 void OpenGLWrapper::ClearInvert() {
+	if (VisualRenderCapture::Current()) return;
 	glDisable(GL_COLOR_LOGIC_OP);
 	smooth = true;
 }
@@ -306,6 +322,14 @@ void OpenGLWrapper::DrawLines(size_t dim, std::vector<float> const& lines) {
 }
 
 void OpenGLWrapper::DrawLines(size_t dim, std::vector<float> const& lines, size_t c_dim, std::vector<float> const& colors) {
+	if (auto capture = VisualRenderCapture::Current()) {
+		for (size_t i = 0; i + 1 < lines.size() / dim; i += 2) {
+			float alpha = c_dim > 3 ? (colors[i * c_dim + 3] + colors[(i + 1) * c_dim + 3]) / 2 : line_a;
+			capture->Style(colors[i * c_dim], colors[i * c_dim + 1], colors[i * c_dim + 2], alpha, line_width, false);
+			capture->Record(GL_LINES, dim, lines.data() + i * dim, 2);
+		}
+		return;
+	}
 	glShadeModel(GL_SMOOTH);
 	glEnableClientState(GL_COLOR_ARRAY);
 	glColorPointer(c_dim, GL_FLOAT, 0, &colors[0]);
@@ -316,6 +340,7 @@ void OpenGLWrapper::DrawLines(size_t dim, std::vector<float> const& lines, size_
 
 void OpenGLWrapper::DrawLines(size_t dim, const float *lines, size_t n) {
 	SetModeLine();
+	if (auto capture = VisualRenderCapture::Current()) { capture->Record(GL_LINES, dim, lines, n); return; }
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glVertexPointer(dim, GL_FLOAT, 0, lines);
 	glDrawArrays(GL_LINES, 0, n);
@@ -324,6 +349,7 @@ void OpenGLWrapper::DrawLines(size_t dim, const float *lines, size_t n) {
 
 void OpenGLWrapper::DrawLineStrip(size_t dim, std::vector<float> const& lines) {
 	SetModeLine();
+	if (auto capture = VisualRenderCapture::Current()) { capture->Record(GL_LINE_STRIP, dim, lines.data(), lines.size() / dim); return; }
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glVertexPointer(dim, GL_FLOAT, 0, &lines[0]);
 	glDrawArrays(GL_LINE_STRIP, 0, lines.size() / dim);
@@ -341,6 +367,13 @@ static void APIENTRY glMultiDrawArraysFallback(GLenum mode, const GLint *first, 
 #endif
 
 void OpenGLWrapper::DrawMultiPolygon(std::vector<float> const& points, std::vector<int> &start, std::vector<int> &count, Vector2D video_pos, Vector2D video_size, bool invert) {
+	if (auto capture = VisualRenderCapture::Current()) {
+		SetModeFill();
+		capture->Mask(points, start, count, video_pos.X(), video_pos.Y(), video_size.X(), video_size.Y(), invert);
+		SetModeLine();
+		for (size_t i = 0; i < start.size(); ++i) capture->Record(GL_LINE_LOOP, 2, points.data() + start[i] * 2, count[i]);
+		return;
+	}
 	GL_EXT(PFNGLMULTIDRAWARRAYSPROC, glMultiDrawArrays);
 
 	float real_line_a = line_a;
@@ -396,16 +429,33 @@ void OpenGLWrapper::DrawMultiPolygon(std::vector<float> const& points, std::vect
 }
 
 void OpenGLWrapper::SetOrigin(Vector2D origin) {
+	if (auto capture = VisualRenderCapture::Current()) {
+		capture->Multiply({1,0,0,0, 0,1,0,0, 0,0,1,0, origin.X(),origin.Y(),-1,1}); return;
+	}
 	PrepareTransform();
 	glTranslatef(origin.X(), origin.Y(), -1.f);
 }
 
 void OpenGLWrapper::SetScale(Vector2D scale) {
+	if (auto capture = VisualRenderCapture::Current()) {
+		capture->Multiply({scale.X()/100.,0,0,0, 0,scale.Y()/100.,0,0, 0,0,1,0, 0,0,0,1}); return;
+	}
 	PrepareTransform();
 	glScalef(scale.X() / 100.f, scale.Y() / 100.f, 1.f);
 }
 
 void OpenGLWrapper::SetRotation(float x, float y, float z, float zScale) {
+	if (auto capture = VisualRenderCapture::Current()) {
+		capture->Multiply({2500,0,0,0, 0,2500,0,0, 0,0,1,1, 0,0,2500,2500});
+		capture->Multiply({1,0,0,0, 0,1,0,0, 0,0,8./zScale,0, 0,0,0,1});
+		double cy = cos(y * deg2rad), sy = sin(y * deg2rad);
+		double cx = cos(x * deg2rad), sx = sin(x * deg2rad);
+		double cz = cos(z * deg2rad), sz = sin(z * deg2rad);
+		capture->Multiply({cy,0,sy,0, 0,1,0,0, -sy,0,cy,0, 0,0,0,1});
+		capture->Multiply({1,0,0,0, 0,cx,-sx,0, 0,sx,cx,0, 0,0,0,1});
+		capture->Multiply({cz,-sz,0,0, sz,cz,0,0, 0,0,1,0, 0,0,0,1});
+		return;
+	}
 	PrepareTransform();
 	float matrix[16] = { 2500, 0, 0, 0, 0, 2500, 0, 0, 0, 0, 1, 1, 0, 0, 2500, 2500 };
 	glMultMatrixf(matrix);
@@ -416,6 +466,7 @@ void OpenGLWrapper::SetRotation(float x, float y, float z, float zScale) {
 }
 
 void OpenGLWrapper::SetShear(float x, float y) {
+	if (auto capture = VisualRenderCapture::Current()) { capture->Multiply({1,y,0,0, x,1,0,0, 0,0,1,0, 0,0,0,1}); return; }
 	PrepareTransform();
 	float matrix[16] = {
 		1, y, 0, 0,
@@ -436,6 +487,7 @@ void OpenGLWrapper::PrepareTransform() {
 }
 
 void OpenGLWrapper::ResetTransform() {
+	if (auto capture = VisualRenderCapture::Current()) { capture->Reset(); return; }
 	if (transform_pushed) {
 		glPopMatrix();
 		transform_pushed = false;

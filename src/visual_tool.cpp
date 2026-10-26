@@ -24,7 +24,6 @@
 #include "options.h"
 #include "selection_controller.h"
 #include "video_controller.h"
-#include "video_display.h"
 #include "visual_tool_clip.h"
 #include "visual_tool_drag.h"
 #include "visual_tool_vector_clip.h"
@@ -36,7 +35,7 @@
 
 #include <algorithm>
 
-VisualToolBase::VisualToolBase(VideoDisplay *parent, agi::Context *context)
+VisualToolBase::VisualToolBase(VisualToolHost *parent, agi::Context *context)
 : c(context)
 , parent(parent)
 , frame_number(c->videoController->GetFrameN())
@@ -51,7 +50,6 @@ VisualToolBase::VisualToolBase(VideoDisplay *parent, agi::Context *context)
 	active_line = GetActiveDialogueLine();
 	connections.push_back(c->selectionController->AddActiveLineListener(&VisualToolBase::OnActiveLineChanged, this));
 	connections.push_back(c->videoController->AddSeekListener(&VisualToolBase::OnSeek, this));
-	parent->Bind(wxEVT_MOUSE_CAPTURE_LOST, &VisualToolBase::OnMouseCaptureLost, this);
 }
 
 void VisualToolBase::SetResolutions() {
@@ -91,11 +89,6 @@ void VisualToolBase::OnSeek(int new_frame) {
 	}
 }
 
-void VisualToolBase::OnMouseCaptureLost(wxMouseCaptureLostEvent &) {
-	holding = false;
-	dragging = false;
-}
-
 void VisualToolBase::OnActiveLineChanged(AssDialogue *new_line) {
 	if (!IsDisplayed(new_line))
 		new_line = nullptr;
@@ -133,6 +126,12 @@ AssDialogue* VisualToolBase::GetActiveDialogueLine() {
 	return nullptr;
 }
 
+void VisualToolBase::CancelInteraction() {
+	holding = dragging = false;
+	commit_id = -1;
+	if (parent->HasCapture()) parent->ReleaseMouse();
+}
+
 void VisualToolBase::SetCanvasSize(int w, int h) {
 	canvas_size = Vector2D(w, h);
 }
@@ -159,7 +158,7 @@ Vector2D VisualToolBase::FromScriptCoords(Vector2D point) const {
 }
 
 template<class FeatureType>
-VisualTool<FeatureType>::VisualTool(VideoDisplay *parent, agi::Context *context)
+VisualTool<FeatureType>::VisualTool(VisualToolHost *parent, agi::Context *context)
 : VisualToolBase(parent, context)
 {
 }

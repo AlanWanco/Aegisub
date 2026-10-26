@@ -22,6 +22,7 @@
 #include <string>
 
 #include <libaegisub/exception.h>
+#include <libaegisub/cajun/elements.h>
 
 namespace agi { struct Context; }
 
@@ -47,6 +48,9 @@ namespace menu {
 	DEFINE_EXCEPTION(Error, agi::Exception);
 	DEFINE_EXCEPTION(UnknownMenu, Error);
 	DEFINE_EXCEPTION(InvalidMenu, Error);
+
+	/// Effective user/platform menu configuration shared by the frontends.
+	json::Object const& GetConfig();
 
 	/// @brief Get the menu with the specified name as a wxMenuBar
 	/// @param name Name of the menu

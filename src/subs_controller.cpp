@@ -175,10 +175,10 @@ ProjectProperties SubsController::Load(agi::fs::path const& filename, const char
 
 	SetFileName(filename);
 
-	// Push the initial state of the file onto the undo stack
+	// Commit IDs remain monotonic even after undoing to an older revision.
 	undo_stack.clear();
 	redo_stack.clear();
-	autosaved_commit_id = saved_commit_id = commit_id + 1;
+	autosaved_commit_id = saved_commit_id = next_commit_id;
 	context->ass->Commit("", AssFile::COMMIT_NEW);
 
 	// Save backup of file
@@ -227,7 +227,7 @@ void SubsController::Save(agi::fs::path const& filename, const char *encoding) {
 void SubsController::Close() {
 	undo_stack.clear();
 	redo_stack.clear();
-	autosaved_commit_id = saved_commit_id = commit_id + 1;
+	autosaved_commit_id = saved_commit_id = next_commit_id;
 	filename.clear();
 	AssFile blank;
 	blank.swap(*context->ass);

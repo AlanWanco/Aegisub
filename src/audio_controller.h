@@ -186,6 +186,7 @@ public:
 	/// @brief Set the playback audio volume
 	/// @param volume The new amplification factor for the audio
 	void SetVolume(double volume);
+	double GetVolume() const { return volume; }
 
 	/// Change playback speed, preserving the active range and source position.
 	void SetPlaybackRate(double rate, int source_position_ms = -1);

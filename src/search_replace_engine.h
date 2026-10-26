@@ -26,6 +26,7 @@ class AssDialogue;
 struct MatchState {
 	boost::u32regex *re;
 	size_t start, end;
+	std::string replacement; // Regex replacement formatted with the original match context.
 
 	operator bool() const { return end != (size_t)-1; }
 };
@@ -68,6 +69,9 @@ public:
 	bool FindNext() { return FindReplace(false); }
 	bool ReplaceNext() { return FindReplace(true); }
 	bool ReplaceAll();
+	/// Apply all replacements atomically and return a count without opening result dialogs.
+	size_t ReplaceAllMatches();
+	static void ApplyReplacement(AssDialogue *line, MatchState &match, SearchReplaceSettings const& settings);
 
 	void Configure(SearchReplaceSettings const& new_settings);
 

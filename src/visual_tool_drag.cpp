@@ -28,7 +28,6 @@
 #include "options.h"
 #include "selection_controller.h"
 #include "video_controller.h"
-#include "video_display.h"
 
 #include <libaegisub/format.h>
 
@@ -41,7 +40,7 @@ static const DraggableFeatureType DRAG_ORIGIN = DRAG_BIG_TRIANGLE;
 static const DraggableFeatureType DRAG_START = DRAG_BIG_SQUARE;
 static const DraggableFeatureType DRAG_END = DRAG_BIG_CIRCLE;
 
-VisualToolDrag::VisualToolDrag(VideoDisplay *parent, agi::Context *context)
+VisualToolDrag::VisualToolDrag(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualToolDragDraggableFeature>(parent, context)
 {
 	connections.push_back(c->selectionController->AddSelectionListener(&VisualToolDrag::OnSelectedSetChanged, this));
@@ -60,6 +59,7 @@ void VisualToolDrag::SetToolbar(wxToolBar *tb) {
 }
 
 void VisualToolDrag::UpdateToggleButtons() {
+	if (!toolbar) return;
 	bool to_move = true;
 	if (active_line) {
 		Vector2D p1, p2;
@@ -75,7 +75,9 @@ void VisualToolDrag::UpdateToggleButtons() {
 	button_is_move = to_move;
 }
 
-void VisualToolDrag::OnSubTool(wxCommandEvent &) {
+void VisualToolDrag::OnSubTool(wxCommandEvent &) { ToggleMove(); }
+
+void VisualToolDrag::ToggleMove() {
 	// Toggle \move <-> \pos
 	VideoController *vc = c->videoController.get();
 	for (auto line : selection) {

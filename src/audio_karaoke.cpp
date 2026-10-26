@@ -306,11 +306,13 @@ void AudioKaraoke::OnMouse(wxMouseEvent &event) {
 		return;
 	}
 
-	if (click_will_remove_split)
-		kara->RemoveSplit(syl + (click_left && !click_right));
-	else
-		kara->AddSplit(syl, char_to_byte[split_pos] - 1);
+	EditSplit(syl + (click_will_remove_split && click_left && !click_right),
+		click_will_remove_split ? 0 : char_to_byte[split_pos] - 1, click_will_remove_split);
+}
 
+void AudioKaraoke::EditSplit(size_t syllable, size_t position, bool remove) {
+	if (remove) kara->RemoveSplit(syllable);
+	else kara->AddSplit(syllable, position);
 	SetDisplayText();
 	accept_button->Enable(true);
 	cancel_button->Enable(true);

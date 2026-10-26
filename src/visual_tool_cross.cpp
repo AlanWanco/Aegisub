@@ -23,20 +23,19 @@
 #include "gl_text.h"
 #include "include/aegisub/context.h"
 #include "selection_controller.h"
-#include "video_display.h"
 
 #include <libaegisub/color.h>
 #include <libaegisub/format.h>
 
-VisualToolCross::VisualToolCross(VideoDisplay *parent, agi::Context *context)
+VisualToolCross::VisualToolCross(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualDraggableFeature>(parent, context)
 , gl_text(std::make_unique<OpenGLText>())
 {
-	parent->SetCursor(wxCursor(wxCURSOR_BLANK));
+	parent->SetCrosshairCursor(true);
 }
 
 VisualToolCross::~VisualToolCross() {
-	parent->SetCursor(wxNullCursor);
+	parent->SetCrosshairCursor(false);
 }
 
 void VisualToolCross::OnDoubleClick() {
