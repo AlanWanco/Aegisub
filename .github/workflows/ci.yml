@@ -71,6 +71,7 @@ jobs:
               -Ddefault_library=static
               --force-fallback-for=zlib,harfbuzz,freetype2,fribidi
               -Dlibass:asm=disabled
+              -Ddav1d:enable_asm=false
               -Dfreetype2:harfbuzz=disabled
               -Dharfbuzz:freetype=disabled
               -Dharfbuzz:cairo=disabled
