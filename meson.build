@@ -97,6 +97,25 @@ else
 endif
 docdir = prefix / 'doc'
 
+# The GPUI workspace is a separate Rust crate; builders produce its executable
+# before running the C++ build and this installs it beside the host binary.
+# MESON_INSTALL_DESTDIR_PREFIX already includes DESTDIR and the install prefix.
+install_gpui = files('tools/install-gpui-frontend.py')
+# Install scripts receive MESON_INSTALL_DESTDIR_PREFIX, which already contains
+# DESTDIR and the install prefix, so pass only the relative bindir below it.
+# The macOS .app bundle maps bindir directly under Contents, so it stays ''
+# (installed at the prefix root) in that configuration.
+if host_machine.system() == 'darwin' and get_option('build_osx_bundle')
+  # bindir is an absolute path inside Contents/MacOS, outside the prefix.
+  bindir_relative = ''
+  bundle_bindir = bindir
+else
+  bindir_relative = get_option('bindir')
+  bundle_bindir = ''
+endif
+meson.add_install_script(install_gpui, meson.project_source_root(), bindir_relative, bundle_bindir)
+
+
 # MSVC sets this automatically with -MDd, but it has a different meaning on other platforms
 if get_option('debug') and host_machine.system() != 'windows'
     add_project_arguments('-D_DEBUG', language: 'cpp')

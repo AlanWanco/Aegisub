@@ -25,7 +25,7 @@ jobs:
       # branch in generated non-release version and artifact names.
       AEGISUB_BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
       # Same condition as windows-sign-executable
-      AEGISUB_SIGN_WINDOWS: ${{ matrix.config.os == 'windows-latest' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/ci/windows-signing') }}
+      AEGISUB_SIGN_WINDOWS: ${{ matrix.config.windows && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/ci/windows-signing') }}
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_C_CUSTOM_CACHE_BUSTER: ${{ matrix.config['sccache-key'] }}
 
@@ -37,6 +37,7 @@ jobs:
             os: windows-latest
             sccache-key: windows-x86_64-msvc
             msvc: true
+            windows: true
             devenv: |
               Import-Module "$env:VS\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
               Enter-VsDevShell -VsInstallPath $env:VS -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
@@ -55,6 +56,28 @@ jobs:
               -Dfribidi:tests=false
               -Dfribidi:docs=false
               -Dlibass:fontconfig=disabled
+          - name: Windows ARM64 Release
+            os: windows-11-arm
+            sccache-key: windows-arm64-msvc
+            msvc: true
+            windows: true
+            devenv: |
+              Import-Module "$env:VS\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+              Enter-VsDevShell -VsInstallPath $env:VS -SkipAutomaticLocation -DevCmdArguments "-arch=arm64 -host_arch=arm64"
+            buildtype: release
+            args: >-
+              -Ddefault_library=static
+              --force-fallback-for=zlib,harfbuzz,freetype2,fribidi
+              -Dfreetype2:harfbuzz=disabled
+              -Dharfbuzz:freetype=disabled
+              -Dharfbuzz:cairo=disabled
+              -Dharfbuzz:glib=disabled
+              -Dharfbuzz:gobject=disabled
+              -Dharfbuzz:tests=disabled
+              -Dharfbuzz:docs=disabled
+              -Dfribidi:tests=false
+              -Dfribidi:docs=false
+              -Dlibass:fontconfig=disabled
           - name: Ubuntu Debug
             os: ubuntu-latest
             sccache-key: linux-x86_64-gcc
@@ -63,12 +86,20 @@ jobs:
           - name: Ubuntu Release
             os: ubuntu-latest
             sccache-key: linux-x86_64-gcc
+            package_arch: linux-x86_64
+            buildtype: release
+            args: -Db_pch=false
+          - name: Ubuntu ARM64 Release
+            os: ubuntu-24.04-arm
+            sccache-key: linux-arm64-gcc
+            package_arch: linux-aarch64
             buildtype: release
             args: -Db_pch=false
           - name: macOS x86_64 Release
             os: macos-15
             sccache-key: macos-x86_64-clang
             cross_args: --cross-file tools/macos-release.ini --cross-file tools/macos-x86_64.ini --cross-file tools/sccache.ini
+            rust_target: x86_64-apple-darwin
             buildtype: release
             # sccache serves clang PCHs that fail mtime validation on a fresh checkout
             args: &macos_source_args >-
@@ -147,7 +178,7 @@ jobs:
           "VS=$vsPath" >> $env:GITHUB_ENV
 
       - name: Install dependencies (Windows)
-        if: matrix.config.os == 'windows-latest'
+        if: matrix.config.windows
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -204,10 +235,31 @@ jobs:
           sudo apt-get install -y lua5.1 liblua5.1-0-dev luarocks
           sudo luarocks --lua-version=5.1 install busted
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+
       - name: Configure
         run: |
           ${{ matrix.config.devenv }}
           meson setup build ${{ matrix.config.native_args }} ${{ matrix.config.cross_args }} ${{ matrix.config.args }} -Dbuildtype=${{ matrix.config.buildtype }} ${{ github.ref_type == 'tag' && '-Dofficial_release=true' || '' }}
+
+      # The GPUI front-end is a separate binary launched by the wxWidgets host
+      # through the local bridge, so every artifact must contain both.
+      - name: Build GPUI front-end (Rust)
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.config.rust_target }}
+        run: |
+          set -euo pipefail
+          cd gpui-prototype
+          args=(--release --locked)
+          if [ -n "${RUST_TARGET}" ]; then
+            rustup target add "${RUST_TARGET}"
+            args+=(--target "${RUST_TARGET}")
+          fi
+          cargo build "${args[@]}"
 
       - name: Build FFTW (MacOS)
         if: startsWith(matrix.config.os, 'macos-') && matrix.config.buildtype == 'release'
@@ -233,7 +285,7 @@ jobs:
       # The automation suite is registered at configure time only if the
       # busted probe succeeds, so make sure it can't silently drop out of CI
       - name: Check automation tests are registered
-        if: ${{ !startsWith(matrix.config.os, 'windows-') }}
+        if: ${{ !matrix.config.windows }}
         run: meson test -C build --list | grep automation
 
       # --suite limits this to our own tests, excluding those of subproject deps
@@ -256,7 +308,7 @@ jobs:
 
       # Windows artifacts
       - name: Generate Windows installer
-        if: matrix.config.os == 'windows-latest'
+        if: matrix.config.windows
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -264,14 +316,14 @@ jobs:
           meson compile win-installer -C build
 
       - name: Generate Windows portable installer
-        if: matrix.config.os == 'windows-latest'
+        if: matrix.config.windows
         run: |
           ${{ matrix.config.devenv }}
           cd build && ninja win-portable
 
       - name: Upload artifacts - win_installer
         uses: actions/upload-artifact@v7
-        if: matrix.config.os == 'windows-latest' && env.AEGISUB_SIGN_WINDOWS != 'true'
+        if: matrix.config.windows && env.AEGISUB_SIGN_WINDOWS != 'true'
         with:
           name: ${{ matrix.config.name }} - installer
           path: build/Aegisub-*.exe
@@ -279,7 +331,7 @@ jobs:
 
       - name: Upload artifacts - portable.zip
         uses: actions/upload-artifact@v7
-        if: matrix.config.os == 'windows-latest' && env.AEGISUB_SIGN_WINDOWS != 'true'
+        if: matrix.config.windows && env.AEGISUB_SIGN_WINDOWS != 'true'
         with:
           name: ${{ matrix.config.name }} - portable
           path: build/Aegisub-*-portable.zip
@@ -348,6 +400,20 @@ jobs:
         with:
           name: ${{ matrix.config.name }} - ad-hoc installer
           path: build/Aegisub-*.dmg
+          if-no-files-found: error
+
+      # Linux binary package (portable tarball next to the host binary)
+      - name: Generate Linux binary package
+        if: startsWith(matrix.config.os, 'ubuntu-') && matrix.config.buildtype == 'release'
+        run: |
+          tools/linux-package.sh build "${{ matrix.config.package_arch }}"
+
+      - name: Upload artifacts - linux binary
+        uses: actions/upload-artifact@v7
+        if: startsWith(matrix.config.os, 'ubuntu-') && matrix.config.buildtype == 'release'
+        with:
+          name: ${{ matrix.config.name }} - linux binary
+          path: build/Aegisub-*-linux-*.tar.gz
           if-no-files-found: error
 
       # Tarball

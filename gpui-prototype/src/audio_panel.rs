@@ -49,6 +49,7 @@ pub struct AudioState {
     #[serde(default)]
     pub end: i64,
     #[serde(default)]
+    #[allow(dead_code)] // Rendered by the full audio page only.
     pub rate: f64,
     #[serde(default)]
     pub volume: i64,
