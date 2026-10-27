@@ -65,9 +65,12 @@ jobs:
               Import-Module "$env:VS\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
               Enter-VsDevShell -VsInstallPath $env:VS -SkipAutomaticLocation -DevCmdArguments "-arch=arm64 -host_arch=arm64"
             buildtype: release
+            # Meson cannot find a compiler for libass' aarch64 assembly sources
+            # on this image, so the C fallbacks are used instead.
             args: >-
               -Ddefault_library=static
               --force-fallback-for=zlib,harfbuzz,freetype2,fribidi
+              -Dlibass:asm=disabled
               -Dfreetype2:harfbuzz=disabled
               -Dharfbuzz:freetype=disabled
               -Dharfbuzz:cairo=disabled
@@ -229,7 +232,7 @@ jobs:
         if: startsWith(matrix.config.os, 'ubuntu-')
         run: |
           sudo apt-get update
-          sudo apt-get install ninja-build build-essential libx11-dev libfreetype6-dev pkg-config libfontconfig1-dev libass-dev libasound2-dev libffms2-dev intltool libboost-all-dev libhunspell-dev libcurl4-openssl-dev libuchardet-dev libgtest-dev libgmock-dev libwxgtk3.2-dev libportal-gtk3-dev
+          sudo apt-get install ninja-build build-essential libx11-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfreetype6-dev pkg-config libfontconfig1-dev libass-dev libasound2-dev libffms2-dev intltool libboost-all-dev libhunspell-dev libcurl4-openssl-dev libuchardet-dev libgtest-dev libgmock-dev libwxgtk3.2-dev libportal-gtk3-dev
 
           # busted for the automation test suite (LuaJIT is Lua 5.1 to luarocks)
           sudo apt-get install -y lua5.1 liblua5.1-0-dev luarocks
