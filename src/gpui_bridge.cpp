@@ -153,10 +153,11 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 	gpui::Audio audio;
 	gpui::Visual visual;
 	gpui::Spelling spelling;
-	std::unique_ptr<wxSocketInitializer> sockets;
 	wxSocketServer *server = nullptr;
 	std::map<wxSocketBase *, Client> clients;
 	wxTimer frame_poll;
+	/// wxWidgets 3.3 added an RAII socket initializer; 3.2 needs manual management.
+	bool sockets_initialized = false;
 	unsigned short port = 0;
 	uint64_t video_epoch = 0;
 	uint64_t revision = 1;
@@ -208,7 +209,10 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		observed_provider = nullptr;
 		++video_epoch;
 		port = 0;
-		sockets.reset();
+		if (sockets_initialized) {
+			wxSocketBase::Shutdown();
+			sockets_initialized = false;
+		}
 	}
 
 	void OnFramePoll(wxTimerEvent&) {
@@ -870,21 +874,24 @@ GpuiBridge::~GpuiBridge() = default;
 
 bool GpuiBridge::Start() {
 	if (impl->server) return true;
-	impl->sockets = std::make_unique<wxSocketInitializer>();
+	wxSocketBase::Initialize();
+	impl->sockets_initialized = true;
 	wxIPV4address address;
 	address.LocalHost();
 	address.Service(static_cast<unsigned short>(0));
 	auto server = std::make_unique<wxSocketServer>(address, wxSOCKET_NOWAIT | wxSOCKET_REUSEADDR);
 	if (!server->IsOk()) {
 		LOG_E("gpui/bridge") << "Could not bind the local GPUI bridge socket";
-		impl->sockets.reset();
+		wxSocketBase::Shutdown();
+		impl->sockets_initialized = false;
 		return false;
 	}
 	wxIPV4address bound;
 	if (!server->GetLocal(bound) || bound.Service() == 0) {
 		LOG_E("gpui/bridge") << "Could not read the local GPUI bridge port";
 		server->Destroy();
-		impl->sockets.reset();
+		wxSocketBase::Shutdown();
+		impl->sockets_initialized = false;
 		return false;
 	}
 	impl->port = bound.Service();
