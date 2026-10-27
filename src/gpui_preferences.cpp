@@ -27,6 +27,7 @@
 #include <charconv>
 #include <cmath>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <wx/intl.h>
@@ -169,12 +170,15 @@ std::unique_ptr<agi::OptionValue> parse(Field const& field, std::string const& t
 namespace gpui {
 std::string Appearance() {
 	json::Object colors;
+	json::Array default_colors;
 	for (auto key : {"Colour/Subtitle Grid/Standard", "Colour/Subtitle Grid/Background/Background", "Colour/Subtitle Grid/Selection", "Colour/Subtitle Grid/Background/Selection", "Colour/Subtitle Grid/Background/Comment", "Colour/Subtitle Grid/Background/Selected Comment", "Colour/Subtitle Grid/Background/Inframe", "Colour/Subtitle Grid/Lines", "Colour/Subtitle Grid/Header", "Colour/Subtitle/Background", "Colour/Subtitle/Syntax/Normal", "Colour/Audio Display/Play Cursor", "Colour/Audio Display/Line boundary Start", "Colour/Audio Display/Line boundary End", "Colour/Audio Display/Line Boundary Inactive Line"}) {
 		auto color = ui::OptionColour(key);
+		if (std::string_view(key).starts_with("Colour/Subtitle") && OPT_GET(key)->IsDefault()) default_colors.emplace_back(key);
 		colors[key] = static_cast<int64_t>((uint32_t(color.Red()) << 24) | (uint32_t(color.Green()) << 16) | (uint32_t(color.Blue()) << 8) | color.Alpha());
 	}
 	json::Object result;
 	result["colors"] = std::move(colors);
+	result["default_colors"] = std::move(default_colors);
 	result["grid_font"] = OPT_GET("Subtitle/Grid/Font Face")->GetString();
 	result["grid_size"] = OPT_GET("Subtitle/Grid/Font Size")->GetInt();
 	result["edit_font"] = OPT_GET("Subtitle/Edit Box/Font Face")->GetString();

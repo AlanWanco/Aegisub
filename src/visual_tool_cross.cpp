@@ -27,6 +27,9 @@
 #include <libaegisub/color.h>
 #include <libaegisub/format.h>
 
+#include <wx/colour.h>
+#include <wx/intl.h>
+
 VisualToolCross::VisualToolCross(VisualToolHost *parent, agi::Context *context)
 : VisualTool<VisualDraggableFeature>(parent, context)
 , gl_text(std::make_unique<OpenGLText>())

@@ -117,7 +117,10 @@ inline wxColour ThemeColour(wxSystemColour index) {
 		case wxSYS_COLOUR_WINDOWTEXT:
 		case wxSYS_COLOUR_LISTBOXTEXT: return Text();
 		case wxSYS_COLOUR_HIGHLIGHT:
-		case wxSYS_COLOUR_LISTBOXHIGHLIGHT: return Accent();
+#if wxCHECK_VERSION(3, 3, 0)
+		case wxSYS_COLOUR_LISTBOXHIGHLIGHT:
+#endif
+			return Accent();
 		case wxSYS_COLOUR_HIGHLIGHTTEXT:
 		case wxSYS_COLOUR_LISTBOXHIGHLIGHTTEXT: return OnAccent();
 		case wxSYS_COLOUR_BTNFACE:
@@ -140,7 +143,10 @@ inline wxColour ThemeColour(wxSystemColour index) {
 		case wxSYS_COLOUR_BTNHIGHLIGHT:
 		case wxSYS_COLOUR_3DDKSHADOW:
 		case wxSYS_COLOUR_MENUHILIGHT:
-		case wxSYS_COLOUR_GRIDLINES: return Border();
+#if wxCHECK_VERSION(3, 3, 0)
+		case wxSYS_COLOUR_GRIDLINES:
+#endif
+			return Border();
 		case wxSYS_COLOUR_GRAYTEXT: return Muted();
 		case wxSYS_COLOUR_HOTLIGHT: return Focus();
 		case wxSYS_COLOUR_INFOTEXT: return Text();

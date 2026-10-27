@@ -43,6 +43,7 @@
 
 #include <wx/dialog.h>
 #include <wx/listbox.h>
+#include <wx/msgdlg.h>
 #include <wx/radiobox.h>
 #include <wx/radiobut.h>
 #include <wx/sizer.h>

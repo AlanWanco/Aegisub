@@ -34,6 +34,10 @@ mod video_timeline;
 use translation_panel::{TranslationPanel, TranslationState};
 use video_settings_panel::{VideoPage, VideoSettings, VideoSettingsPanel};
 mod visual_panel;
+mod workspace_theme;
+use gpui_kit::assets::IconName;
+use image::Frame as VideoImageFrame;
+use workspace_theme::Palette;
 
 use visual_panel::{VisualPanel, VisualReply, video_base_bounds, zoomed_video_bounds};
 
@@ -42,7 +46,13 @@ use video_timeline::VideoTimeline;
 use document_panels::{DocumentDetails, DocumentPanels, LibraryDetails};
 
 use command_catalog::{Catalog, populate_menu};
-use std::{collections::BTreeMap, net::SocketAddr, ops::Range, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    net::SocketAddr,
+    ops::Range,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context as _, Result, anyhow};
 use async_net::TcpStream;
@@ -53,9 +63,9 @@ use gpui_kit::{
     uniform_list,
 };
 use gpui_kit::{
-    base::Disableable,
+    base::{Disableable, Selectable},
     component::{
-        Root, Sizable, StyledExt, Theme, ThemeMode, WindowExt,
+        Icon, Root, Sizable, StyledExt, Theme, ThemeMode, WindowExt,
         button::{Button, ButtonVariants},
         input::{Input, InputEvent, InputState, Textarea, TextareaState},
         menu::DropdownMenu,
@@ -95,6 +105,8 @@ struct Appearance {
     #[serde(default)]
     colors: BTreeMap<String, u32>,
     #[serde(default)]
+    default_colors: Vec<String>,
+    #[serde(default)]
     grid_font: String,
     #[serde(default)]
     grid_size: i64,
@@ -112,11 +124,32 @@ struct Appearance {
 
 impl Appearance {
     fn color(&self, name: &str, fallback: gpui_kit::Hsla) -> gpui_kit::Hsla {
+        if self.default_colors.iter().any(|key| key == name) {
+            return fallback;
+        }
         self.colors
             .get(name)
             .map(|color| gpui_kit::rgba(*color).into())
             .unwrap_or(fallback)
     }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct PlaybackSnapshot {
+    #[serde(default)]
+    video: bool,
+    #[serde(default)]
+    playing: bool,
+    #[serde(default)]
+    frame: i64,
+    #[serde(default)]
+    video_epoch: u64,
+    #[serde(default)]
+    video_time: i64,
+    #[serde(default)]
+    audio_playing: bool,
+    #[serde(default)]
+    audio_position: i64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -227,6 +260,8 @@ struct FrameReply {
     frame: Option<i64>,
     request: Option<u64>,
     video: Option<bool>,
+    width: Option<u32>,
+    height: Option<u32>,
     image: Option<String>,
     error: Option<String>,
 }
@@ -277,6 +312,11 @@ impl Bridge {
         let value = self.call(json!({"op": "snapshot"})).await?;
         serde_json::from_value(value).context("invalid document snapshot")
     }
+
+    async fn playback(&self) -> Result<PlaybackSnapshot> {
+        let value = self.call(json!({"op": "playback"})).await?;
+        serde_json::from_value(value).context("invalid playback snapshot")
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -303,16 +343,79 @@ enum Panel {
     Commands,
 }
 
+impl Panel {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Subtitles => "字幕编辑",
+            Self::Audio => "音频调时",
+            Self::Visual => "视觉排版",
+            Self::Translation => "翻译助手",
+            Self::Styles => "样式管理",
+            Self::Styling => "配样式",
+            Self::Timing => "时间平移",
+            Self::Processor => "时间后处理",
+            Self::Resample => "重采样",
+            Self::Search => "查找替换",
+            Self::Spelling => "拼写检查",
+            Self::Paste => "覆盖粘贴",
+            Self::Project => "脚本属性",
+            Self::VideoSettings => "视频设置",
+            Self::Automation => "自动化脚本",
+            Self::Attachments => "附件管理",
+            Self::Files => "文件与恢复",
+            Self::Preferences => "偏好设置",
+            Self::Hotkeys => "快捷键",
+            Self::Commands => "全部命令",
+        }
+    }
+
+    fn icon(self) -> IconName {
+        match self {
+            Self::Subtitles => IconName::Captions,
+            Self::Audio => IconName::AudioLines,
+            Self::Visual => IconName::Frame,
+            Self::Translation => IconName::Languages,
+            Self::Styles => IconName::Palette,
+            Self::Styling => IconName::CaseSensitive,
+            Self::Timing => IconName::Clock3,
+            Self::Processor => IconName::Settings2,
+            Self::Resample => IconName::Maximize,
+            Self::Search => IconName::Search,
+            Self::Spelling => IconName::SpellCheck,
+            Self::Paste => IconName::Copy,
+            Self::Project => IconName::FileText,
+            Self::VideoSettings => IconName::Play,
+            Self::Automation => IconName::SquareTerminal,
+            Self::Attachments => IconName::Paperclip,
+            Self::Files => IconName::FolderOpen,
+            Self::Preferences => IconName::Settings,
+            Self::Hotkeys => IconName::Asterisk,
+            Self::Commands => IconName::Menu,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum WorkspaceResizeDrag {
+    SubtitleEditor {
+        start_y: gpui_kit::Pixels,
+        start_height: f32,
+    },
+}
+
 struct Workspace {
     bridge: Bridge,
     focus_handle: gpui_kit::FocusHandle,
     snapshot: Snapshot,
-    frame_image: Option<Arc<Image>>,
+    frame_image: Option<Arc<gpui_kit::RenderImage>>,
     frame_image_frame: i64,
     frame_request_inflight: bool,
     frame_request_generation: u64,
     video_epoch: u64,
     list_scroll_handle: gpui_kit::UniformListScrollHandle,
+    subtitle_filter_cache: Option<(u64, String, String, Arc<Vec<Line>>)>,
+    subtitle_editor_height: f32,
+    layout_drag: Option<WorkspaceResizeDrag>,
     editor: Entity<TextareaState>,
     search: Entity<InputState>,
     command_search: Entity<InputState>,
@@ -346,6 +449,7 @@ struct Workspace {
     editor_dirty_line: i64,
     pending_text_selection: Option<[usize; 2]>,
     active_panel: Panel,
+    sidebar_collapsed: Option<bool>,
     selected_line: i64,
     status: String,
     _editor_events: Subscription,
@@ -353,6 +457,22 @@ struct Workspace {
 }
 
 impl Workspace {
+    fn clear_frame_image(&mut self, _cx: &mut Context<Self>) {
+        self.frame_image.take();
+        self.frame_image_frame = -1;
+    }
+
+    fn replace_frame_image(&mut self, image: Arc<gpui_kit::RenderImage>, frame: i64) {
+        self.frame_image = Some(image);
+        self.frame_image_frame = frame;
+    }
+
+    fn clear_audio_image(&mut self, cx: &mut Context<Self>) {
+        if let Some(image) = self.audio.image.take() {
+            image.remove_asset(cx);
+        }
+    }
+
     fn new(bridge: Bridge, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let editor = cx.new(|cx| TextareaState::new(window, cx));
         let editor_for_events = editor.clone();
@@ -510,6 +630,9 @@ impl Workspace {
             frame_request_generation: 0,
             video_epoch: 0,
             list_scroll_handle: gpui_kit::UniformListScrollHandle::new(),
+            subtitle_filter_cache: None,
+            subtitle_editor_height: 210.,
+            layout_drag: None,
             editor,
             search,
             command_search,
@@ -543,6 +666,7 @@ impl Workspace {
             editor_dirty_line: -1,
             pending_text_selection: None,
             active_panel: Panel::Subtitles,
+            sidebar_collapsed: None,
             selected_line: -1,
             status: "已连接当前 Aegisub 文档".into(),
             _editor_events: editor_events,
@@ -561,6 +685,7 @@ impl Workspace {
                 None,
                 cx,
             );
+            workspace_theme::apply(cx);
         }
         let command_state_changed = snapshot.revision != self.snapshot.revision
             || snapshot.selected != self.snapshot.selected
@@ -582,7 +707,7 @@ impl Workspace {
         if snapshot.audio.epoch != self.snapshot.audio.epoch
             || snapshot.audio.loaded != self.snapshot.audio.loaded
         {
-            self.audio.image = None;
+            self.clear_audio_image(cx);
             self.audio.requested = None;
             self.audio.gesture = None;
             self.audio.dragging = false;
@@ -614,7 +739,6 @@ impl Workspace {
         if active_changed {
             self.cancel_visual_drag(cx);
         }
-        let frame_changed = snapshot.frame != self.snapshot.frame;
         if media_changed {
             self.visual.queue.clear();
             self.visual.commands.clear();
@@ -625,17 +749,17 @@ impl Workspace {
                 .canvas_bounds
                 .replace(gpui_kit::Bounds::default());
         }
+        if snapshot.revision != self.snapshot.revision {
+            self.subtitle_filter_cache = None;
+        }
         if media_changed || snapshot.revision != self.snapshot.revision {
-            self.frame_image = None;
-            self.frame_image_frame = -1;
+            self.clear_frame_image(cx);
             self.frame_request_generation += 1;
             self.frame_request_inflight = false;
         }
         self.video_epoch = snapshot.video_epoch;
-        if !media_changed && frame_changed && self.frame_image_frame >= 0 {
-            self.frame_image = None;
-            self.frame_image_frame = -1;
-        }
+        // Keep the last complete frame visible until its replacement arrives.
+        // Clearing it here makes playback flash whenever the bridge is late.
         if active_changed {
             self.editor_line_id = -1;
             self.editor_dirty_line = -1;
@@ -647,8 +771,7 @@ impl Workspace {
             }
         }
         if !snapshot.video {
-            self.frame_image = None;
-            self.frame_image_frame = -1;
+            self.clear_frame_image(cx);
             self.frame_request_generation += 1;
             self.frame_request_inflight = false;
         }
@@ -659,7 +782,7 @@ impl Workspace {
         if details_changed || document_changed || media_changed {
             self.refresh_document(cx);
         }
-        if self.active_panel == Panel::Audio {
+        if matches!(self.active_panel, Panel::Audio | Panel::Subtitles) {
             self.refresh_audio(cx);
         }
         if self.active_panel == Panel::Attachments
@@ -677,6 +800,18 @@ impl Workspace {
             self.visual.drawn = Some(visual_state);
             self.queue_visual(json!({"action":"draw"}), cx);
         }
+        cx.notify();
+    }
+
+    fn apply_playback(&mut self, playback: PlaybackSnapshot, cx: &mut Context<Self>) {
+        if self.snapshot.video != playback.video || self.video_epoch != playback.video_epoch {
+            return;
+        }
+        self.snapshot.frame = playback.frame;
+        self.snapshot.video_time = playback.video_time;
+        self.snapshot.playing = playback.playing;
+        self.snapshot.audio.playing = playback.audio_playing;
+        self.snapshot.audio.position = playback.audio_position;
         cx.notify();
     }
 
@@ -1289,7 +1424,11 @@ impl Workspace {
                         && state.render_revision == view.snapshot.audio.render_revision
                         && request.1 == view.audio.view_start && request.2 == view.audio.span
                         && request.3 == view.audio.mode && request.4 == view.audio.gain => {
-                        view.audio.image = image;
+                        if let Some(image) = image {
+                            if let Some(previous) = view.audio.image.replace(image) {
+                                previous.remove_asset(cx);
+                            }
+                        }
                         let _ = start;
                     }
                     Ok(_) => {},
@@ -2627,8 +2766,7 @@ impl Workspace {
 
     fn refresh_frame(&mut self, cx: &mut Context<Self>) {
         if !self.snapshot.video {
-            self.frame_image = None;
-            self.frame_image_frame = -1;
+            self.clear_frame_image(cx);
             self.frame_request_inflight = false;
             self.frame_request_generation += 1;
             return;
@@ -2683,22 +2821,58 @@ impl Workspace {
                         }
                         return;
                     };
-                    let bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded) {
+                    let bytes = match cx.background_executor().spawn(async move {
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
+                    }).await {
                         Ok(bytes) => bytes,
                         Err(error) => {
                             if let Some(view) = weak.upgrade() { let _ = view.update(cx, |view, cx| { if view.frame_request_generation == generation { view.frame_request_inflight = false; view.status = format!("视频帧解码失败：{error}"); cx.notify(); } }); }
                             return;
                         }
                     };
-                    let image = Arc::new(Image::from_bytes(gpui_kit::ImageFormat::Png, bytes));
+                    let width = reply.width.unwrap_or(0);
+                    let height = reply.height.unwrap_or(0);
                     let frame = reply.frame.unwrap_or(-1);
+                    let decoded = cx.background_executor().spawn(async move {
+                        let decoder = image::ImageReader::with_format(
+                            std::io::Cursor::new(bytes),
+                            image::ImageFormat::Jpeg,
+                        )
+                        .into_decoder()?;
+                        let rgba = image::DynamicImage::from_decoder(decoder)?.into_rgba8();
+                        let mut bgra = rgba.into_raw();
+                        for pixel in bgra.chunks_exact_mut(4) {
+                            pixel.swap(0, 2);
+                        }
+                        let image = image::RgbaImage::from_raw(width, height, bgra)
+                            .context("video frame dimensions do not match its pixel data")?;
+                        Ok::<_, anyhow::Error>(Arc::new(gpui_kit::RenderImage::new(vec![
+                            VideoImageFrame::new(image),
+                        ])))
+                    }).await;
+                    let image = match decoded {
+                        Ok(image) => image,
+                        Err(error) => {
+                            if let Some(view) = weak.upgrade() {
+                                let _ = view.update(cx, |view, cx| {
+                                    if view.frame_request_generation == generation {
+                                        view.frame_request_inflight = false;
+                                        view.status = format!("视频帧解码失败：{error}");
+                                        cx.notify();
+                                    }
+                                });
+                            }
+                            return;
+                        }
+                    };
                     if let Some(view) = weak.upgrade() {
                         let _ = view.update(cx, |view, cx| {
                             if view.frame_request_generation != generation { return; }
                             view.frame_request_inflight = false;
-                            if view.snapshot.video && view.snapshot.frame == frame && view.video_epoch == request_epoch {
-                                view.frame_image = Some(image);
-                                view.frame_image_frame = frame;
+                            if view.snapshot.video && view.video_epoch == request_epoch
+                                && (view.snapshot.frame == frame
+                                    || (view.snapshot.playing && frame >= view.frame_image_frame)) {
+                                view.replace_frame_image(image, frame);
                                 cx.notify();
                             } else {
                                 view.refresh_frame(cx);
@@ -2923,100 +3097,132 @@ impl Workspace {
     }
 
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let dark = Theme::global(cx).is_dark();
-        let background = if dark { rgb(0x17191d) } else { rgb(0xf3f4f6) };
-        let muted = if dark { rgb(0x858b96) } else { rgb(0x69717d) };
+        let p = Palette::current(cx);
+        let filename = std::path::Path::new(&self.snapshot.file)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("未命名字幕");
+        let enabled = |name: &str| {
+            self.catalog
+                .command(name)
+                .is_some_and(|command| command.can_invoke())
+        };
         div()
             .h_flex()
+            .h(px(58.))
             .flex_shrink_0()
-            .gap_1()
-            .px_3()
-            .py_2()
-            .bg(background)
+            .gap_2()
+            .px_4()
+            .items_center()
+            .bg(p.surface)
             .border_b_1()
-            .border_color(if dark { rgb(0x30343b) } else { rgb(0xdde1e7) })
+            .border_color(p.divider)
+            .child(
+                div()
+                    .h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(px(16.))
+                            .font_semibold()
+                            .child(self.active_panel.label()),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .min_w_0()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(11.))
+                            .text_color(p.muted)
+                            .child(Icon::new(IconName::FileText).size(px(12.)).flex_shrink_0())
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(filename.to_owned()),
+                            ),
+                    ),
+            )
             .child(
                 Button::new("open-subtitles")
-                    .label("打开字幕")
+                    .icon(IconName::FolderOpen)
+                    .label("打开")
                     .ghost()
                     .small()
                     .on_click(cx.listener(|view, _, _, cx| view.pick_file("subtitle", cx))),
             )
             .child(
                 Button::new("save-subtitles")
+                    .icon(IconName::Save)
                     .label("保存")
                     .ghost()
                     .small()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.invoke(json!({"op":"command", "name":"subtitle/save"}), cx)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"subtitle/save"}), cx)
                     })),
             )
+            .child(div().w(px(1.)).h(px(20.)).mx_1().bg(p.divider))
             .child(
                 Button::new("undo")
-                    .label("撤销")
+                    .icon(IconName::Undo2)
+                    .accessibility_label("撤销")
+                    .tooltip("撤销")
                     .ghost()
                     .small()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
+                    .disabled(!enabled("edit/undo"))
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
                     })),
             )
             .child(
                 Button::new("redo")
-                    .label("重做")
+                    .icon(IconName::Redo2)
+                    .accessibility_label("重做")
+                    .tooltip("重做")
                     .ghost()
                     .small()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.invoke(json!({"op":"command", "name":"edit/redo"}), cx)
+                    .disabled(!enabled("edit/redo"))
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"edit/redo"}), cx)
                     })),
             )
-            .child(div().w(px(1.)).h(px(22.)).mx_2().bg(if dark {
-                rgb(0x343942)
-            } else {
-                rgb(0xd3d8df)
-            }))
+            .child(div().w(px(1.)).h(px(20.)).mx_1().bg(p.divider))
             .child(
                 Button::new("open-video")
-                    .label("打开视频")
+                    .icon(IconName::Play)
+                    .label("视频")
                     .ghost()
                     .small()
                     .on_click(cx.listener(|view, _, _, cx| view.pick_file("video", cx))),
             )
             .child(
-                Button::new("play-video")
-                    .label(if self.snapshot.playing {
-                        "暂停"
-                    } else {
-                        "播放"
-                    })
-                    .primary()
-                    .small()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if this.snapshot.playing {
-                            this.invoke(json!({"op":"command", "name":"video/stop"}), cx);
-                        } else {
-                            this.invoke(json!({"op":"command", "name":"video/play"}), cx);
-                        }
-                    })),
-            )
-            .child(
-                Button::new("refresh-frame")
-                    .label("刷新帧")
-                    .ghost()
-                    .small()
-                    .disabled(!self.snapshot.video)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.frame_image = None;
-                        this.frame_image_frame = -1;
-                        this.refresh_frame(cx);
-                    })),
-            )
-            .child(div().flex_1())
-            .child(
                 div()
-                    .text_sm()
-                    .text_color(muted)
+                    .ml_2()
+                    .h_flex()
+                    .gap_1()
+                    .items_center()
+                    .text_size(px(11.))
+                    .text_color(if self.snapshot.modified {
+                        p.warning
+                    } else {
+                        p.success
+                    })
+                    .child(
+                        Icon::new(if self.snapshot.modified {
+                            IconName::Asterisk
+                        } else {
+                            IconName::CircleCheck
+                        })
+                        .size(px(12.)),
+                    )
                     .child(if self.snapshot.modified {
-                        "未保存更改"
+                        "未保存"
                     } else {
                         "已保存"
                     }),
@@ -3024,7 +3230,15 @@ impl Workspace {
     }
 
     fn render_legacy_menus(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut bar = div().h_flex().gap_1().px_3().py_1().flex_shrink_0();
+        let p = Palette::current(cx);
+        let mut bar = div()
+            .h_flex()
+            .items_center()
+            .gap_1()
+            .px_3()
+            .h(px(32.))
+            .bg(p.surface)
+            .flex_shrink_0();
         for entry in self.catalog.menu("main") {
             if entry.special == "window" || entry.submenu == "main/window" {
                 continue;
@@ -3032,7 +3246,20 @@ impl Workspace {
             let catalog = self.catalog.clone();
             let weak = cx.weak_entity();
             let refresh_weak = weak.clone();
-            let label = entry.text.replace('&', "");
+            let original_label = entry.text.replace('&', "");
+            let label = match original_label.as_str() {
+                "File" => "文件",
+                "Edit" => "编辑",
+                "View" => "视图",
+                "Subtitle" => "字幕",
+                "Timing" => "时间",
+                "Video" => "视频",
+                "Audio" => "音频",
+                "Automation" => "自动化",
+                "Help" => "帮助",
+                _ => &original_label,
+            }
+            .to_owned();
             let submenu = entry.submenu.clone();
             let entries = if entry.special == "automation" {
                 vec![entry]
@@ -3061,9 +3288,10 @@ impl Workspace {
                     }),
             );
         }
-        bar.child(
+        bar.child(div().flex_1()).child(
             Button::new("command-browser")
-                .label("全部命令…")
+                .icon(IconName::Search)
+                .label("搜索命令")
                 .ghost()
                 .small()
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -3116,50 +3344,94 @@ impl Workspace {
     }
 
     fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = Palette::current(cx);
         let mut panel = div()
             .id("line-properties")
             .v_flex()
-            .w(px(286.))
-            .flex_shrink_0()
+            .flex_1()
+            .min_w_0()
             .min_h_0()
-            .p_3()
-            .gap_2()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .bg(p.surface)
+            .p_4()
+            .gap_3()
             .overflow_y_scrollbar()
             .child(
                 div()
-                    .font_semibold()
-                    .child(format!("行属性 · 已选 {} 行", self.snapshot.selected.len())),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child("修改的字段应用到选中行；时间格式为 时:分:秒.百分秒。"),
+                    .h_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        Icon::new(IconName::Settings2)
+                            .size(px(15.))
+                            .text_color(p.muted),
+                    )
+                    .child(div().text_sm().font_semibold().flex_1().child("行属性"))
+                    .child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded(px(4.))
+                            .bg(p.raised)
+                            .text_size(px(11.))
+                            .text_color(p.muted)
+                            .child(format!("{} 行", self.snapshot.selected.len())),
+                    ),
             );
-        for (key, label) in [
-            ("start", "开始"),
-            ("end", "结束"),
-            ("layer", "层"),
-            ("style", "样式"),
-            ("actor", "角色"),
-            ("effect", "效果"),
-            ("margin_left", "左边距"),
-            ("margin_right", "右边距"),
-            ("margin_vertical", "垂直边距"),
+        for (title, fields) in [
+            ("时间", vec![("start", "开始"), ("end", "结束")]),
+            (
+                "字幕",
+                vec![
+                    ("style", "样式"),
+                    ("actor", "角色"),
+                    ("layer", "图层"),
+                    ("effect", "效果"),
+                ],
+            ),
+            (
+                "边距",
+                vec![
+                    ("margin_left", "左"),
+                    ("margin_right", "右"),
+                    ("margin_vertical", "垂直"),
+                ],
+            ),
         ] {
             panel = panel.child(
                 div()
-                    .h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(div().w(px(64.)).text_sm().child(label))
-                    .child(
-                        Input::new(&self.property_inputs[key])
-                            .id(format!("property-{key}"))
-                            .flex_1()
-                            .small(),
-                    ),
+                    .mt_1()
+                    .text_size(px(11.))
+                    .font_semibold()
+                    .text_color(p.muted)
+                    .child(title),
             );
+            for (key, label) in fields {
+                panel = panel.child(
+                    div()
+                        .h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .w(px(38.))
+                                .flex_shrink_0()
+                                .text_size(px(12.))
+                                .text_color(p.muted)
+                                .child(label),
+                        )
+                        .child(
+                            Input::new(&self.property_inputs[key])
+                                .id(format!("property-{key}"))
+                                .aria_label(label)
+                                .flex_1()
+                                .min_w_0()
+                                .small(),
+                        ),
+                );
+            }
         }
         let commented = self
             .snapshot
@@ -3167,132 +3439,236 @@ impl Workspace {
             .iter()
             .find(|line| line.id == self.selected_line)
             .is_some_and(|line| line.comment);
-        panel.child(Button::new("apply-line-fields").label("应用修改字段").primary().small().disabled(self.selected_line < 0).on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))))
-            .child(Button::new("toggle-comment").label(if commented { "改为对白" } else { "改为注释" }).small().disabled(self.selected_line < 0).on_click(cx.listener(move |view, _, _, cx| {
-                view.invoke(json!({"op":"line_fields", "ids":view.snapshot.selected, "fields":{"comment":!commented}}), cx);
-            })))
-            .child(Button::new("save-as").label("另存为…").small().on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx))))
-            .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child("音频面板可调时；排版面板提供视频画布工具。"))
+        panel.child(div().h(px(1.)).my_1().bg(p.divider))
+            .child(Button::new("apply-line-fields").icon(IconName::Check).label("应用修改").primary().small()
+                .disabled(self.selected_line < 0 || !self.properties_dirty).on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))))
+            .child(Button::new("toggle-comment").label(if commented { "改为对白" } else { "改为注释" }).ghost().small()
+                .disabled(self.selected_line < 0).on_click(cx.listener(move |view, _, _, cx| {
+                    view.invoke(json!({"op":"line_fields", "ids":view.snapshot.selected, "fields":{"comment":!commented}}), cx);
+                })))
+            .child(Button::new("save-as").icon(IconName::Save).label("另存为…").ghost().small()
+                .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx))))
+            .child(div().text_size(px(11.)).text_color(p.muted).child("字段修改应用到所选字幕。"))
     }
 
-    fn render_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let dark = Theme::global(cx).is_dark();
-        let background = if dark { rgb(0x202329) } else { rgb(0xffffff) };
-        let active = if dark { rgb(0x303640) } else { rgb(0xe9eef6) };
-        let panels = [
-            (Panel::Subtitles, "字幕"),
-            (Panel::Styles, "样式"),
-            (Panel::Project, "项目"),
-            (Panel::VideoSettings, "视频"),
-            (Panel::Audio, "音频"),
-            (Panel::Visual, "排版"),
-            (Panel::Translation, "翻译"),
-            (Panel::Styling, "配样式"),
-            (Panel::Timing, "时间"),
-            (Panel::Automation, "脚本"),
-            (Panel::Resample, "重采样"),
-            (Panel::Processor, "后处理"),
-            (Panel::Search, "检索"),
-            (Panel::Spelling, "拼写"),
-            (Panel::Attachments, "附件"),
-            (Panel::Files, "文件"),
-            (Panel::Preferences, "设置"),
-            (Panel::Commands, "命令"),
-        ];
-        let mut row = div()
-            .h_flex()
-            .flex_wrap()
-            .gap_1()
-            .px_3()
-            .bg(background)
-            .border_b_1()
-            .border_color(if dark { rgb(0x30343b) } else { rgb(0xe2e5e9) });
-        for (panel, label) in panels {
-            let is_active = panel == self.active_panel;
-            row = row.child(
-                div()
-                    .id(format!("panel-{}", label))
-                    .px_3()
-                    .py_2()
-                    .rounded_md()
-                    .cursor_pointer()
-                    .bg(if is_active { active } else { background })
-                    .text_color(if is_active {
-                        Theme::global(cx).foreground
-                    } else {
-                        Theme::global(cx).muted_foreground
-                    })
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.focus_handle.focus(window, cx);
-                        if this.active_panel == Panel::Visual && panel != Panel::Visual {
-                            this.visual.dragging = false;
-                            this.visual.queue.clear();
-                            this.queue_visual(json!({"action":"cancel"}), cx);
-                        }
-                        this.visual.pan_last = None;
-                        this.active_panel = panel;
-                        if panel == Panel::Commands {
-                            this.refresh_catalog(cx);
-                        }
-                        if panel == Panel::Styles || panel == Panel::Project {
-                            this.refresh_document(cx);
-                        }
-                        if panel == Panel::Styles {
-                            this.refresh_library(cx);
-                        }
-                        if panel == Panel::VideoSettings {
-                            this.video_settings_request("state", cx);
-                        }
-                        if panel == Panel::Preferences {
-                            this.preferences_request(json!({"action":"state"}), cx);
-                        }
-                        if panel == Panel::Files {
-                            this.file_tools_request(json!({"action":"state"}), cx);
-                        }
-                        if panel == Panel::Attachments {
-                            this.attachment_request(json!({"action":"state"}), cx);
-                        }
-                        if panel == Panel::Spelling {
-                            this.spelling_request(json!({"action":"state"}), cx);
-                        }
-                        if panel == Panel::Search {
-                            this.find_panel.focus_pending = true;
-                            this.search_request("state", cx);
-                        }
-                        if panel == Panel::Processor {
-                            this.processor_request("state", cx);
-                        }
-                        if panel == Panel::Resample {
-                            this.resample_request("state", cx);
-                        }
-                        if panel == Panel::Automation {
-                            this.automation_request(json!({"action":"state"}), cx);
-                        }
-                        if panel == Panel::Timing {
-                            this.shift_times_request("state", cx);
-                        }
-                        if panel == Panel::Audio {
-                            this.refresh_audio(cx);
-                        }
-                        if panel == Panel::Translation {
-                            this.translation_action("start", cx);
-                        }
-                        if panel == Panel::Styling {
-                            this.styling.line_id = -1;
-                            this.styling.focus_pending = true;
-                            this.refresh_document(cx);
-                            this.styling_action("start", None, cx);
-                        }
-                        if panel == Panel::Visual {
-                            this.visual.drawn = None;
-                            this.queue_visual(json!({"action":"draw"}), cx);
-                        }
-                        cx.notify();
-                    }))
-                    .child(label),
-            );
+    fn activate_panel(&mut self, panel: Panel, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_handle.focus(window, cx);
+        if self.active_panel == Panel::Visual && panel != Panel::Visual {
+            self.visual.dragging = false;
+            self.visual.queue.clear();
+            self.queue_visual(json!({"action":"cancel"}), cx);
         }
-        row
+        self.visual.pan_last = None;
+        self.active_panel = panel;
+        if panel == Panel::Commands {
+            self.refresh_catalog(cx);
+        }
+        if panel == Panel::Styles || panel == Panel::Project {
+            self.refresh_document(cx);
+        }
+        if panel == Panel::Styles {
+            self.refresh_library(cx);
+        }
+        if panel == Panel::VideoSettings {
+            self.video_settings_request("state", cx);
+        }
+        if panel == Panel::Preferences {
+            self.preferences_request(json!({"action":"state"}), cx);
+        }
+        if panel == Panel::Hotkeys {
+            self.hotkey_request(json!({"action":"state"}), cx);
+        }
+        if panel == Panel::Paste {
+            self.paste_request(false, cx);
+        }
+        if panel == Panel::Files {
+            self.file_tools_request(json!({"action":"state"}), cx);
+        }
+        if panel == Panel::Attachments {
+            self.attachment_request(json!({"action":"state"}), cx);
+        }
+        if panel == Panel::Spelling {
+            self.spelling_request(json!({"action":"state"}), cx);
+        }
+        if panel == Panel::Search {
+            self.find_panel.focus_pending = true;
+            self.search_request("state", cx);
+        }
+        if panel == Panel::Processor {
+            self.processor_request("state", cx);
+        }
+        if panel == Panel::Resample {
+            self.resample_request("state", cx);
+        }
+        if panel == Panel::Automation {
+            self.automation_request(json!({"action":"state"}), cx);
+        }
+        if panel == Panel::Timing {
+            self.shift_times_request("state", cx);
+        }
+        if panel == Panel::Audio {
+            self.refresh_audio(cx);
+        }
+        if panel == Panel::Translation {
+            self.translation_action("start", cx);
+        }
+        if panel == Panel::Styling {
+            self.styling.line_id = -1;
+            self.styling.focus_pending = true;
+            self.refresh_document(cx);
+            self.styling_action("start", None, cx);
+        }
+        if panel == Panel::Visual {
+            self.visual.drawn = None;
+            self.queue_visual(json!({"action":"draw"}), cx);
+        }
+        cx.notify();
+    }
+
+    fn render_menu(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = Palette::current(cx);
+        let compact = self
+            .sidebar_collapsed
+            .unwrap_or(f32::from(window.viewport_size().width) < 1150.);
+        let toggle_label = if compact {
+            "展开侧栏"
+        } else {
+            "折叠侧栏"
+        };
+        let mut navigation = div()
+            .id("workspace-navigation")
+            .v_flex()
+            .min_h_0()
+            .flex_1()
+            .gap_0p5()
+            .px_2()
+            .py_3()
+            .overflow_y_scrollbar();
+        for (group, panels) in [
+            (
+                "工作区",
+                vec![
+                    Panel::Subtitles,
+                    Panel::Audio,
+                    Panel::Visual,
+                    Panel::Translation,
+                ],
+            ),
+            (
+                "字幕工具",
+                vec![
+                    Panel::Styles,
+                    Panel::Styling,
+                    Panel::Timing,
+                    Panel::Processor,
+                    Panel::Resample,
+                    Panel::Search,
+                    Panel::Spelling,
+                    Panel::Paste,
+                ],
+            ),
+            (
+                "项目与设置",
+                vec![
+                    Panel::Project,
+                    Panel::VideoSettings,
+                    Panel::Automation,
+                    Panel::Attachments,
+                    Panel::Files,
+                    Panel::Preferences,
+                    Panel::Hotkeys,
+                    Panel::Commands,
+                ],
+            ),
+        ] {
+            navigation = navigation.child(
+                div()
+                    .mt_3()
+                    .mb_1()
+                    .px_2()
+                    .text_size(px(11.))
+                    .text_color(p.muted)
+                    .child(if compact { "" } else { group }),
+            );
+            for panel in panels {
+                let selected = self.active_panel == panel;
+                let content = div()
+                    .h_flex()
+                    .w_full()
+                    .gap_2()
+                    .items_center()
+                    .when(compact, |v| v.justify_center())
+                    .child(Icon::new(panel.icon()).size(px(15.)))
+                    .when(!compact, |v| {
+                        v.child(div().flex_1().text_size(px(13.)).child(panel.label()))
+                    });
+                let button = Button::new(format!("panel-{}", panel.label()))
+                    .ghost()
+                    .small()
+                    .selected(selected)
+                    .accessibility_label(panel.label())
+                    .tooltip(panel.label())
+                    .w_full()
+                    .h(px(30.))
+                    .px_2()
+                    .child(content)
+                    .on_click(cx.listener(move |view, _, window, cx| {
+                        view.activate_panel(panel, window, cx)
+                    }));
+                navigation = navigation.child(button);
+            }
+        }
+        div()
+            .v_flex()
+            .h_full()
+            .min_h_0()
+            .overflow_hidden()
+            .w(px(if compact { 60. } else { 164. }))
+            .flex_shrink_0()
+            .bg(p.canvas)
+            .border_r_1()
+            .border_color(p.divider)
+            .child(
+                div()
+                    .h_flex()
+                    .h(px(64.))
+                    .px_3()
+                    .gap_2()
+                    .items_center()
+                    .justify_between()
+                    .when(compact, |v| v.justify_center())
+                    .flex_shrink_0()
+                    .when(!compact, |v| {
+                        v.child(
+                            div()
+                                .v_flex()
+                                .child(div().font_semibold().text_size(px(15.)).child("Aegisub"))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(p.muted)
+                                        .child("字幕工作台"),
+                                ),
+                        )
+                    })
+                    .child(
+                        Button::new("toggle-sidebar")
+                            .icon(if compact {
+                                IconName::PanelLeftOpen
+                            } else {
+                                IconName::PanelLeftClose
+                            })
+                            .accessibility_label(toggle_label)
+                            .tooltip(toggle_label)
+                            .toggled(!compact)
+                            .ghost()
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.sidebar_collapsed = Some(!compact);
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(navigation)
     }
 
     fn cancel_visual_drag(&mut self, cx: &mut Context<Self>) {
@@ -3387,7 +3763,13 @@ impl Workspace {
         cx.stop_propagation();
     }
 
-    fn render_player(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_player(
+        &self,
+        window: &Window,
+        side_by_side: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let p = Palette::current(cx);
         let aspect = self.snapshot.aspect as f32;
         let zoom = self.visual.zoom;
         let pan = self.visual.pan;
@@ -3395,19 +3777,24 @@ impl Workspace {
             self.snapshot.video_height * self.snapshot.video_window_zoom / window.scale_factor();
         let display_size = (self.snapshot.video && !self.visual.fit_video)
             .then(|| size(px(height * aspect), px(height)));
+        let available_height = f32::from(window.viewport_size().height);
         let view_height = if self.visual.fit_video || !self.snapshot.video {
-            if self.active_panel == Panel::Visual {
-                410.
+            if side_by_side {
+                (available_height - 510.).clamp(180., 300.)
+            } else if self.active_panel == Panel::Visual {
+                (available_height - 350.).max(160.)
             } else {
-                220.
+                (available_height - 620.).clamp(90., 240.)
             }
         } else {
-            let max_height = f32::from(window.viewport_size().height)
-                - if self.active_panel == Panel::Visual {
-                    260.
-                } else {
-                    510.
-                };
+            let reserved_height = if side_by_side {
+                510.
+            } else if self.active_panel == Panel::Visual {
+                350.
+            } else {
+                620.
+            };
+            let max_height = available_height - reserved_height;
             height.clamp(80., max_height.max(80.))
         };
         let image = self.frame_image.clone();
@@ -3430,113 +3817,182 @@ impl Workspace {
         } else {
             "未加载视频".into()
         };
-        let mut controls = div()
+        let weak = cx.weak_entity();
+        let fit = self.visual.fit_video;
+        let window_zoom = self.snapshot.video_window_zoom;
+        let controls = div()
             .h_flex()
             .flex_wrap()
             .gap_1()
             .items_center()
             .px_2()
-            .py_1()
-            .bg(Theme::global(cx).background)
-            .text_color(Theme::global(cx).foreground);
-        if self.snapshot.video {
-            for (name, label) in [
-                ("video/zoom/out", "缩小"),
-                ("video/zoom/50", "50%"),
-                ("video/zoom/100", "100%"),
-                ("video/zoom/200", "200%"),
-                ("video/zoom/in", "放大"),
-            ] {
-                controls = controls.child(
-                    Button::new(format!("display-{name}"))
-                        .label(label)
-                        .small()
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.invoke(json!({"op":"command", "name":name}), cx)
-                        })),
-                );
-            }
-            controls = controls
-                .child(
-                    Button::new("video-fit")
-                        .label("适应")
-                        .small()
-                        .when(self.visual.fit_video, |b| b.primary())
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            view.cancel_visual_drag(cx);
-                            view.visual.fit_video = true;
-                            view.visual.reset_zoom();
-                            cx.notify();
-                        })),
-                )
-                .child(div().text_xs().px_2().child(if self.visual.fit_video {
-                    "视频框：适应".into()
-                } else {
-                    format!("视频框：{:.1}%", self.snapshot.video_window_zoom * 100.)
-                }))
-                .child(
-                    Button::new("video-content-out")
-                        .label("画面−")
-                        .small()
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            let bounds = *view.visual.viewport_bounds.borrow();
-                            view.adjust_video_view(bounds.center(), view.visual.zoom / 1.125, cx);
-                        })),
-                )
-                .child(div().text_xs().px_2().child(format!("{:.1}%", zoom * 100.)))
-                .child(
-                    Button::new("video-content-in")
-                        .label("画面＋")
-                        .small()
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            let bounds = *view.visual.viewport_bounds.borrow();
-                            view.adjust_video_view(bounds.center(), view.visual.zoom * 1.125, cx);
-                        })),
-                )
-                .child(
-                    Button::new("video-zoom-reset")
-                        .label("复位画面")
-                        .small()
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            view.invoke(json!({"op":"command", "name":"video/reset_pan"}), cx);
-                        })),
-                );
-            for (id, label, hint, x, y) in [
-                ("left", "←", "向左平移画面", -20., 0.),
-                ("right", "→", "向右平移画面", 20., 0.),
-                ("up", "↑", "向上平移画面", 0., -20.),
-                ("down", "↓", "向下平移画面", 0., 20.),
-            ] {
-                controls = controls.child(
-                    Button::new(format!("video-pan-{id}"))
-                        .label(label)
-                        .accessibility_label(hint)
-                        .tooltip(hint)
-                        .small()
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.pan_video(gpui_kit::point(px(x), px(y)), cx)
-                        })),
-                );
-            }
-            controls = controls.child(
-                Button::new("video-overscan")
-                    .label(if overscan {
-                        "安全区：开"
+            .py_2()
+            .bg(p.surface)
+            .text_color(p.text)
+            .child(Icon::new(IconName::Play).size(px(14.)).text_color(p.muted))
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .font_semibold()
+                    .px_1()
+                    .child("视频预览"),
+            )
+            .child(div().w(px(1.)).h(px(16.)).mx_2().bg(p.divider))
+            .child(
+                Button::new("video-window-zoom-menu")
+                    .label(if fit {
+                        "适应".to_owned()
                     } else {
-                        "安全区：关"
+                        format!("{}%", window_zoom * 100.)
                     })
-                    .tooltip("显示电视过扫描安全区遮罩")
+                    .icon(IconName::ChevronDown)
+                    .ghost()
                     .small()
-                    .when(overscan, |button| button.primary())
+                    .tooltip("视频框倍率")
+                    .dropdown_menu(move |mut menu, _, _| {
+                        for (name, label, value) in [
+                            ("video/zoom/50", "50%", 0.5),
+                            ("video/zoom/100", "100%", 1.),
+                            ("video/zoom/200", "200%", 2.),
+                            ("video/zoom/in", "放大视频框", -1.),
+                            ("video/zoom/out", "缩小视频框", -1.),
+                        ] {
+                            let weak = weak.clone();
+                            menu = menu.item(
+                                gpui_kit::component::menu::PopupMenuItem::new(label)
+                                    .checked(!fit && window_zoom == value)
+                                    .on_click(move |_, _, cx| {
+                                        let _ = weak.update(cx, |view, cx| {
+                                            view.invoke(json!({"op":"command", "name":name}), cx);
+                                        });
+                                    }),
+                            );
+                        }
+                        let weak = weak.clone();
+                        menu.item(
+                            gpui_kit::component::menu::PopupMenuItem::new("刷新当前视频帧")
+                                .on_click(move |_, _, cx| {
+                                    let _ = weak.update(cx, |view, cx| {
+                                        view.clear_frame_image(cx);
+                                        view.refresh_frame(cx);
+                                    });
+                                }),
+                        )
+                    }),
+            )
+            .child(
+                Button::new("video-fit")
+                    .icon(IconName::Maximize)
+                    .accessibility_label("适应窗口")
+                    .tooltip("适应窗口")
+                    .ghost()
+                    .small()
+                    .selected(fit)
                     .on_click(cx.listener(|view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":"video/show_overscan"}), cx);
+                        view.cancel_visual_drag(cx);
+                        view.visual.fit_video = true;
+                        view.visual.reset_zoom();
+                        cx.notify();
+                    })),
+            )
+            .child(div().flex_1())
+            .child(
+                Button::new("video-content-out")
+                    .icon(IconName::ZoomOut)
+                    .accessibility_label("缩小画面")
+                    .tooltip("缩小画面")
+                    .ghost()
+                    .small()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        let bounds = *view.visual.viewport_bounds.borrow();
+                        view.adjust_video_view(bounds.center(), view.visual.zoom / 1.125, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(p.muted)
+                    .w(px(48.))
+                    .text_center()
+                    .child(format!("{:.0}%", zoom * 100.)),
+            )
+            .child(
+                Button::new("video-content-in")
+                    .icon(IconName::ZoomIn)
+                    .accessibility_label("放大画面")
+                    .tooltip("放大画面")
+                    .ghost()
+                    .small()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        let bounds = *view.visual.viewport_bounds.borrow();
+                        view.adjust_video_view(bounds.center(), view.visual.zoom * 1.125, cx);
+                    })),
+            )
+            .child(
+                Button::new("video-zoom-reset")
+                    .icon(IconName::RotateCw)
+                    .accessibility_label("复位画面")
+                    .tooltip("复位缩放和平移")
+                    .ghost()
+                    .small()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"video/reset_pan"}), cx)
+                    })),
+            )
+            .child(
+                Button::new("video-pan-menu")
+                    .icon(IconName::Move)
+                    .accessibility_label("平移画面")
+                    .tooltip("平移画面")
+                    .ghost()
+                    .small()
+                    .dropdown_menu({
+                        let weak = cx.weak_entity();
+                        move |mut menu, _, _| {
+                            for (label, x, y) in [
+                                ("向左平移", -20., 0.),
+                                ("向右平移", 20., 0.),
+                                ("向上平移", 0., -20.),
+                                ("向下平移", 0., 20.),
+                            ] {
+                                let weak = weak.clone();
+                                menu = menu.item(
+                                    gpui_kit::component::menu::PopupMenuItem::new(label).on_click(
+                                        move |_, _, cx| {
+                                            let _ = weak.update(cx, |view, cx| {
+                                                view.pan_video(gpui_kit::point(px(x), px(y)), cx)
+                                            });
+                                        },
+                                    ),
+                                );
+                            }
+                            menu
+                        }
+                    }),
+            )
+            .child(div().w(px(1.)).h(px(16.)).mx_1().bg(p.divider))
+            .child(
+                Button::new("video-overscan")
+                    .icon(IconName::Frame)
+                    .label("安全区")
+                    .toggled(overscan)
+                    .tooltip("电视过扫描安全区")
+                    .ghost()
+                    .small()
+                    .selected(overscan)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"video/show_overscan"}), cx)
                     })),
             );
-        }
         div()
             .v_flex()
-            .flex_shrink_0()
+            .w_full()
+            .min_w_0()
+            .min_h_0()
             .overflow_hidden()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
             .when(self.snapshot.video, |v| v.child(controls))
             .child(
                 div()
@@ -3558,10 +4014,7 @@ impl Workspace {
                                     *canvas_region.borrow_mut() = base;
                                     *image_region.borrow_mut() = target;
                                 }
-                                (
-                                    target,
-                                    image.and_then(|image| image.use_render_image(window, cx)),
-                                )
+                                (target, image)
                             },
                             move |viewport, (target, image), window, _| {
                                 if let Some(image) = image {
@@ -3590,11 +4043,28 @@ impl Workspace {
                             div()
                                 .absolute()
                                 .inset_0()
-                                .flex()
+                                .v_flex()
+                                .gap_3()
                                 .items_center()
                                 .justify_center()
-                                .text_color(rgb(0xb6bcc6))
-                                .child("Aegisub GPUI · 实时媒体预览"),
+                                .text_color(rgb(0xa1aabd))
+                                .child(Icon::new(IconName::Play).size(px(32.)))
+                                .child(div().text_sm().child(if self.snapshot.video {
+                                    "正在加载视频帧"
+                                } else {
+                                    "打开视频，预览字幕效果"
+                                }))
+                                .when(!self.snapshot.video, |v| {
+                                    v.child(
+                                        Button::new("empty-open-video")
+                                            .label("打开视频")
+                                            .icon(IconName::FolderOpen)
+                                            .small()
+                                            .on_click(cx.listener(|view, _, _, cx| {
+                                                view.pick_file("video", cx)
+                                            })),
+                                    )
+                                }),
                         )
                     })
                     .when(self.snapshot.video && visual_active, |v| {
@@ -3634,32 +4104,33 @@ impl Workspace {
                 div()
                     .h_flex()
                     .justify_between()
-                    .px_2()
-                    .py_1()
+                    .px_3()
+                    .py_2()
                     .bg(rgb(0x0e1013))
                     .text_xs()
                     .text_color(rgb(0xb6bcc6))
                     .child(status)
-                    .child("滚轮调整视频框 · Ctrl/⌘ 滚轮缩放画面 · Shift 滚轮或中键平移"),
+                    .when(f32::from(window.viewport_size().width) > 1100., |v| {
+                        v.child("⌘/Ctrl 滚轮缩放 · Shift 平移")
+                    }),
             )
+            .child(self.timeline.render(&self.snapshot, cx))
     }
 
-    fn render_subtitle_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_subtitle_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let dark = Theme::global(cx).is_dark();
+        let p = Palette::new(dark);
         let appearance = &self.snapshot.appearance;
-        let line_bg = appearance.color(
-            "Colour/Subtitle Grid/Background/Background",
-            Theme::global(cx).background,
+        let line_bg = appearance.color("Colour/Subtitle Grid/Background/Background", p.surface);
+        let foreground = appearance.color("Colour/Subtitle Grid/Standard", p.text);
+        let selected_foreground =
+            appearance.color("Colour/Subtitle Grid/Selection", p.selected_text);
+        let comment_bg = appearance.color("Colour/Subtitle Grid/Background/Comment", p.inset);
+        let selected_comment_bg = appearance.color(
+            "Colour/Subtitle Grid/Background/Selected Comment",
+            p.selected,
         );
-        let foreground = appearance.color(
-            "Colour/Subtitle Grid/Standard",
-            Theme::global(cx).foreground,
-        );
-        let selected_foreground = appearance.color("Colour/Subtitle Grid/Selection", foreground);
-        let comment_bg = appearance.color("Colour/Subtitle Grid/Background/Comment", line_bg);
-        let selected_comment_bg =
-            appearance.color("Colour/Subtitle Grid/Background/Selected Comment", line_bg);
-        let inframe_bg = appearance.color("Colour/Subtitle Grid/Background/Inframe", line_bg);
+        let inframe_bg = appearance.color("Colour/Subtitle Grid/Background/Inframe", p.raised);
         let highlight_visible = appearance.highlight_visible && self.snapshot.video;
         let video_time = self.snapshot.video_time;
         let focus_grid = appearance.focus_grid;
@@ -3669,41 +4140,56 @@ impl Workspace {
             12.
         };
         let grid_font = appearance.grid_font.clone();
-        let row_height = (grid_size * 2.1 + 8.).max(34.);
-        let stripe: gpui_kit::Hsla = if dark {
-            rgb(0x1e2228).into()
-        } else {
-            rgb(0xf6f8fa).into()
-        };
-        let border = appearance.color("Colour/Subtitle Grid/Lines", Theme::global(cx).border);
-        let header_bg = appearance.color("Colour/Subtitle Grid/Header", line_bg);
-        let muted = if dark { rgb(0x929aa7) } else { rgb(0x727c88) };
-        let selected_bg = appearance.color(
-            "Colour/Subtitle Grid/Background/Selection",
-            Theme::global(cx).selection,
-        );
-        let accent = if dark { rgb(0x74adff) } else { rgb(0x2868bf) };
-        let lines = self.snapshot.lines.clone();
+        let row_height = (grid_size * 1.6 + 8.).max(34.);
+        let stripe = p.surface;
+        let border = appearance.color("Colour/Subtitle Grid/Lines", p.divider);
+        let header_bg = appearance.color("Colour/Subtitle Grid/Header", p.inset);
+        let muted = p.muted;
+        let selected_bg = appearance.color("Colour/Subtitle Grid/Background/Selection", p.selected);
+        let accent = p.accent;
         let selected = self.snapshot.selected.clone();
         let weak = cx.weak_entity();
+        let time_font = Theme::global(cx).mono_font_family.clone();
         let filtered = self.search.read(cx).value().to_string();
         let lower_filter = filtered.to_lowercase();
-        let visible: Vec<Line> = lines
-            .into_iter()
-            .filter(|line| {
-                lower_filter.is_empty()
-                    || line.text.to_lowercase().contains(&lower_filter)
-                    || line.actor.to_lowercase().contains(&lower_filter)
-                    || line.style.to_lowercase().contains(&lower_filter)
-            })
-            .collect();
+        let cache_matches =
+            self.subtitle_filter_cache
+                .as_ref()
+                .is_some_and(|(revision, file, query, _)| {
+                    *revision == self.snapshot.revision
+                        && file == &self.snapshot.file
+                        && query == &lower_filter
+                });
+        if !cache_matches {
+            let visible = self
+                .snapshot
+                .lines
+                .iter()
+                .filter(|line| {
+                    lower_filter.is_empty()
+                        || line.text.to_lowercase().contains(&lower_filter)
+                        || line.actor.to_lowercase().contains(&lower_filter)
+                        || line.style.to_lowercase().contains(&lower_filter)
+                })
+                .cloned()
+                .collect();
+            self.subtitle_filter_cache = Some((
+                self.snapshot.revision,
+                self.snapshot.file.clone(),
+                lower_filter.clone(),
+                Arc::new(visible),
+            ));
+        }
+        let visible = self
+            .subtitle_filter_cache
+            .as_ref()
+            .expect("subtitle filter cache was just populated")
+            .3
+            .clone();
         let editor = Textarea::new(&self.editor)
             .aria_label("所选字幕文本")
-            .bg(appearance.color("Colour/Subtitle/Background", Theme::global(cx).background))
-            .text_color(appearance.color(
-                "Colour/Subtitle/Syntax/Normal",
-                Theme::global(cx).foreground,
-            ))
+            .bg(appearance.color("Colour/Subtitle/Background", p.inset))
+            .text_color(appearance.color("Colour/Subtitle/Syntax/Normal", p.text))
             .when(appearance.edit_size > 0, |editor| {
                 editor.text_size(px((appearance.edit_size as f32 * 4. / 3.).clamp(4., 56.)))
             })
@@ -3711,17 +4197,42 @@ impl Workspace {
                 editor.font_family(appearance.edit_font.clone())
             });
         let mut format_toolbar = div().h_flex().flex_wrap().gap_1().items_center();
-        for (id, label, name) in [
-            ("format-bold", "粗体", "edit/style/bold"),
-            ("format-italic", "斜体", "edit/style/italic"),
-            ("format-underline", "下划线", "edit/style/underline"),
-            ("format-strikeout", "删除线", "edit/style/strikeout"),
-            ("format-font", "字体…", "edit/font"),
-            ("format-primary", "颜色…", "edit/color/primary"),
-            ("split-preserve", "光标处分行", "edit/line/split/preserve"),
-            ("copy-lines", "复制行", "edit/line/copy"),
-            ("cut-lines", "剪切行", "edit/line/cut"),
-            ("paste-lines", "粘贴行", "edit/line/paste"),
+        for (id, label, icon, name) in [
+            ("format-bold", "粗体", IconName::Bold, "edit/style/bold"),
+            (
+                "format-italic",
+                "斜体",
+                IconName::Italic,
+                "edit/style/italic",
+            ),
+            (
+                "format-underline",
+                "下划线",
+                IconName::Underline,
+                "edit/style/underline",
+            ),
+            (
+                "format-strikeout",
+                "删除线",
+                IconName::Strikethrough,
+                "edit/style/strikeout",
+            ),
+            ("format-font", "字体", IconName::ALargeSmall, "edit/font"),
+            (
+                "format-primary",
+                "颜色",
+                IconName::Palette,
+                "edit/color/primary",
+            ),
+            (
+                "split-preserve",
+                "光标处分行",
+                IconName::Scissors,
+                "edit/line/split/preserve",
+            ),
+            ("copy-lines", "复制行", IconName::Copy, "edit/line/copy"),
+            ("cut-lines", "剪切行", IconName::Scissors, "edit/line/cut"),
+            ("paste-lines", "粘贴行", IconName::Copy, "edit/line/paste"),
         ] {
             let enabled = self
                 .catalog
@@ -3729,7 +4240,10 @@ impl Workspace {
                 .is_some_and(|command| command.can_invoke());
             format_toolbar = format_toolbar.child(
                 Button::new(id)
-                    .label(label)
+                    .icon(icon)
+                    .accessibility_label(label)
+                    .tooltip(label)
+                    .ghost()
                     .small()
                     .disabled(!enabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -3738,12 +4252,110 @@ impl Workspace {
             );
         }
         let row_count = visible.len();
-        div()
+        let editor_height = self.subtitle_editor_height;
+        let editor_section = div()
+                    .id("subtitle-editor-section")
+                    .v_flex()
+                    .flex_shrink_0()
+                    .px_3()
+                    .py_3()
+                    .gap_2()
+                    .bg(p.surface)
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .child("文本编辑"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(muted)
+                                    .child(format!("已选 {} 行", self.snapshot.selected.len())),
+                            )
+                            .child(
+                                Button::new("shrink-subtitle-editor")
+                                    .icon(IconName::ChevronUp)
+                                    .accessibility_label("缩小字幕编辑区")
+                                    .tooltip("缩小字幕编辑区")
+                                    .ghost()
+                                    .small()
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.subtitle_editor_height =
+                                            (view.subtitle_editor_height - 24.).max(165.);
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("grow-subtitle-editor")
+                                    .icon(IconName::ChevronDown)
+                                    .accessibility_label("增大字幕编辑区")
+                                    .tooltip("增大字幕编辑区")
+                                    .ghost()
+                                    .small()
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.subtitle_editor_height =
+                                            (view.subtitle_editor_height + 24.).min(360.);
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("apply-edit")
+                                    .icon(IconName::Check)
+                                    .label("应用文本")
+                                    .ghost()
+                                    .small()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let id = this.selected_line;
+                                        let text = this.editor.read(cx).value().to_string();
+                                        this.invoke(json!({"op":"edit", "id":id, "ids":this.snapshot.selected, "text":text}), cx);
+                                    })),
+                            ),
+                    )
+                    .child(format_toolbar)
+                    .child(editor.flex_1().min_h(px(40.)).w_full());
+        let subtitle_list = div()
             .v_flex()
-            .flex_1()
-            .min_h(px(260.))
+            .min_h_0()
             .overflow_hidden()
-            .bg(line_bg)
+            .child(
+                div()
+                    .h_flex()
+                    .h(px(44.))
+                    .px_3()
+                    .gap_2()
+                    .items_center()
+                    .flex_shrink_0()
+                    .child(
+                        Icon::new(IconName::Captions)
+                            .size(px(15.))
+                            .text_color(p.muted),
+                    )
+                    .child(div().text_sm().font_semibold().child("字幕列表"))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(p.muted)
+                            .child(format!("{} 行", row_count)),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        Input::new(&self.search)
+                            .id("subtitle-search")
+                            .prefix(Icon::new(IconName::Search).size(px(13.)))
+                            .small()
+                            .w(px(190.)),
+                    ),
+            )
             .child(
                 div()
                     .h_flex()
@@ -3757,7 +4369,7 @@ impl Workspace {
                     .border_color(border)
                     .child(
                         div()
-                            .w(px(54.))
+                            .w(px(46.))
                             .text_xs()
                             .text_color(muted)
                             .child("行 / 层"),
@@ -3771,165 +4383,179 @@ impl Workspace {
                     )
                     .child(
                         div()
-                            .w(px(120.))
+                            .w(px(100.))
                             .text_xs()
                             .text_color(muted)
                             .child("样式 / 角色"),
                     )
-                    .child(div().flex_1().text_xs().text_color(muted).child("字幕文本"))
-                    .child(Input::new(&self.search).id("subtitle-search").w(px(190.))),
+                    .child(div().flex_1().text_xs().text_color(muted).child("字幕文本")),
             )
             .child(
+                div().flex_1().min_h(px(90.)).child(
+                    uniform_list(
+                        "subtitle-rows",
+                        row_count,
+                        cx.processor(move |_, range: Range<usize>, _, _| {
+                            range
+                                .map(|index| {
+                                    let line = visible[index].clone();
+                                    let is_active = selected.contains(&line.id);
+                                    let row_bg = if is_active && line.comment {
+                                        selected_comment_bg
+                                    } else if is_active {
+                                        selected_bg
+                                    } else if line.comment {
+                                        comment_bg
+                                    } else if highlight_visible
+                                        && line.start <= video_time
+                                        && video_time < line.end
+                                    {
+                                        inframe_bg
+                                    } else if line.row % 2 == 1 {
+                                        stripe
+                                    } else {
+                                        line_bg
+                                    };
+                                    let weak = weak.clone();
+                                    div()
+                                        .id(format!("subtitle-row-{}", line.id))
+                                        .h(px(row_height))
+                                        .text_size(px(grid_size))
+                                        .whitespace_nowrap()
+                                        .when(!grid_font.is_empty(), |row| {
+                                            row.font_family(grid_font.clone())
+                                        })
+                                        .w_full()
+                                        .h_flex()
+                                        .gap_3()
+                                        .items_center()
+                                        .px_3()
+                                        .bg(row_bg)
+                                        .border_b_1()
+                                        .border_color(border)
+                                        .border_l_2()
+                                        .border_color(if is_active { p.accent } else { border })
+                                        .cursor_pointer()
+                                        .on_mouse_down(gpui_kit::MouseButton::Left, {
+                                            let weak = weak.clone();
+                                            let id = line.id;
+                                            move |event: &gpui_kit::MouseDownEvent, window, cx| {
+                                                let _ = weak.update(cx, |view, cx| {
+                                                    if focus_grid {
+                                                        view.focus_handle.focus(window, cx);
+                                                    }
+                                                    view.select_lines(
+                                                        id,
+                                                        event.modifiers.shift,
+                                                        event.modifiers.control
+                                                            || event.modifiers.platform,
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        })
+                                        .child(
+                                            div()
+                                                .w(px(46.))
+                                                .flex_shrink_0()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .child(format!(
+                                                    "{:03} / {}",
+                                                    line.row + 1,
+                                                    line.layer
+                                                )),
+                                        )
+                                        .child(
+                                            div()
+                                                .w(px(170.))
+                                                .flex_shrink_0()
+                                                .font_family(time_font.clone())
+                                                .text_size(px(11.))
+                                                .text_color(muted)
+                                                .child(format!(
+                                                    "{} → {}",
+                                                    format_time(line.start),
+                                                    format_time(line.end)
+                                                )),
+                                        )
+                                        .child(
+                                            div()
+                                                .w(px(100.))
+                                                .flex_shrink_0()
+                                                .overflow_hidden()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(accent)
+                                                        .child(line.style),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(muted)
+                                                        .child(line.actor),
+                                                ),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .overflow_hidden()
+                                                .text_ellipsis()
+                                                .text_size(px(grid_size))
+                                                .text_color(if is_active {
+                                                    selected_foreground
+                                                } else {
+                                                    foreground
+                                                })
+                                                .child(line.display_text),
+                                        )
+                                })
+                                .collect()
+                        }),
+                    )
+                    .track_scroll(&self.list_scroll_handle)
+                    .size_full(),
+                ),
+            );
+        div()
+            .v_flex()
+            .flex_1()
+            .min_w_0()
+            .min_h(px(300.))
+            .overflow_hidden()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .bg(line_bg)
+            .child(editor_section.h(px(editor_height)).flex_shrink_0())
+            .child(
                 div()
-                    .flex_1()
-                    .min_h(px(90.))
-                    .child(
-                        uniform_list(
-                            "subtitle-rows",
-                            row_count,
-                            cx.processor(move |_, range: Range<usize>, _, _| {
-                                range
-                                    .map(|index| {
-                                        let line = visible[index].clone();
-                                        let is_active = selected.contains(&line.id);
-                                        let row_bg = if is_active && line.comment {
-                                            selected_comment_bg
-                                        } else if is_active {
-                                            selected_bg
-                                        } else if line.comment {
-                                            comment_bg
-                                        } else if highlight_visible && line.start <= video_time && video_time < line.end {
-                                            inframe_bg
-                                        } else if line.row % 2 == 1 {
-                                            stripe
-                                        } else {
-                                            line_bg
-                                        };
-                                        let weak = weak.clone();
-                                        div()
-                                            .id(format!("subtitle-row-{}", line.id))
-                                            .h(px(row_height))
-                                            .text_size(px(grid_size))
-                                            .when(!grid_font.is_empty(), |row| row.font_family(grid_font.clone()))
-                                            .w_full()
-                                            .h_flex()
-                                            .gap_3()
-                                            .items_center()
-                                            .px_3()
-                                            .bg(row_bg)
-                                            .border_b_1()
-                                            .border_color(border)
-                                            .cursor_pointer()
-                                            .on_mouse_down(gpui_kit::MouseButton::Left, {
-                                                let weak = weak.clone();
-                                                let id = line.id;
-                                                move |event: &gpui_kit::MouseDownEvent, window, cx| {
-                                                    let _ = weak.update(cx, |view, cx| {
-                                                        if focus_grid { view.focus_handle.focus(window, cx); }
-                                                        view.select_lines(
-                                                            id,
-                                                            event.modifiers.shift,
-                                                            event.modifiers.control
-                                                                || event.modifiers.platform,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }
-                                            })
-                                            .child(
-                                                div()
-                                                    .w(px(54.))
-                                                    .flex_shrink_0()
-                                                    .text_xs()
-                                                    .text_color(muted)
-                                                    .child(format!(
-                                                        "{:03} / {}",
-                                                        line.row + 1,
-                                                        line.layer
-                                                    )),
-                                            )
-                                            .child(
-                                                div()
-                                                    .w(px(170.))
-                                                    .flex_shrink_0()
-                                                    .text_xs()
-                                                    .text_color(muted)
-                                                    .child(format!(
-                                                        "{} → {}",
-                                                        format_time(line.start),
-                                                        format_time(line.end)
-                                                    )),
-                                            )
-                                            .child(
-                                                div()
-                                                    .w(px(120.))
-                                                    .flex_shrink_0()
-                                                    .overflow_hidden()
-                                                    .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .text_color(accent)
-                                                            .child(line.style),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .text_color(muted)
-                                                            .child(line.actor),
-                                                    ),
-                                            )
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .overflow_hidden()
-                                                    .text_size(px(grid_size))
-                                                    .text_color(if is_active { selected_foreground } else { foreground })
-                                                    .child(line.display_text),
-                                            )
-                                    })
-                                    .collect()
-                            }),
-                        )
-                        .track_scroll(&self.list_scroll_handle)
-                        .size_full(),
+                    .id("subtitle-editor-list-resize-handle")
+                    .aria_label("调整字幕编辑区高度")
+                    .h(px(8.))
+                    .w_full()
+                    .flex_shrink_0()
+                    .h_flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_row_resize()
+                    .bg(p.surface)
+                    .child(div().w(px(36.)).h(px(2.)).rounded(px(1.)).bg(p.divider))
+                    .on_mouse_down(
+                        gpui_kit::MouseButton::Left,
+                        cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                            view.layout_drag = Some(WorkspaceResizeDrag::SubtitleEditor {
+                                start_y: event.position.y,
+                                start_height: view.subtitle_editor_height,
+                            });
+                            cx.stop_propagation();
+                            cx.notify();
+                        }),
                     ),
             )
-            .child(
-                div()
-                    .v_flex()
-                    .flex_shrink_0()
-                    .px_3()
-                    .py_2()
-                    .gap_1()
-                    .bg(stripe)
-                    .border_t_1()
-                    .border_color(border)
-                    .child(
-                        div()
-                            .h_flex()
-                            .justify_between()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(format!("字幕文本编辑 · 应用于所选 {} 行", self.snapshot.selected.len())),
-                            )
-                            .child(
-                                Button::new("apply-edit")
-                                    .label("立即提交")
-                                    .primary()
-                                    .small()
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        let id = this.selected_line;
-                                        let text = this.editor.read(cx).value().to_string();
-                                        this.invoke(json!({"op":"edit", "id":id, "ids":this.snapshot.selected, "text":text}), cx);
-                                    })),
-                            ),
-                    )
-                    .child(format_toolbar)
-                    .child(editor.h(px(88.)).w_full()),
-            )
+            .child(subtitle_list.flex_1().min_h_0())
     }
 }
 
@@ -4122,14 +4748,32 @@ impl Render for Workspace {
             self.find_panel.sync(window, cx);
         }
         let dark = Theme::global(cx).is_dark();
-        let canvas = if dark { rgb(0x17191d) } else { rgb(0xf4f5f7) };
-        let border = if dark { rgb(0x30343b) } else { rgb(0xdde1e7) };
-        let muted = if dark { rgb(0x8e95a0) } else { rgb(0x747d89) };
-        let mut root = div()
+        let p = Palette::new(dark);
+        let canvas = p.canvas;
+        let border = p.divider;
+        let muted = p.muted;
+        let root = div()
             .id("aegisub-gpui-workspace")
             .track_focus(&self.focus_handle)
             .capture_key_down(cx.listener(Self::handle_key))
             .on_mouse_move(cx.listener(|view, event: &gpui_kit::MouseMoveEvent, _, cx| {
+                if let Some(drag) = view.layout_drag {
+                    if event.pressed_button == Some(gpui_kit::MouseButton::Left) {
+                        match drag {
+                            WorkspaceResizeDrag::SubtitleEditor {
+                                start_y,
+                                start_height,
+                            } => {
+                                view.subtitle_editor_height = (start_height
+                                    + f32::from(event.position.y - start_y))
+                                    .clamp(165., 360.);
+                            }
+                        }
+                        cx.notify();
+                    } else {
+                        view.layout_drag = None;
+                    }
+                }
                 if view.visual.pan_last.is_some() {
                     if event.pressed_button == Some(gpui_kit::MouseButton::Middle) {
                         view.update_video_pan(event.position, cx);
@@ -4144,93 +4788,126 @@ impl Render for Workspace {
                     view.queue_visual(json!({"action":"move", "x":x,"y":y,"shift":event.modifiers.shift,"control":event.modifiers.control || event.modifiers.platform,"alt":event.modifiers.alt}), cx);
                 }
             }))
+            .on_mouse_up(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|view, _, _, cx| {
+                    if view.layout_drag.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
             .size_full()
             .overflow_hidden()
-            .v_flex()
+            .h_flex().items_stretch()
             .bg(canvas)
-            .text_color(Theme::global(cx).foreground)
-            .child(self.render_legacy_menus(cx))
-            .when(self.snapshot.show_toolbar, |root| root.child(self.render_toolbar(cx)))
-            .child(self.render_menu(cx));
+            .text_color(p.text);
+        let mut body = div()
+            .v_flex()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .overflow_hidden();
         if self.active_panel == Panel::Subtitles {
-            root = root
-                .child(
-                    div()
-                        .h_flex()
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_hidden()
-                        .gap_2()
-                        .p_2()
-                        .child(
-                            div()
-                                .v_flex()
-                                .flex_1()
-                                .min_w_0()
-                                .min_h_0()
-                                .gap_2()
-                                .child(self.render_player(window, cx))
-                                .child(self.render_subtitle_panel(cx)),
-                        )
-                        .child(self.render_properties(cx)),
-                )
-                .child(self.timeline.render(&self.snapshot, cx));
+            let side_by_side = f32::from(window.viewport_size().width) >= 900.;
+            body = body.child(
+                div()
+                    .v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .overflow_hidden()
+                    .gap_2()
+                    .p_3()
+                    .child(self.audio.render_compact(
+                        &self.snapshot.audio,
+                        self.snapshot.video,
+                        &self.snapshot.appearance,
+                        cx,
+                    ))
+                    .child(
+                        div()
+                            .h_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .gap_2()
+                            .when(side_by_side, |row| row.items_stretch())
+                            .when(!side_by_side, |column| column.v_flex())
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .gap_2()
+                                    .child(self.render_player(window, side_by_side, cx))
+                                    .child(self.render_properties(cx)),
+                            )
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .child(self.render_subtitle_panel(cx)),
+                            ),
+                    ),
+            );
         } else if self.active_panel == Panel::Visual {
-            root = root.child(div().v_flex().flex_1().min_h_0().p_3().gap_2()
+            body = body.child(div().v_flex().flex_1().min_h_0().p_3().gap_2()
                 .child(self.visual.toolbar(cx))
-                .child(self.render_player(window, cx))
-                .child(div().text_sm().child("双击十字定位；拖动控制点调整，Shift 约束，Ctrl/⌘ 多选。操作写入当前字幕并可撤销。")))
-                .child(self.timeline.render(&self.snapshot, cx));
+                .child(self.render_player(window, false, cx))
+                .child(div().text_sm().child("双击十字定位；拖动控制点调整，Shift 约束，Ctrl/⌘ 多选。操作写入当前字幕并可撤销。")));
         } else if self.active_panel == Panel::Commands {
-            root = root.child(self.render_commands(cx));
+            body = body.child(self.render_commands(cx));
         } else if self.active_panel == Panel::Audio {
-            root = root.child(self.audio.render(
+            body = body.child(self.audio.render(
                 &self.snapshot.audio,
                 self.snapshot.video,
                 &self.snapshot.appearance,
                 cx,
             ));
         } else if self.active_panel == Panel::Styling {
-            root = root.child(
+            body = body.child(
                 self.styling
                     .render(&self.snapshot, &self.document.details, cx),
             );
         } else if self.active_panel == Panel::Translation {
-            root = root.child(self.translation.render(
+            body = body.child(self.translation.render(
                 self.snapshot.video,
                 self.snapshot.audio.loaded,
                 cx,
             ));
         } else if self.active_panel == Panel::Automation {
-            root = root.child(self.automation.render(&self.catalog, cx));
+            body = body.child(self.automation.render(&self.catalog, cx));
         } else if self.active_panel == Panel::Spelling {
-            root = root.child(self.spelling.render(cx));
+            body = body.child(self.spelling.render(cx));
         } else if self.active_panel == Panel::Files {
-            root = root.child(self.files.render(cx));
+            body = body.child(self.files.render(cx));
         } else if self.active_panel == Panel::Preferences {
-            root = root.child(self.preferences.render(cx));
+            body = body.child(self.preferences.render(cx));
         } else if self.active_panel == Panel::Hotkeys {
-            root = root.child(self.hotkeys.render(&self.catalog, cx));
+            body = body.child(self.hotkeys.render(&self.catalog, cx));
         } else if self.active_panel == Panel::Attachments {
-            root = root.child(self.attachments.render(cx));
+            body = body.child(self.attachments.render(cx));
         } else if self.active_panel == Panel::VideoSettings {
-            root = root.child(self.video_settings.render(cx));
+            body = body.child(self.video_settings.render(cx));
         } else if self.active_panel == Panel::Paste {
-            root = root.child(self.paste.render(&self.snapshot, cx));
+            body = body.child(self.paste.render(&self.snapshot, cx));
         } else if self.active_panel == Panel::Search {
-            root = root.child(self.find_panel.render(&self.snapshot, cx));
+            body = body.child(self.find_panel.render(&self.snapshot, cx));
         } else if self.active_panel == Panel::Processor {
-            root = root.child(self.processor.render(cx));
+            body = body.child(self.processor.render(cx));
         } else if self.active_panel == Panel::Resample {
-            root = root.child(self.resample.render(cx));
+            body = body.child(self.resample.render(cx));
         } else if self.active_panel == Panel::Timing {
-            root = root.child(self.timing.render(&self.snapshot, cx));
+            body = body.child(self.timing.render(&self.snapshot, cx));
         } else if self.active_panel == Panel::Styles {
-            root = root.child(self.document.render_styles(cx));
+            body = body.child(self.document.render_styles(cx));
         } else {
-            root = root.child(self.document.render_project(cx));
+            body = body.child(self.document.render_project(cx));
         }
-        root.child(
+        let body = body.child(
             div()
                 .h_flex()
                 .h(px(26.))
@@ -4238,10 +4915,19 @@ impl Render for Workspace {
                 .px_3()
                 .items_center()
                 .justify_between()
-                .bg(if dark { rgb(0x202329) } else { rgb(0xffffff) })
+                .bg(p.surface)
                 .border_t_1()
                 .border_color(border)
-                .child(div().text_xs().text_color(muted).child(self.status.clone()))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_size(px(11.))
+                        .text_color(muted)
+                        .child(self.status.clone()),
+                )
                 .child(
                     div()
                         .h_flex()
@@ -4260,86 +4946,128 @@ impl Render for Workspace {
                         .child(if self.snapshot.file.is_empty() {
                             "未命名字幕".to_owned()
                         } else {
-                            self.snapshot.file.clone()
+                            std::path::Path::new(&self.snapshot.file)
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .unwrap_or("未命名字幕")
+                                .to_owned()
                         }),
                 ),
+        );
+        root.child(self.render_menu(window, cx)).child(
+            div()
+                .v_flex()
+                .h_full()
+                .overflow_hidden()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .child(self.render_legacy_menus(cx))
+                .when(self.snapshot.show_toolbar, |v| {
+                    v.child(self.render_toolbar(cx))
+                })
+                .child(body),
         )
     }
 }
 
 fn run(endpoint: String, token: String) -> Result<()> {
-    application().run(move |cx: &mut App| {
-        gpui_kit::init(cx);
-        Theme::change(ThemeMode::Dark, None, cx);
-        cx.on_window_closed(|cx, _| {
-            if cx.windows().is_empty() {
+    application()
+        .with_assets(workspace_theme::StudioAssets)
+        .run(move |cx: &mut App| {
+            gpui_kit::init(cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+            workspace_theme::apply(cx);
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+            let bridge = Bridge { endpoint, token };
+            let window = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::centered(size(px(1420.), px(920.)), cx)),
+                    titlebar: Some(gpui_kit::TitlebarOptions {
+                        title: Some("Aegisub".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                |window, cx| {
+                    cx.activate(true);
+                    window.activate_window();
+                    let workspace = cx.new(|cx| Workspace::new(bridge.clone(), window, cx));
+                    workspace.update(cx, |view, cx| {
+                        view.refresh_catalog(cx);
+                        view.refresh_document(cx);
+                    });
+                    let weak = workspace.downgrade();
+                    let poll_bridge = bridge.clone();
+                    cx.spawn(async move |cx| {
+                        let mut consecutive_failures = 0;
+                        let mut playing = false;
+                        let mut last_document_snapshot = Instant::now();
+                        loop {
+                            if weak.upgrade().is_none() {
+                                break;
+                            }
+                            let read_document = !playing
+                                || last_document_snapshot.elapsed() >= Duration::from_millis(350);
+                            let result = if read_document {
+                                poll_bridge.snapshot().await.map(Ok)
+                            } else {
+                                poll_bridge.playback().await.map(Err)
+                            };
+                            match result {
+                                Ok(Ok(snapshot)) => {
+                                    consecutive_failures = 0;
+                                    last_document_snapshot = Instant::now();
+                                    playing = snapshot.playing || snapshot.audio.playing;
+                                    if let Some(view) = weak.upgrade() {
+                                        let _ = view.update(cx, |view, cx| {
+                                            if view.status.starts_with("Aegisub 连接中断") {
+                                                view.status = "已重新连接 Aegisub".into();
+                                            }
+                                            view.apply_snapshot(snapshot, cx);
+                                            view.refresh_frame(cx);
+                                        });
+                                    }
+                                }
+                                Ok(Err(playback)) => {
+                                    consecutive_failures = 0;
+                                    playing = playback.playing || playback.audio_playing;
+                                    if let Some(view) = weak.upgrade() {
+                                        let _ = view.update(cx, |view, cx| {
+                                            view.apply_playback(playback, cx);
+                                            view.refresh_frame(cx);
+                                        });
+                                    }
+                                }
+                                Err(error) => {
+                                    consecutive_failures += 1;
+                                    set_status(&weak, cx, format!("Aegisub 连接中断：{error}"));
+                                    if consecutive_failures >= 5 {
+                                        cx.update(|app| app.quit());
+                                        break;
+                                    }
+                                }
+                            }
+                            cx.background_executor()
+                                .timer(Duration::from_millis(if playing { 40 } else { 350 }))
+                                .await;
+                        }
+                    })
+                    .detach();
+                    cx.new(|cx| Root::new(workspace, window, cx))
+                },
+            );
+            if let Err(error) = window {
+                eprintln!("Could not create GPUI window: {error:#}");
                 cx.quit();
             }
-        })
-        .detach();
-        let bridge = Bridge { endpoint, token };
-        let window = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::centered(size(px(1420.), px(920.)), cx)),
-                titlebar: Some(gpui_kit::TitlebarOptions {
-                    title: Some("Aegisub · GPUI prototype".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-            |window, cx| {
-                cx.activate(true);
-                window.activate_window();
-                let workspace = cx.new(|cx| Workspace::new(bridge.clone(), window, cx));
-                workspace.update(cx, |view, cx| {
-                    view.refresh_catalog(cx);
-                    view.refresh_document(cx);
-                });
-                let weak = workspace.downgrade();
-                let poll_bridge = bridge.clone();
-                cx.spawn(async move |cx| {
-                    let mut consecutive_failures = 0;
-                    loop {
-                        if weak.upgrade().is_none() {
-                            break;
-                        }
-                        match poll_bridge.snapshot().await {
-                            Ok(snapshot) => {
-                                consecutive_failures = 0;
-                                if let Some(view) = weak.upgrade() {
-                                    let _ = view.update(cx, |view, cx| {
-                                        if view.status.starts_with("Aegisub 连接中断") {
-                                            view.status = "已重新连接 Aegisub".into();
-                                        }
-                                        view.apply_snapshot(snapshot, cx);
-                                        view.refresh_frame(cx);
-                                    });
-                                }
-                            }
-                            Err(error) => {
-                                consecutive_failures += 1;
-                                set_status(&weak, cx, format!("Aegisub 连接中断：{error}"));
-                                if consecutive_failures >= 5 {
-                                    cx.update(|app| app.quit());
-                                    break;
-                                }
-                            }
-                        }
-                        cx.background_executor()
-                            .timer(Duration::from_millis(350))
-                            .await;
-                    }
-                })
-                .detach();
-                cx.new(|cx| Root::new(workspace, window, cx))
-            },
-        );
-        if let Err(error) = window {
-            eprintln!("Could not create GPUI window: {error:#}");
-            cx.quit();
-        }
-        cx.activate(true);
-    });
+            cx.activate(true);
+        });
     Ok(())
 }
 

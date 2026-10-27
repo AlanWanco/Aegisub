@@ -11,7 +11,7 @@ use gpui_kit::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::Workspace;
+use crate::{Workspace, workspace_theme::Palette};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DrawCommand {
@@ -140,7 +140,17 @@ impl VisualPanel {
     }
 
     pub fn toolbar(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
-        let mut bar = div().h_flex().flex_wrap().gap_1().flex_shrink_0();
+        let p = Palette::current(cx);
+        let mut bar = div()
+            .h_flex()
+            .flex_wrap()
+            .gap_1()
+            .p_2()
+            .bg(p.surface)
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .flex_shrink_0();
         for (mode, label) in [
             ("cross", "十字"),
             ("drag", "拖动"),
@@ -153,6 +163,7 @@ impl VisualPanel {
             bar = bar.child(
                 Button::new(format!("visual-mode-{mode}"))
                     .label(label)
+                    .ghost()
                     .small()
                     .when(mode == self.tool, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -174,6 +185,7 @@ impl VisualPanel {
                 bar = bar.child(
                     Button::new(format!("visual-vector-{mode}"))
                         .label(label)
+                        .ghost()
                         .small()
                         .when(mode == self.subtool, |button| button.primary())
                         .on_click(cx.listener(move |view, _, _, cx| {

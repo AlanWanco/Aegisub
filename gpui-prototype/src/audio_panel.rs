@@ -1,13 +1,14 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    Sizable, StyledExt, Theme,
+    Icon, Sizable, StyledExt, Theme,
     button::{Button, ButtonVariants},
 };
 use gpui_kit::{
-    Bounds, Context, Image, IntoElement, MouseButton, Pixels, Styled, canvas, div, img, prelude::*,
-    px, rgb,
+    Bounds, Context, Image, IntoElement, MouseButton, ObjectFit, Pixels, Styled, StyledImage,
+    canvas, div, img, prelude::*, px, rgb,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -102,7 +103,7 @@ impl AudioPanel {
             mode: "waveform",
             view_start: 0,
             span: 12000,
-            gain: 100,
+            gain: 800,
             image: None,
             loading: false,
             requested: None,
@@ -129,6 +130,27 @@ impl AudioPanel {
         video: bool,
         appearance: &crate::Appearance,
         cx: &mut Context<Workspace>,
+    ) -> impl IntoElement {
+        self.render_inner(state, video, appearance, cx, true)
+    }
+
+    pub fn render_compact(
+        &self,
+        state: &AudioState,
+        video: bool,
+        appearance: &crate::Appearance,
+        cx: &mut Context<Workspace>,
+    ) -> impl IntoElement {
+        self.render_inner(state, video, appearance, cx, false)
+    }
+
+    fn render_inner(
+        &self,
+        state: &AudioState,
+        video: bool,
+        appearance: &crate::Appearance,
+        cx: &mut Context<Workspace>,
+        full_controls: bool,
     ) -> impl IntoElement {
         let mut controls = div()
             .h_flex()
@@ -228,7 +250,7 @@ impl AudioPanel {
             .id("audio-graph")
             .relative()
             .w_full()
-            .h(px(260.))
+            .h(px(if full_controls { 260. } else { 80. }))
             .flex_shrink_0()
             .bg(rgb(0x101519))
             .overflow_hidden()
@@ -243,7 +265,12 @@ impl AudioPanel {
                 .size_full(),
             );
         if let Some(image) = &self.image {
-            graph = graph.child(img(image.clone()).absolute().size_full());
+            graph = graph.child(
+                img(image.clone())
+                    .absolute()
+                    .size_full()
+                    .object_fit(ObjectFit::Fill),
+            );
         } else {
             graph = graph.child(
                 div()
@@ -252,7 +279,7 @@ impl AudioPanel {
                     .child(if state.loaded {
                         "正在生成音频画面…"
                     } else {
-                        "打开音频后显示当前项目的波形或频谱"
+                        "载入音频后显示波形；视频有音轨时可从视频载入"
                     }),
             );
         }
@@ -509,10 +536,158 @@ impl AudioPanel {
             }
             karaoke = karaoke.child(actions).child(syllables);
         }
-        div().v_flex().flex_1().min_h_0().p_3().gap_3().child(controls)
-            .child(div().text_sm().child(format!("选区 {} → {} · 视窗 {} → {} · {:.2}× · 已解码 {} / {}", format_time(state.start), format_time(state.end), format_time(self.view_start), format_time(self.view_start + self.span), state.rate, format_time(state.decoded), format_time(state.duration))))
-            .child(graph).child(viewport).child(sound).child(karaoke)
-            .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"))
-            .child(Button::new("close-audio").label("关闭音频").small().disabled(!state.loaded).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"audio/close"}), cx))))
+        let load_audio = if video {
+            Button::new("audio-load-preview")
+                .label("从视频载入")
+                .small()
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
+                }))
+        } else {
+            Button::new("open-audio")
+                .label("打开音频")
+                .small()
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
+                }))
+        };
+        let mut panel = div()
+            .v_flex()
+            .w_full()
+            .min_w_0()
+            .gap_2()
+            .child(
+                div()
+                    .h_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(Icon::new(IconName::AudioLines).size(px(14.)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_sm()
+                            .font_semibold()
+                            .child("音频波形"),
+                    )
+                    .when(!state.loaded, |row| row.child(load_audio))
+                    .when(state.loaded, |row| {
+                        row.child(
+                            Button::new("audio-play")
+                                .label("播放选区")
+                                .small()
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    view.invoke(
+                                        json!({"op":"command", "name":"audio/play/selection"}),
+                                        cx,
+                                    )
+                                })),
+                        )
+                        .child(
+                            Button::new("audio-stop")
+                                .label("停止")
+                                .small()
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    view.invoke(json!({"op":"command", "name":"audio/stop"}), cx)
+                                })),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(Theme::global(cx).muted_foreground)
+                    .child(if state.loaded {
+                        format!(
+                            "{} → {} · {}",
+                            format_time(state.start),
+                            format_time(state.end),
+                            format_time(state.duration)
+                        )
+                    } else {
+                        "加载视频音轨后可使用波形调时和卡拉 OK 工具".to_owned()
+                    }),
+            )
+            .child(graph);
+        if full_controls {
+            panel = panel
+                .child(div().v_flex().gap_2().child(viewport).child(sound).child(karaoke))
+                .child(controls)
+                .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"))
+                .child(Button::new("close-audio").label("关闭音频").small().disabled(!state.loaded).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"audio/close"}), cx))));
+        } else {
+            let compact_viewport = div()
+                .h_flex()
+                .gap_2()
+                .items_center()
+                .child(
+                    Button::new("audio-gain-down")
+                        .label("波形增益 −")
+                        .small()
+                        .disabled(!state.loaded)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.audio.gain = (view.audio.gain / 2).max(10);
+                            view.refresh_audio(cx);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(Theme::global(cx).muted_foreground)
+                        .child(format!("{}%", self.gain)),
+                )
+                .child(
+                    Button::new("audio-gain-up")
+                        .label("波形增益 +")
+                        .small()
+                        .disabled(!state.loaded)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.audio.gain = (view.audio.gain * 2).min(1000);
+                            view.refresh_audio(cx);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("audio-fit-line")
+                        .label("定位当前句")
+                        .small()
+                        .disabled(!state.loaded)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.audio.view_start = (view.snapshot.audio.start - 1000).max(0);
+                            view.audio.span = (view.snapshot.audio.end - view.snapshot.audio.start
+                                + 2000)
+                                .clamp(1000, 600000);
+                            view.refresh_audio(cx);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("audio-zoom-in")
+                        .label("放大波形")
+                        .small()
+                        .disabled(!state.loaded)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.audio.span = (view.audio.span / 2).max(250);
+                            view.refresh_audio(cx);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("audio-zoom-out")
+                        .label("缩小波形")
+                        .small()
+                        .disabled(!state.loaded)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.audio.span = (view.audio.span * 2).min(600000);
+                            view.refresh_audio(cx);
+                            cx.notify();
+                        })),
+                );
+            panel = panel
+                .child(compact_viewport)
+                .child(sound.when(state.karaoke, |row| row.child(karaoke)));
+        }
+        panel
     }
 }

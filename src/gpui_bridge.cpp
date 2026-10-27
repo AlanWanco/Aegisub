@@ -18,6 +18,7 @@
 #include "ass_dialogue.h"
 #include "ass_file.h"
 #include "async_video_provider.h"
+#include "audio_controller.h"
 #include "auto4_base.h"
 #include "dialogs.h"
 #include "command/command.h"
@@ -46,6 +47,7 @@
 #include <wx/filefn.h>
 #include <wx/choicdlg.h>
 #include <wx/image.h>
+#include <wx/msgdlg.h>
 #include <wx/mstream.h>
 #include <wx/sckaddr.h>
 #include <wx/socket.h>
@@ -102,12 +104,13 @@ std::string quote_json(std::string_view value) {
 	return out.str();
 }
 
-std::string to_base64_png(VideoFrame const& frame, double aspect) {
+std::string to_base64_jpeg(VideoFrame const& frame, double aspect) {
 	wxImage image = GetImage(frame);
 	int const display_width = std::max(1, static_cast<int>(std::round(image.GetHeight() * aspect)));
 	if (display_width != image.GetWidth()) image.Rescale(display_width, image.GetHeight(), wxIMAGE_QUALITY_HIGH);
+	image.SetOption(wxIMAGE_OPTION_QUALITY, 82);
 	wxMemoryOutputStream stream;
-	if (!image.SaveFile(stream, wxBITMAP_TYPE_PNG))
+	if (!image.SaveFile(stream, wxBITMAP_TYPE_JPEG))
 		return {};
 	std::vector<unsigned char> bytes(stream.GetSize());
 	stream.CopyTo(bytes.data(), bytes.size());
@@ -235,8 +238,8 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			client.video_epoch = video_epoch;
 			client.provider = provider_now;
 			client.awaiting_current = true;
-			if (auto provider = context->project->VideoProvider())
-				provider->RequestFrame(frame_number, context->videoController->TimeAtFrame(frame_number));
+			if (!context->videoController->IsPlaying())
+				provider_now->RequestFrame(frame_number, context->videoController->TimeAtFrame(frame_number));
 		}
 	}
 
@@ -314,8 +317,13 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		}
 		std::vector<wxSocketBase *> ready;
 		int const current_frame = context->videoController->GetFrameN();
+		bool const playing = context->videoController->IsPlaying();
+		int const frame_number = event.frame_number;
 		for (auto const& [socket, client] : clients) {
-			if (client.waiting_for_frame && client.video_epoch == video_epoch && client.provider == context->project->VideoProvider() && client.requested_frame == current_frame && static_cast<int>(event.time) == context->videoController->TimeAtFrame(current_frame))
+			bool const matching_still_frame = client.requested_frame == current_frame
+				&& event.frame_number == current_frame;
+			if (client.waiting_for_frame && client.video_epoch == video_epoch && client.provider == current_provider
+				&& (playing || matching_still_frame))
 				ready.push_back(socket);
 		}
 		for (auto socket : ready) {
@@ -324,15 +332,15 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			it->second.waiting_for_frame = false;
 			it->second.awaiting_current = false;
 			it->second.provider = nullptr;
-			std::string encoded = to_base64_png(*event.frame, context->videoController->GetAspectRatioValue());
+			std::string encoded = to_base64_jpeg(*event.frame, context->videoController->GetAspectRatioValue());
 			if (encoded.empty()) {
 				BeginResponse(socket, it->second, R"({"ok":false,"error":"could not encode preview frame"})");
 				continue;
 			}
 			std::ostringstream out;
-			out << "{\"ok\":true,\"video\":true,\"frame\":" << it->second.requested_frame
+			out << "{\"ok\":true,\"video\":true,\"frame\":" << frame_number
 			    << ",\"request\":" << it->second.request_id
-			    << ",\"width\":" << event.frame->width << ",\"height\":" << event.frame->height
+			    << ",\"width\":" << static_cast<int>(std::round(event.frame->height * context->videoController->GetAspectRatioValue())) << ",\"height\":" << event.frame->height
 			    << ",\"image\":" << quote_json(encoded) << '}';
 			BeginResponse(socket, it->second, out.str());
 		}
@@ -379,6 +387,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "preferences") { BeginResponse(socket, client, gpui::Preferences(object)); return; }
 		if (op == "hotkeys") { BeginResponse(socket, client, gpui::Hotkeys(object)); return; }
 		if (op == "snapshot") { BeginResponse(socket, client, Snapshot()); return; }
+		if (op == "playback") { BeginResponse(socket, client, PlaybackSnapshot()); return; }
 		if (op == "video_settings") { BeginResponse(socket, client, gpui::VideoSettings(context, object)); return; }
 		if (op == "visual") { BeginResponse(socket, client, visual.Interact(object)); return; }
 		if (op == "audio_render") { BeginResponse(socket, client, audio.Render(object)); return; }
@@ -426,6 +435,25 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "open") { BeginResponse(socket, client, Open(object)); return; }
 		if (op == "save_as") { BeginResponse(socket, client, SaveAs(object)); return; }
 		BeginResponse(socket, client, R"({"ok":false,"error":"unsupported operation"})");
+	}
+
+	std::string PlaybackSnapshot() {
+		auto provider = context->project->VideoProvider();
+		if (provider != observed_provider) {
+			observed_provider = provider;
+			++video_epoch;
+		}
+		std::ostringstream out;
+		out << "{\"ok\":true"
+		    << ",\"video\":" << (provider ? "true" : "false")
+		    << ",\"video_epoch\":" << video_epoch
+		    << ",\"playing\":" << (context->videoController->IsPlaying() ? "true" : "false")
+		    << ",\"frame\":" << context->videoController->GetFrameN()
+		    << ",\"video_time\":" << (provider ? context->videoController->TimeAtFrame(context->videoController->GetFrameN()) : 0)
+		    << ",\"audio_playing\":" << (context->audioController->IsPlaying() ? "true" : "false")
+		    << ",\"audio_position\":" << context->audioController->GetPlaybackPosition()
+		    << '}';
+		return out.str();
 	}
 
 	std::string Snapshot() {
@@ -528,7 +556,10 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		client.request_id = request_id;
 		client.video_epoch = video_epoch;
 		client.provider = provider;
-		provider->RequestFrame(frame_number, context->videoController->TimeAtFrame(frame_number));
+		// Playback already requests every advancing frame. Do not enqueue a
+		// competing request which can cancel the decoder's current work.
+		if (!context->videoController->IsPlaying())
+			provider->RequestFrame(frame_number, context->videoController->TimeAtFrame(frame_number));
 	}
 
 	std::string Select(json::Object const& object) {
