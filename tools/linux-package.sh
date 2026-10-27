@@ -4,6 +4,7 @@
 # The archive unpacks to a single directory containing the host binary, the GPUI
 # front-end and the shared libraries they need, so it runs without installing.
 set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 BUILD_DIR="${1:?usage: linux-package.sh <build-dir> <arch> [output-dir]}"
 ARCH="${2:?usage: linux-package.sh <build-dir> <arch> [output-dir]}"
@@ -38,6 +39,7 @@ if [ ! -x "${INSTALL_ROOT}/bin/aegisub" ]; then
   exit 1
 fi
 cp -a "${INSTALL_ROOT}/bin/." "${APP_DIR}/"
+python3 "${SCRIPT_DIR}/verify-gpui-package.py" "${APP_DIR}" --arch "$([ "${ARCH}" = linux-aarch64 ] && echo arm64 || echo x86_64)"
 
 if [ ! -x "${APP_DIR}/aegisub-gpui-prototype" ]; then
   echo "GPUI front-end missing from the install tree" >&2
@@ -51,6 +53,10 @@ for dir in share/locale share/aegisub; do
     cp -a "${INSTALL_ROOT}/${dir}" "${APP_DIR}/${dir}"
   fi
 done
+if [ -d "${APP_DIR}/share/locale" ]; then
+  mkdir -p "${APP_DIR}/share/aegisub"
+  ln -s ../locale "${APP_DIR}/share/aegisub/locale"
+fi
 
 # Bundle non-system shared libraries so the tarball runs on a clean machine.
 if command -v ldd >/dev/null 2>&1; then
@@ -60,20 +66,31 @@ if command -v ldd >/dev/null 2>&1; then
       case "$(basename "${lib}")" in
         libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*|libgcc_s.so.*|libstdc++.so.*) continue ;;
       esac
-      cp -nL "${lib}" "${APP_DIR}/lib/" 2>/dev/null || true
+      if [ ! -e "${APP_DIR}/lib/$(basename "${lib}")" ]; then
+        cp -L "${lib}" "${APP_DIR}/lib/"
+      fi
     done
   }
   copy_libs "${APP_DIR}/aegisub"
   copy_libs "${APP_DIR}/aegisub-gpui-prototype"
 fi
 
+# Launch from the unpacked directory, preserving the installed resource layout.
+mv "${APP_DIR}/aegisub" "${APP_DIR}/aegisub-core"
+cat > "${APP_DIR}/aegisub" <<'LAUNCHER'
+#!/bin/sh
+APP_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export LD_LIBRARY_PATH="${APP_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export AEGISUB_DATA_PATH="${APP_DIR}/share/aegisub"
+exec "${APP_DIR}/aegisub-core" "$@"
+LAUNCHER
+chmod +x "${APP_DIR}/aegisub"
 cat > "${APP_DIR}/README.txt" <<EOF
-Aegisub ${VERSION} (${ARCH}) - portable build
+Aegisub ${VERSION} (${ARCH}) - GPUI portable build
 
-Run ./aegisub. The GPUI workspace opens from View > GPUI Workspace Prototype.
-
-This archive bundles its own libraries. If the binary cannot find them, start it
-with: LD_LIBRARY_PATH="\$PWD/lib" ./aegisub
+Run ./aegisub to open the GPUI workspace directly.
+The launcher configures the bundled libraries and automation resources.
+Requires a graphical Linux session compatible with Ubuntu 24.04 or newer.
 EOF
 
 mkdir -p "${OUTPUT_DIR}"

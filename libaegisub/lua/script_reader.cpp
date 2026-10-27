@@ -51,7 +51,9 @@ namespace agi::lua {
 		auto size = static_cast<size_t>(file.size());
 
 		// Discard the BOM if present
-		if (size >= 3 && buff[0] == -17 && buff[1] == -69 && buff[2] == -65) {
+		if (size >= 3 && static_cast<unsigned char>(buff[0]) == 0xEF
+			&& static_cast<unsigned char>(buff[1]) == 0xBB
+			&& static_cast<unsigned char>(buff[2]) == 0xBF) {
 			buff += 3;
 			size -= 3;
 		}

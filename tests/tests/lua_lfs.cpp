@@ -116,3 +116,12 @@ TEST_F(lagi_lua_lfs, mandatory_support_is_not_loaded_from_script_directory) {
 	EXPECT_TRUE(lua_isnil(L, -1));
 	lua_pop(L, 1);
 }
+
+TEST_F(lagi_lua_lfs, utf8_bom_moonscript_loads_on_unsigned_char_platforms) {
+	auto support = util::test_data_dir().parent_path() / "automation/include";
+	ASSERT_TRUE(agi::lua::Install(L, {support}, support)) << lua_tostring(L, -1);
+	ASSERT_TRUE(agi::lua::LoadFile(L, support / "aegisub/unicode.moon")) << lua_tostring(L, -1);
+	ASSERT_EQ(0, lua_pcall(L, 0, 1, 0)) << lua_tostring(L, -1);
+	EXPECT_TRUE(lua_istable(L, -1));
+	lua_pop(L, 1);
+}

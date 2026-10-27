@@ -30,3 +30,6 @@ option('build_osx_bundle', type: 'boolean', value: false, description: 'Package 
 option('macos_deployment_target', type: 'string', value: '13.0', description: 'Minimum supported macOS version')
 
 option('tests', type: 'boolean', value: true, description: 'Build tests')
+
+option('gpui_frontend', type: 'string', value: '', description: 'Exact prebuilt GPUI executable to install')
+option('gpui_default', type: 'boolean', value: false, description: 'Launch the GPUI workspace at startup')

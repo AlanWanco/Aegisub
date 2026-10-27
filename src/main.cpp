@@ -258,7 +258,11 @@ bool AegisubApp::OnInit() {
 		// Set locale
 		auto lang = OPT_GET("App/Language")->GetString();
 		if (lang.empty() || (lang != "en_US" && !locale.HasLanguage(lang))) {
+#ifdef WITH_GPUI_DEFAULT
+			lang = "en_US";
+#else
 			lang = locale.PickLanguage();
+#endif
 			OPT_SET("App/Language")->SetString(lang);
 		}
 		locale.Init(lang);
@@ -302,7 +306,7 @@ bool AegisubApp::OnInit() {
 		StartupLog("Possibly perform automatic updates check");
 		if (OPT_GET("App/First Start")->GetBool()) {
 			OPT_SET("App/First Start")->SetBool(false);
-#ifdef WITH_UPDATE_CHECKER
+#if defined(WITH_UPDATE_CHECKER) && !defined(WITH_GPUI_DEFAULT)
 			int result = wxMessageBox(_("Do you want Aegisub to check for updates whenever it starts? You can still do it manually via the Help menu."),_("Check for updates?"), wxYES_NO | wxCENTER);
 			OPT_SET("App/Auto/Check For Updates")->SetBool(result == wxYES);
 			try {
@@ -388,6 +392,11 @@ agi::Context& AegisubApp::NewProjectContext() {
 		}
 	});
 	frames.push_back(frame);
+#ifdef WITH_GPUI_DEFAULT
+	frame->CallAfter([frame] {
+		if (!frame->LaunchGpui()) frame->Close();
+	});
+#endif
 	return *frame->context;
 }
 

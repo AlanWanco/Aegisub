@@ -25,7 +25,7 @@ jobs:
       # branch in generated non-release version and artifact names.
       AEGISUB_BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
       # Same condition as windows-sign-executable
-      AEGISUB_SIGN_WINDOWS: ${{ matrix.config.windows && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/ci/windows-signing') }}
+      AEGISUB_SIGN_WINDOWS: ${{ matrix.config.os == 'windows-latest' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/ci/windows-signing') }}
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_C_CUSTOM_CACHE_BUSTER: ${{ matrix.config['sccache-key'] }}
 
@@ -244,10 +244,27 @@ jobs:
         with:
           toolchain: '1.95.0'
 
+      - name: Select GPUI executable
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.config.rust_target }}
+        run: |
+          python - <<'PYTHON'
+          import os
+          from pathlib import Path
+          target = os.environ.get('RUST_TARGET', '')
+          root = Path.cwd() / 'gpui-prototype' / 'target'
+          if target:
+              root /= target
+          binary = root / 'release' / ('aegisub-gpui-prototype.exe' if os.name == 'nt' else 'aegisub-gpui-prototype')
+          with open(os.environ['GITHUB_ENV'], 'a') as file:
+              file.write(f'AEGISUB_GPUI_EXECUTABLE={binary.as_posix()}\n')
+          PYTHON
+
       - name: Configure
         run: |
           ${{ matrix.config.devenv }}
-          meson setup build ${{ matrix.config.native_args }} ${{ matrix.config.cross_args }} ${{ matrix.config.args }} -Dbuildtype=${{ matrix.config.buildtype }} ${{ github.ref_type == 'tag' && '-Dofficial_release=true' || '' }}
+          meson setup build ${{ matrix.config.native_args }} ${{ matrix.config.cross_args }} ${{ matrix.config.args }} -Dbuildtype=${{ matrix.config.buildtype }} -Dgpui_default=true -Dgpui_frontend="${{ env.AEGISUB_GPUI_EXECUTABLE }}" ${{ github.ref_type == 'tag' && '-Dofficial_release=true' || '' }}
 
       # The GPUI front-end is a separate binary launched by the wxWidgets host
       # through the local bridge, so every artifact must contain both.
@@ -264,6 +281,15 @@ jobs:
             args+=(--target "${RUST_TARGET}")
           fi
           cargo build "${args[@]}"
+          cargo test "${args[@]}"
+          python - <<'PYTHON'
+          import os, shutil
+          from pathlib import Path
+          binary = Path(os.environ['AEGISUB_GPUI_EXECUTABLE'])
+          if not binary.is_file():
+              raise SystemExit(f'GPUI build did not produce {binary}')
+          shutil.copy2(binary, Path('..') / 'build' / binary.name)
+          PYTHON
 
       - name: Build FFTW (MacOS)
         if: startsWith(matrix.config.os, 'macos-') && matrix.config.buildtype == 'release'
@@ -282,6 +308,7 @@ jobs:
         if: matrix.config.cross_args
         run: |
           test "$(lipo -archs build/aegisub)" = x86_64
+          test "$(lipo -archs build/aegisub-gpui-prototype)" = x86_64
           test "$(lipo -archs build/tests/gtest-main)" = x86_64
           test "$(lipo -archs build/tests/luajit-52)" = x86_64
           test "$(lipo -archs build/automation/tests/aegisub-lua)" = x86_64
@@ -325,6 +352,12 @@ jobs:
           ${{ matrix.config.devenv }}
           cd build && ninja win-portable
 
+      - name: Verify Windows GPUI packages
+        if: matrix.config.windows
+        shell: pwsh
+        run: |
+          python tools/verify-gpui-package.py build/aegisub-portable --arch "${{ matrix.config.os == 'windows-11-arm' && 'arm64' || 'x86_64' }}" --portable-zip (Get-Item build/Aegisub-*-portable.zip).FullName
+
       - name: Upload artifacts - win_installer
         uses: actions/upload-artifact@v7
         if: matrix.config.windows && env.AEGISUB_SIGN_WINDOWS != 'true'
@@ -357,6 +390,7 @@ jobs:
           name: Windows signing - packaging inputs
           path: |
             build/git_version.h
+            build/aegisub-gpui-prototype.exe
             build/po/*/LC_MESSAGES/aegisub.mo
             build/installer-deps/
             build/Aegisub-*-portable.zip
@@ -371,6 +405,7 @@ jobs:
           AEGISUB_BUNDLE_SIGNATURE: '-'
         run: |
           meson compile osx-bundle -C build
+          python tools/verify-gpui-package.py build/Aegisub.app/Contents/MacOS --arch "${{ matrix.config.rust_target && 'x86_64' || 'arm64' }}"
 
           # Run osx-build-dmg but retry up to 10 times if it fails since hdiutil can be unreliable
           # See: https://github.com/actions/runner-images/issues/7522

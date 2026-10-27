@@ -59,6 +59,12 @@ if ($LASTEXITCODE -ne 0) { throw "meson install failed (exit $LASTEXITCODE)" }
 
 Write-Step 'Copying executable'
 Copy-ToDirectory $InstallerDir\bin\aegisub.exe  $PortableOutputDir
+Copy-ToDirectory $InstallerDir\bin\aegisub-gpui-prototype.exe $PortableOutputDir
+
+# Put the matching runtime DLLs beside the executables: no redist installation.
+$RuntimeDir = Get-ChildItem -Path (Join-Path $env:VCToolsRedistDir $Architecture) -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1 -ExpandProperty FullName
+if (!$RuntimeDir) { throw "VC++ runtime directory missing under $env:VCToolsRedistDir for $Architecture" }
+Copy-ToDirectory "$RuntimeDir\*.dll" $PortableOutputDir
 
 Write-Step 'Copying translations'
 Copy-ToDirectory "$InstallerDir\share\locale\*"  "$PortableOutputDir\locale" -Recurse

@@ -79,7 +79,8 @@ void Path::FillPlatformSpecificPaths() {
 	SetToken("?data", data);
 	SetToken("?dictionary", Decode("?data/dictionaries"));
 #else
-	SetToken("?data", P_DATA);
+	const char *portable_data = getenv("AEGISUB_DATA_PATH");
+	SetToken("?data", portable_data ? portable_data : P_DATA);
 	SetToken("?dictionary", "/usr/share/hunspell");
 #endif
 

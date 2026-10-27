@@ -68,6 +68,7 @@
 #include <wx/filename.h>
 #include <wx/filefn.h>
 #include <wx/msgdlg.h>
+#include <wx/process.h>
 #include <wx/stdpaths.h>
 #include <wx/sizer.h>
 #include <wx/statline.h>
@@ -105,6 +106,15 @@ FrameMain::FrameMain()
 , context(std::make_unique<agi::Context>())
 {
 	StartupLog("Entering FrameMain constructor");
+	Bind(wxEVT_END_PROCESS, [this](wxProcessEvent& event) {
+		if (event.GetPid() != gpuiPid) return;
+		gpuiPid = 0;
+		delete gpuiProcess;
+		gpuiProcess = nullptr;
+#ifdef WITH_GPUI_DEFAULT
+		Close();
+#endif
+	}, ID_APP_LAUNCH_GPUI);
 	ui::ApplySurface(this, true);
 	Bind(wxEVT_MENU_OPEN, [this](wxMenuEvent& event) {
 		ui::ApplyAppearanceToMenuBar(GetMenuBar());
@@ -171,7 +181,9 @@ FrameMain::FrameMain()
 
 	StartupLog("Display main window");
 	AddFullScreenButton(this);
+#ifndef WITH_GPUI_DEFAULT
 	Show();
+#endif
 	SetDisplayMode(1, 1);
 
 	StartupLog("Leaving FrameMain constructor");
@@ -320,12 +332,12 @@ void FrameMain::StatusTimeout(wxString text,int ms) {
 	StatusClear.Start(ms,true);
 }
 
-void FrameMain::LaunchGpui() {
+bool FrameMain::LaunchGpui() {
 	if (!gpuiBridge)
 		gpuiBridge = std::make_unique<GpuiBridge>(context.get());
 	if (!gpuiBridge->Start()) {
 		wxMessageBox(_("Could not start the GPUI prototype bridge."), _("GPUI prototype"), wxOK | wxICON_ERROR | wxCENTER, this);
-		return;
+		return false;
 	}
 
 	wxFileName executable(wxStandardPaths::Get().GetExecutablePath());
@@ -360,17 +372,25 @@ void FrameMain::LaunchGpui() {
 		"--token", token.c_str(),
 		nullptr
 	};
-	long const pid = wxExecute(args, wxEXEC_ASYNC, nullptr, &env);
+	auto process = std::make_unique<wxProcess>(this, ID_APP_LAUNCH_GPUI);
+	long const pid = wxExecute(args, wxEXEC_ASYNC, process.get(), &env);
 	if (pid == 0) {
 		wxMessageBox(_("Could not launch the GPUI prototype. Build it with cargo build --release --manifest-path gpui-prototype/Cargo.toml."), _("GPUI prototype"), wxOK | wxICON_ERROR | wxCENTER, this);
-		return;
+		return false;
 	}
+	if (gpuiProcess) gpuiProcess->Detach();
 	if (gpuiPid && gpuiPid != pid)
 		wxKill(gpuiPid, wxSIGTERM, nullptr, wxKILL_CHILDREN);
 	gpuiPid = pid;
+	gpuiProcess = process.release();
+	return true;
 }
 
 void FrameMain::StopGpui() {
+	if (gpuiProcess) {
+		gpuiProcess->Detach();
+		gpuiProcess = nullptr;
+	}
 	if (gpuiPid) {
 		wxKill(gpuiPid, wxSIGTERM, nullptr, wxKILL_CHILDREN);
 		gpuiPid = 0;
@@ -397,6 +417,9 @@ void FrameMain::OnCloseWindow(wxCloseEvent &event) {
 	// Ask user if he wants to save first
 	if (context->subsController->TryToClose(event.CanVeto()) == wxCANCEL) {
 		event.Veto();
+#ifdef WITH_GPUI_DEFAULT
+		if (!gpuiPid) LaunchGpui();
+#endif
 		return;
 	}
 

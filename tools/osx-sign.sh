@@ -45,7 +45,13 @@ if ! find "${PKG_DIR}/Contents" -type f -print > "${SIGN_FILE_LIST}"; then
   exit 1
 fi
 
+# Signing the main executable also seals its enclosing bundle. Sign the
+# nested GPUI executable and libraries first, then let the bundle pass sign it.
+MAIN_EXECUTABLE="${PKG_DIR}/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${PKG_DIR}/Contents/Info.plist")"
 while IFS= read -r fname; do
+  if test "${fname}" = "${MAIN_EXECUTABLE}"; then
+    continue
+  fi
   case "$(file -b "${fname}")" in
     Mach-O*) sign_file "${fname}" ;;
   esac
