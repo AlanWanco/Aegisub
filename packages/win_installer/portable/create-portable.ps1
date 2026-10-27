@@ -26,7 +26,7 @@ function Copy-ToDirectory {
 
 # Keep in sync with the number of Write-Step calls below.
 $script:stepNum = 0
-$script:stepTotal = 11
+$script:stepTotal = 10
 
 # Report progress both via an interactive bar and a textual trail for CI logs.
 function Write-Step {
@@ -82,9 +82,6 @@ Write-Step 'Copying VSFilter'
 if ($Architecture -eq 'x64') {
     Copy-ToDirectory $InstallerDepsDir\VSFilter\x64\VSFilter.dll  $PortableOutputDir\csri
 }
-
-Write-Step 'Copying VC++ runtime'
-Copy-ToDirectory "$InstallerDepsDir\VC_redist\VC_redist.$Architecture.exe" $PortableOutputDir\Microsoft.CRT
 
 Write-Step 'Copying automation'
 Copy-ToDirectory "$InstallerDir\share\aegisub\automation\*"  "$PortableOutputDir\automation\"  -Recurse
