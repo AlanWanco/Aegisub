@@ -54,20 +54,11 @@ fn main() {
             resource.set_toolkit_path(directory);
         }
     }
-    resource.set_manifest(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <application xmlns="urn:schemas-microsoft-com:asm.v3">
-    <windowsSettings>
-      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
-      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">permonitorv2</dpiAwareness>
-    </windowsSettings>
-  </application>
-</assembly>"#,
-    );
+    // rustc already embeds its own manifest; adding another one makes CVTRES
+    // fail with "duplicate resource. type:MANIFEST".
     if let Err(error) = resource.compile() {
         panic!(
-            "failed to embed the Windows icon and manifest: {error}. \
+            "failed to embed the Windows icon: {error}. \
              Set RC_PATH to the Windows SDK rc.exe if it is not installed in the default location."
         );
     }
