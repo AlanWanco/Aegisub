@@ -3578,20 +3578,71 @@ impl Workspace {
             })).flex_1().min_h(px(100.)))
     }
 
-    fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_properties(&self, height: Option<f32>, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Palette::current(cx);
-        let mut panel = div()
+        let cell = |key: &'static str, label: &'static str| {
+            div()
+                .v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_1()
+                .child(div().text_size(px(11.)).text_color(p.muted).child(label))
+                .child(
+                    Input::new(&self.property_inputs[key])
+                        .id(format!("property-{key}"))
+                        .aria_label(label)
+                        .h(px(28.))
+                        .w_full(),
+                )
+        };
+        let group = |title: &'static str, rows: Vec<Vec<gpui_kit::AnyElement>>| {
+            let mut body = div().v_flex().w_full().min_w_0().gap_1();
+            for row in rows {
+                body = body.child(
+                    div()
+                        .h_flex()
+                        .items_start()
+                        .w_full()
+                        .min_w_0()
+                        .gap_2()
+                        .children(row),
+                );
+            }
+            div()
+                .v_flex()
+                .w_full()
+                .min_w_0()
+                .gap_1()
+                .child(
+                    div()
+                        .text_size(px(11.))
+                        .font_semibold()
+                        .text_color(p.muted)
+                        .child(title),
+                )
+                .child(body)
+        };
+        let commented = self
+            .snapshot
+            .lines
+            .iter()
+            .find(|line| line.id == self.selected_line)
+            .is_some_and(|line| line.comment);
+        // Compact two-column inspector: label above its field, groups on one line
+        // each, so the whole panel fits without scrolling in the default window.
+        div()
             .id("line-properties")
             .v_flex()
-            .flex_1()
+            .when_some(height, |panel, height| panel.h(px(height)).flex_shrink_0())
+            .when(height.is_none(), |panel| panel.flex_1())
             .min_w_0()
             .min_h_0()
             .rounded(px(8.))
             .border_1()
             .border_color(p.border)
             .bg(p.surface)
-            .p_4()
-            .gap_3()
+            .p_2()
+            .gap_0p5()
             .overflow_y_scrollbar()
             .child(
                 div()
@@ -3607,82 +3658,65 @@ impl Workspace {
                     .child(
                         div()
                             .px_2()
-                            .py_1()
+                            .py_0p5()
                             .rounded(px(4.))
                             .bg(p.raised)
                             .text_size(px(11.))
                             .text_color(p.muted)
                             .child(format!("{} 行", self.snapshot.selected.len())),
+                    )
+                    .child(
+                        Button::new("toggle-comment")
+                            .label(if commented { "改为对白" } else { "改为注释" })
+                            .ghost()
+                            .disabled(self.selected_line < 0)
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.invoke(json!({"op": "line_fields", "ids": view.snapshot.selected, "fields": {"comment": !commented}}), cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("save-as")
+                            .icon(IconName::Save)
+                            .accessibility_label("另存为")
+                            .tooltip("另存为…")
+                            .ghost()
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx)
+                            })),
+                    )
+                    .child(
+                        Button::new("apply-line-fields")
+                            .icon(IconName::Check)
+                            .label("应用修改")
+                            .primary()
+                            .disabled(self.selected_line < 0 || !self.properties_dirty)
+                            .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))),
                     ),
-            );
-        for (title, fields) in [
-            ("时间", vec![("start", "开始"), ("end", "结束")]),
-            (
+            )
+            .child(group(
+                "时间",
+                vec![vec![
+                    cell("start", "开始").into_any_element(),
+                    cell("end", "结束").into_any_element(),
+                ]],
+            ))
+            .child(group(
                 "字幕",
-                vec![
-                    ("style", "样式"),
-                    ("actor", "角色"),
-                    ("layer", "图层"),
-                    ("effect", "效果"),
-                ],
-            ),
-            (
+                vec![vec![
+                    cell("style", "样式").into_any_element(),
+                    cell("actor", "角色").into_any_element(),
+                    cell("layer", "图层").into_any_element(),
+                    cell("effect", "效果").into_any_element(),
+                ]],
+            ))
+            .child(group(
                 "边距",
-                vec![
-                    ("margin_left", "左"),
-                    ("margin_right", "右"),
-                    ("margin_vertical", "垂直"),
-                ],
-            ),
-        ] {
-            panel = panel.child(
-                div()
-                    .mt_1()
-                    .text_size(px(11.))
-                    .font_semibold()
-                    .text_color(p.muted)
-                    .child(title),
-            );
-            for (key, label) in fields {
-                panel = panel.child(
-                    div()
-                        .h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .w(px(38.))
-                                .flex_shrink_0()
-                                .text_size(px(12.))
-                                .text_color(p.muted)
-                                .child(label),
-                        )
-                        .child(
-                            Input::new(&self.property_inputs[key])
-                                .id(format!("property-{key}"))
-                                .aria_label(label)
-                                .flex_1()
-                                .min_w_0(),
-                        ),
-                );
-            }
-        }
-        let commented = self
-            .snapshot
-            .lines
-            .iter()
-            .find(|line| line.id == self.selected_line)
-            .is_some_and(|line| line.comment);
-        panel.child(div().h(px(1.)).my_1().bg(p.divider))
-            .child(Button::new("apply-line-fields").icon(IconName::Check).label("应用修改").primary()
-                .disabled(self.selected_line < 0 || !self.properties_dirty).on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))))
-            .child(Button::new("toggle-comment").label(if commented { "改为对白" } else { "改为注释" }).ghost()
-                .disabled(self.selected_line < 0).on_click(cx.listener(move |view, _, _, cx| {
-                    view.invoke(json!({"op":"line_fields", "ids":view.snapshot.selected, "fields":{"comment":!commented}}), cx);
-                })))
-            .child(Button::new("save-as").icon(IconName::Save).label("另存为…").ghost()
-                .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx))))
-            .child(div().text_size(px(11.)).text_color(p.muted).child("字段修改应用到所选字幕。"))
+                vec![vec![
+                    cell("margin_left", "左").into_any_element(),
+                    cell("margin_right", "右").into_any_element(),
+                    cell("margin_vertical", "垂直").into_any_element(),
+                ]],
+            ))
     }
 
     fn activate_panel(&mut self, panel: Panel, window: &mut Window, cx: &mut Context<Self>) {
@@ -4013,7 +4047,7 @@ impl Workspace {
         let available_height = f32::from(window.viewport_size().height);
         let view_height = if self.visual.fit_video || !self.snapshot.video {
             if side_by_side {
-                (available_height - 510.).clamp(180., 300.)
+                (available_height - 510.).clamp(130., 140.)
             } else if self.active_panel == Panel::Visual {
                 (available_height - 350.).max(160.)
             } else {
@@ -5208,7 +5242,7 @@ impl Render for Workspace {
                 .child(
                     div()
                         .v_flex()
-                        .when(side_by_side, |column| column.w(px(column_width)))
+                        .when(side_by_side, |column| column.w(px(column_width)).h_full())
                         .when(!side_by_side, |column| column.flex_1())
                         .flex_shrink_0()
                         .min_w_0()
@@ -5218,7 +5252,12 @@ impl Render for Workspace {
                         // The stacked layout has no spare height to trade
                         // between the preview and the properties.
                         .when(side_by_side, |column| column.child(video_handle))
-                        .child(self.render_properties(cx)),
+                        .child(self.render_properties(
+                            side_by_side.then(|| {
+                                (f32::from(window.viewport_size().height) - 600.).clamp(190., 320.)
+                            }),
+                            cx,
+                        )),
                 )
                 .when(side_by_side, |row| row.child(column_handle))
                 .child(
