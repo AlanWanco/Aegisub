@@ -99,3 +99,5 @@ Windows、Linux、wxWidgets 3.2、中文输入法预编辑/候选框仍未实机
 
 
 多平台打包通过 `-Dgpui_frontend=<当前架构的 Rust 可执行文件>` 显式指定前端，不再从多个 target 目录猜测。Windows installer 和 portable 同时包含 `aegisub.exe` 与 `aegisub-gpui-prototype.exe`；portable 将匹配架构的 VC++ runtime DLL 放在 exe 旁，解压一次即可运行。macOS 先签嵌套 Mach-O，最后签整个 `.app`；Linux tar.gz 的入口脚本设置资源及共享库路径后启动宿主。CI 的包校验会拒绝缺少前端、架构不符或嵌套 zip 的 Windows 产物。构建通过与真实桌面验收分别记录。
+
+Windows 前端使用 GUI 子系统（release 构建的 `windows_subsystem = "windows"`），避免宿主在后台拉起 GPUI 时多开一个黑色控制台窗口；包校验会拒绝控制台子系统的前端可执行文件。

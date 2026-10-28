@@ -7,14 +7,22 @@ import zipfile
 from pathlib import Path
 
 
+def pe_header(path: Path) -> tuple[str, int]:
+    data = path.read_bytes()
+    offset = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[offset : offset + 4] != b"PE\0\0":
+        raise ValueError(f"Invalid PE header: {path}")
+    machine = struct.unpack_from("<H", data, offset + 4)[0]
+    # Optional header subsystem: 2 is IMAGE_SUBSYSTEM_WINDOWS_GUI, 3 is CUI.
+    optional_header = offset + 24
+    subsystem = struct.unpack_from("<H", data, optional_header + 68)[0]
+    return {0x8664: "x86_64", 0xAA64: "arm64"}[machine], subsystem
+
+
 def architecture(path: Path) -> str:
     data = path.read_bytes()
     if data[:2] == b"MZ":
-        offset = struct.unpack_from("<I", data, 0x3C)[0]
-        if data[offset : offset + 4] != b"PE\0\0":
-            raise ValueError(f"Invalid PE header: {path}")
-        machine = struct.unpack_from("<H", data, offset + 4)[0]
-        return {0x8664: "x86_64", 0xAA64: "arm64"}[machine]
+        return pe_header(path)[0]
     if data[:4] == b"\x7fELF":
         order = "<" if data[5] == 1 else ">"
         machine = struct.unpack_from(order + "H", data, 18)[0]
@@ -43,6 +51,13 @@ def main() -> None:
         if found != args.arch:
             raise SystemExit(f"{binary}: expected {args.arch}, found {found}")
         print(f"Verified {binary.name}: {found}")
+        # A console subsystem would open a black window next to the workspace.
+        if binary.suffix == ".exe" and "gpui" in binary.name:
+            subsystem = pe_header(binary)[1]
+            if subsystem != 2:
+                raise SystemExit(
+                    f"{binary}: expected GUI subsystem (2), found {subsystem}"
+                )
     if args.portable_zip:
         with zipfile.ZipFile(args.portable_zip) as archive:
             names = set(archive.namelist())

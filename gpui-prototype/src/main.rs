@@ -1,3 +1,10 @@
+// Release builds are GUI-only: without this Windows opens a console window for
+// the front-end that the host launches in the background.
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 mod attachment_panel;
 mod file_panel;
 mod spelling_panel;
