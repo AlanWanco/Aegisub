@@ -446,15 +446,28 @@ impl DocumentPanels {
             )
             .child(editor);
         div()
-            .h_flex()
-            .items_stretch()
+            .v_flex()
             .flex_1()
             .min_h_0()
             .p_4()
             .gap_4()
-            .child(style_card)
-            .child(self.render_library(cx))
-            .child(editor_card)
+            .child(crate::page::header(
+                cx,
+                IconName::Palette,
+                "样式管理",
+                "编辑当前脚本样式或从样式库复制；字段修改需点应用，重命名会同步更新行样式引用。",
+            ))
+            .child(
+                div()
+                    .h_flex()
+                    .items_stretch()
+                    .flex_1()
+                    .min_h_0()
+                    .gap_4()
+                    .child(style_card)
+                    .child(self.render_library(cx))
+                    .child(editor_card),
+            )
     }
 
     fn render_library(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
