@@ -3541,12 +3541,25 @@ impl Workspace {
             .collect();
         let count = commands.len();
         let weak = cx.weak_entity();
-        div().v_flex().flex_1().min_h_0().p_3().gap_2()
-            .child(div().h_flex().items_center().gap_3()
-                .child(div().font_semibold().child(format!("旧版命令 · {count} 项")))
-                .child(Input::new(&self.command_search).id("command-search").w(px(360.)))
-                .child(Button::new("refresh-command-catalog").label("刷新状态").on_click(cx.listener(|view, _, _, cx| view.refresh_catalog(cx)))))
-            .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child("标有旧版对话框的项目会打开原界面；需旧版控件的项目仍在原窗口使用。快捷键栏为旧版配置，可用项目命令按原配置触发；命令搜索：Ctrl/⌘+Shift+P。"))
+        page::page(cx, "commands-panel")
+            .child(page::header(
+                cx,
+                IconName::Menu,
+                "全部命令",
+                "标有旧版对话框的项目会打开原界面；需旧版控件的项目仍在原窗口使用。命令搜索：Ctrl/⌘+Shift+P。",
+            ))
+            .child(page::toolbar([
+                Input::new(&self.command_search)
+                    .id("command-search")
+                    .w(px(320.))
+                    .into_any_element(),
+                Button::new("refresh-command-catalog")
+                    .label("刷新状态")
+                    .ghost()
+                    .on_click(cx.listener(|view, _, _, cx| view.refresh_catalog(cx)))
+                    .into_any_element(),
+                page::badge(cx, format!("{count} 项命令")).into_any_element(),
+            ]))
             .child(uniform_list("legacy-command-list", count, cx.processor(move |_, range: Range<usize>, _, cx| {
                 range.map(|index| {
                     let command = commands[index].clone();
@@ -5239,10 +5252,21 @@ impl Render for Workspace {
                     .child(columns),
             );
         } else if self.active_panel == Panel::Visual {
-            body = body.child(div().v_flex().flex_1().min_h_0().p_3().gap_2()
-                .child(self.visual.toolbar(cx))
-                .child(self.render_player(window, false, cx))
-                .child(div().text_sm().child("双击十字定位；拖动控制点调整，Shift 约束，Ctrl/⌘ 多选。操作写入当前字幕并可撤销。")));
+            body = body.child(
+                page::page(cx, "visual-panel")
+                    .child(page::header(
+                        cx,
+                        IconName::Frame,
+                        "视觉排版",
+                        "在画面上直接调整位置、缩放与裁剪；操作写入当前字幕并可撤销。",
+                    ))
+                    .child(self.visual.toolbar(cx))
+                    .child(self.render_player(window, false, cx))
+                    .child(page::hint(
+                        cx,
+                        "双击十字定位；拖动控制点调整，Shift 约束，Ctrl/⌘ 多选。",
+                    )),
+            );
         } else if self.active_panel == Panel::Commands {
             body = body.child(self.render_commands(cx));
         } else if self.active_panel == Panel::Audio {

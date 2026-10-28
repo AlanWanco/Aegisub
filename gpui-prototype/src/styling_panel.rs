@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -103,92 +104,81 @@ impl StylingPanel {
                     })),
             );
         }
-        let mut actions = div().h_flex().flex_wrap().gap_2();
-        for (id, label, action) in [
-            ("styling-prev", "上一行", "prev"),
-            ("styling-next", "下一行", "next"),
-            ("styling-preview", "应用并预览", "preview"),
-            ("styling-commit", "应用并前进", "commit"),
-        ] {
-            actions = actions.child(
-                Button::new(id)
-                    .label(label)
+        let p = crate::workspace_theme::Palette::current(cx);
+        let status = active
+            .map(|line| {
+                format!(
+                    "行 {} / {} · 当前样式 {}",
+                    line.row + 1,
+                    snapshot.lines.len(),
+                    line.style
+                )
+            })
+            .unwrap_or_default();
+        crate::page::page(cx, "styling-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::CaseSensitive,
+                "配样式",
+                "按前缀筛选样式并应用到当前行；应用后自动前进，整次操作可撤销。",
+            ))
+            .child(crate::page::toolbar([
+                Button::new("styling-commit")
+                    .label("应用并前进")
+                    .primary()
+                    .disabled(active.is_none())
+                    .on_click(cx.listener(|view, _, _, cx| view.styling_action("commit", None, cx)))
+                    .into_any_element(),
+                Button::new("styling-preview")
+                    .label("应用并预览")
                     .disabled(active.is_none())
                     .on_click(
-                        cx.listener(move |view, _, _, cx| view.styling_action(action, None, cx)),
-                    ),
-            );
-        }
-        actions = actions.child(
-            Button::new("styling-seek")
-                .label("定位当前行视频")
-                .when(self.seek, |button| button.primary())
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.styling.seek = !view.styling.seek;
-                    cx.notify();
-                })),
-        );
-        for (id, label, command, enabled) in [
-            (
-                "styling-play-video",
-                "播放视频",
-                "video/play/line",
-                snapshot.video,
-            ),
-            (
-                "styling-play-audio",
-                "播放音频",
-                "audio/play/selection",
-                snapshot.audio.loaded,
-            ),
-            ("styling-undo", "撤销", "edit/undo", true),
-        ] {
-            actions = actions.child(Button::new(id).label(label).disabled(!enabled).on_click(
-                cx.listener(move |view, _, _, cx| {
-                    view.invoke(json!({"op":"command","name":command}), cx)
-                }),
-            ));
-        }
-        div()
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_3()
-            .child(div().text_lg().font_semibold().child("样式助手"))
-            .child(
-                div().text_sm().child(
-                    active
-                        .map(|line| {
-                            format!(
-                                "行 {} / {} · 当前样式 {}",
-                                line.row + 1,
-                                snapshot.lines.len(),
-                                line.style
-                            )
-                        })
-                        .unwrap_or_default(),
+                        cx.listener(|view, _, _, cx| view.styling_action("preview", None, cx)),
+                    )
+                    .into_any_element(),
+                Button::new("styling-prev")
+                    .label("上一行")
+                    .ghost()
+                    .disabled(active.is_none())
+                    .on_click(cx.listener(|view, _, _, cx| view.styling_action("prev", None, cx)))
+                    .into_any_element(),
+                Button::new("styling-next")
+                    .label("下一行")
+                    .ghost()
+                    .disabled(active.is_none())
+                    .on_click(cx.listener(|view, _, _, cx| view.styling_action("next", None, cx)))
+                    .into_any_element(),
+                crate::page::badge(cx, status).into_any_element(),
+            ]))
+            .child(crate::page::section(
+                cx,
+                "当前行",
+                None,
+                crate::page::section_body().child(
+                    div()
+                        .p_3()
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(p.border)
+                        .text_sm()
+                        .child(active.map(|line| line.text.clone()).unwrap_or_default()),
                 ),
-            )
-            .child(
-                div()
-                    .p_3()
-                    .border_1()
-                    .border_color(Theme::global(cx).border)
-                    .child(active.map(|line| line.text.clone()).unwrap_or_default()),
-            )
-            .child(actions)
-            .child(Input::new(&self.input).w(px(320.)))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child(if valid {
-                        "Enter 应用并前进；F8 预览，PageUp/PageDown 切行。"
-                    } else {
-                        "按输入前缀筛选样式，点击样式应用到当前行。"
-                    }),
-            )
-            .child(styles.flex_1())
+            ))
+            .child(crate::page::section(
+                cx,
+                "选择样式",
+                None,
+                crate::page::section_body()
+                    .child(Input::new(&self.input).w(px(320.)))
+                    .child(crate::page::hint(
+                        cx,
+                        if valid {
+                            "Enter 应用并前进；F8 预览，PageUp/PageDown 切行。"
+                        } else {
+                            "按输入前缀筛选样式，点击样式应用到当前行。"
+                        },
+                    ))
+                    .child(styles.flex_1()),
+            ))
     }
 }

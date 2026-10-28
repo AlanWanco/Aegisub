@@ -567,35 +567,38 @@ impl AudioPanel {
         } else {
             "加载视频音轨后可使用波形调时和卡拉 OK 工具".to_owned()
         };
+        let mut title_row = div().h_flex().items_center().gap_2();
+        if !full_controls {
+            title_row = title_row
+                .child(Icon::new(IconName::AudioLines).size(px(14.)))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_sm()
+                        .font_semibold()
+                        .child("音频波形"),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_size(px(11.))
+                        .text_color(Theme::global(cx).muted_foreground)
+                        .child(hint),
+                );
+        } else {
+            title_row = title_row.child(div().flex_1());
+        }
         let mut panel = div()
             .v_flex()
             .w_full()
             .min_w_0()
             .gap_3()
             .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(Icon::new(IconName::AudioLines).size(px(14.)))
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_sm()
-                            .font_semibold()
-                            .child("音频波形"),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(11.))
-                            .text_color(Theme::global(cx).muted_foreground)
-                            .child(hint),
-                    )
+                title_row
                     .when(!state.loaded, |row| row.child(load_audio))
                     .when(state.loaded, |row| {
                         row.child(Button::new("audio-play").label("播放选区").on_click(
@@ -646,7 +649,12 @@ impl AudioPanel {
                         ),
                 )
                 .child(controls)
-                .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(Theme::global(cx).muted_foreground)
+                        .child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"),
+                )
                 .child(
                     div().h_flex().child(
                         Button::new("close-audio")
@@ -658,6 +666,15 @@ impl AudioPanel {
                             })),
                     ),
                 );
+            crate::page::page(cx, "audio-panel")
+                .child(crate::page::header(
+                    cx,
+                    IconName::AudioLines,
+                    "音频调时",
+                    "载入音频或视频音轨后拖动波形设置时间；时间修改遵循自动提交与吸附设置。",
+                ))
+                .child(panel)
+                .into_any_element()
         } else {
             let compact_viewport = div()
                 .h_flex()
@@ -725,7 +742,7 @@ impl AudioPanel {
             panel = panel
                 .child(compact_viewport)
                 .child(sound.when(state.karaoke, |row| row.child(karaoke)));
+            panel.into_any_element()
         }
-        panel
     }
 }

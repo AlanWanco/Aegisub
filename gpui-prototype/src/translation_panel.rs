@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -77,29 +78,6 @@ impl TranslationPanel {
         audio: bool,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        let mut actions = div().h_flex().flex_wrap().gap_2();
-        for (id, label, action) in [
-            ("translation-prev", "上一块", "prev"),
-            ("translation-next", "下一块", "next"),
-            ("translation-preview", "提交并预览", "preview"),
-            ("translation-commit", "提交并前进", "commit"),
-            ("translation-original", "插入原文", "insert_original"),
-        ] {
-            actions = actions.child(
-                Button::new(id)
-                    .label(label)
-                    .disabled(!self.state.available || self.loading)
-                    .on_click(
-                        cx.listener(move |view, _, _, cx| view.translation_action(action, cx)),
-                    ),
-            );
-        }
-        actions = actions.child(
-            Button::new("translation-refresh")
-                .label("从当前行刷新")
-                .disabled(self.loading)
-                .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx))),
-        );
         let mut options = div().h_flex().gap_2();
         options = options.child(
             Button::new("translation-seek")
@@ -140,19 +118,110 @@ impl TranslationPanel {
                 }),
             ));
         }
-        div().id("translation-assistant").v_flex().flex_1().min_h_0().p_4().gap_3()
-            .child(div().text_lg().font_semibold().child("翻译助手"))
-            .child(div().text_sm().child(if self.state.available {
-                format!("行 {} / {} · 文本块 {} / {}{}", self.state.row + 1, self.state.line_count,
-                    self.state.position + 1, self.state.count, if self.state.exhausted { " · 已到最后一块" } else { "" })
-            } else { "当前脚本没有可翻译的文本块".into() }))
-            .child(actions).child(options)
-            .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("整行原文 · 覆盖标签、注释块和绘图保持原样"))
-            .child(div().p_3().border_1().border_color(Theme::global(cx).border).child(self.state.line_text.clone()))
-            .child(div().text_sm().font_semibold().child("当前文本块"))
-            .child(div().p_3().bg(Theme::global(cx).accent).text_color(Theme::global(cx).accent_foreground).child(self.state.text.clone()))
-            .child(div().text_sm().font_semibold().child("译文"))
-            .child(Textarea::new(&self.editor).h(px(150.)).w_full())
-            .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child("Enter 提交并前进，Shift+Enter 换行；F8 预览、PageUp/PageDown 切块。切块会清空当前译文；刷新可重新读取外部修改。"))
+        let p = crate::workspace_theme::Palette::current(cx);
+        let status = if self.state.available {
+            format!(
+                "行 {} / {} · 文本块 {} / {}{}",
+                self.state.row + 1,
+                self.state.line_count,
+                self.state.position + 1,
+                self.state.count,
+                if self.state.exhausted {
+                    " · 已到最后一块"
+                } else {
+                    ""
+                }
+            )
+        } else {
+            "当前脚本没有可翻译的文本块".to_owned()
+        };
+        crate::page::page(cx, "translation-assistant")
+            .child(crate::page::header(
+                cx,
+                IconName::Languages,
+                "翻译助手",
+                "按块翻译：上一块 / 下一块切换，提交后自动前进；整行原文的标签与绘图保持不变。",
+            ))
+            .child(crate::page::toolbar([
+                Button::new("translation-commit")
+                    .label("提交并前进")
+                    .primary()
+                    .disabled(!self.state.available || self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("commit", cx)))
+                    .into_any_element(),
+                Button::new("translation-preview")
+                    .label("提交并预览")
+                    .disabled(!self.state.available || self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("preview", cx)))
+                    .into_any_element(),
+                Button::new("translation-prev")
+                    .label("上一块")
+                    .ghost()
+                    .disabled(!self.state.available || self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("prev", cx)))
+                    .into_any_element(),
+                Button::new("translation-next")
+                    .label("下一块")
+                    .ghost()
+                    .disabled(!self.state.available || self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("next", cx)))
+                    .into_any_element(),
+                Button::new("translation-original")
+                    .label("插入原文")
+                    .ghost()
+                    .disabled(!self.state.available || self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.translation_action("insert_original", cx)
+                    }))
+                    .into_any_element(),
+                Button::new("translation-refresh")
+                    .label("从当前行刷新")
+                    .ghost()
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx)))
+                    .into_any_element(),
+                crate::page::badge(cx, status).into_any_element(),
+            ]))
+            .child(options)
+            .child(crate::page::section(
+                cx,
+                "整行原文",
+                None,
+                crate::page::section_body()
+                    .child(crate::page::hint(cx, "覆盖标签、注释块和绘图保持原样"))
+                    .child(
+                        div()
+                            .p_3()
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(p.border)
+                            .text_sm()
+                            .child(self.state.line_text.clone()),
+                    ),
+            ))
+            .child(crate::page::section(
+                cx,
+                "当前文本块",
+                None,
+                crate::page::section_body().child(
+                    div()
+                        .p_3()
+                        .rounded(px(8.))
+                        .bg(p.selected)
+                        .text_color(p.selected_text)
+                        .child(self.state.text.clone()),
+                ),
+            ))
+            .child(crate::page::section(
+                cx,
+                "译文",
+                None,
+                crate::page::section_body()
+                    .child(Textarea::new(&self.editor).h(px(150.)).w_full())
+                    .child(crate::page::hint(
+                        cx,
+                        "Enter 提交并前进，Shift+Enter 换行；F8 预览、PageUp/PageDown 切块。切块会清空当前译文；刷新可重新读取外部修改。",
+                    )),
+            ))
     }
 }
