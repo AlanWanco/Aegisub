@@ -411,75 +411,186 @@ impl AudioPanel {
                     view.flush_audio_drag(cx);
                 }),
             );
-        let mut viewport = div().h_flex().gap_2().items_center();
-        for (id, label, action) in [
-            ("audio-left", "向前", 0),
-            ("audio-right", "向后", 1),
-            ("audio-zoom-in", "放大", 2),
-            ("audio-zoom-out", "缩小", 3),
-            ("audio-fit-line", "定位当前句", 4),
-            ("audio-gain-up", "增益 +", 5),
-            ("audio-gain-down", "增益 −", 6),
-        ] {
-            viewport = viewport.child(Button::new(id).label(label).ghost().on_click(cx.listener(
-                move |view, _, _, cx| {
-                    let duration = view.snapshot.audio.duration;
-                    match action {
-                        0 => {
-                            view.audio.view_start =
-                                (view.audio.view_start - view.audio.span / 2).max(0)
-                        }
-                        1 => {
-                            view.audio.view_start = (view.audio.view_start + view.audio.span / 2)
-                                .min((duration - view.audio.span).max(0))
-                        }
-                        2 => view.audio.span = (view.audio.span / 2).max(250),
-                        3 => view.audio.span = (view.audio.span * 2).min(600000),
-                        4 => {
-                            view.audio.view_start = (view.snapshot.audio.start - 1000).max(0);
-                            view.audio.span = (view.snapshot.audio.end - view.snapshot.audio.start
-                                + 2000)
-                                .clamp(1000, 600000);
-                        }
-                        5 => view.audio.gain = (view.audio.gain * 2).min(1000),
-                        _ => view.audio.gain = (view.audio.gain / 2).max(10),
-                    }
-                    view.refresh_audio(cx);
-                    cx.notify();
-                },
-            )));
-        }
-        let mut sound = div().h_flex().flex_wrap().gap_2().items_center();
+        // Navigation, zoom and gain are icon buttons with tooltips; the zoom
+        // presets below are a segmented control so the current level is visible.
+        let icon_button = |id: &'static str, icon: IconName, label: &'static str| {
+            Button::new(id)
+                .icon(icon)
+                .accessibility_label(label)
+                .tooltip(label)
+                .ghost()
+                .disabled(!state.loaded)
+        };
+        let mut viewport = div()
+            .h_flex()
+            .flex_wrap()
+            .gap_1()
+            .items_center()
+            .child(
+                icon_button("audio-left", IconName::ChevronLeft, "向前").on_click(cx.listener(
+                    |view, _, _, cx| {
+                        view.audio.view_start =
+                            (view.audio.view_start - view.audio.span / 2).max(0);
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(
+                icon_button("audio-right", IconName::ChevronRight, "向后").on_click(cx.listener(
+                    |view, _, _, cx| {
+                        let duration = view.snapshot.audio.duration;
+                        view.audio.view_start = (view.audio.view_start + view.audio.span / 2)
+                            .min((duration - view.audio.span).max(0));
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(
+                div()
+                    .w(px(1.))
+                    .h(px(18.))
+                    .mx_1()
+                    .bg(Theme::global(cx).border),
+            )
+            .child(
+                icon_button("audio-zoom-out", IconName::ZoomOut, "缩小波形").on_click(cx.listener(
+                    |view, _, _, cx| {
+                        view.audio.span = (view.audio.span * 2).min(600000);
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(
+                icon_button("audio-zoom-in", IconName::ZoomIn, "放大波形").on_click(cx.listener(
+                    |view, _, _, cx| {
+                        view.audio.span = (view.audio.span / 2).max(250);
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(
+                Button::new("audio-fit-line")
+                    .icon(IconName::Crosshair)
+                    .label("定位当前句")
+                    .tooltip("缩放到当前句的时间范围")
+                    .ghost()
+                    .disabled(!state.loaded)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.audio.view_start = (view.snapshot.audio.start - 1000).max(0);
+                        view.audio.span = (view.snapshot.audio.end - view.snapshot.audio.start
+                            + 2000)
+                            .clamp(1000, 600000);
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w(px(1.))
+                    .h(px(18.))
+                    .mx_1()
+                    .bg(Theme::global(cx).border),
+            )
+            .child(
+                icon_button("audio-gain-down", IconName::Minus, "增益 −").on_click(cx.listener(
+                    |view, _, _, cx| {
+                        view.audio.gain = (view.audio.gain / 2).max(10);
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(Theme::global(cx).muted_foreground)
+                    .child(format!("{}%", self.gain)),
+            )
+            .child(
+                icon_button("audio-gain-up", IconName::Plus, "增益 +").on_click(cx.listener(
+                    |view, _, _, cx| {
+                        view.audio.gain = (view.audio.gain * 2).min(1000);
+                        view.refresh_audio(cx);
+                        cx.notify();
+                    },
+                )),
+            );
+        // Playback rate is a segmented control so the active speed is visible at
+        // a glance; volume uses icon buttons plus its current value.
+        let p = Theme::global(cx);
+        let mut rates = div()
+            .h_flex()
+            .items_center()
+            .gap_0p5()
+            .p_0p5()
+            .rounded(px(8.))
+            .bg(p.muted);
         for (id, label, rate) in [
             ("audio-rate-50", "0.5×", 50),
             ("audio-rate-100", "1×", 100),
             ("audio-rate-150", "1.5×", 150),
             ("audio-rate-200", "2×", 200),
         ] {
-            sound = sound.child(Button::new(id).label(label).on_click(cx.listener(
-                move |view, _, _, cx| {
-                    view.invoke(
-                        json!({"op":"audio_action", "action":"rate", "value":rate}),
-                        cx,
-                    )
-                },
-            )));
+            rates = rates.child(
+                Button::new(id)
+                    .label(label)
+                    .ghost()
+                    .when((state.rate - rate as f64).abs() < 0.5, |button| {
+                        button.primary()
+                    })
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.invoke(
+                            json!({"op":"audio_action", "action":"rate", "value":rate}),
+                            cx,
+                        )
+                    })),
+            );
         }
-        for (id, label, delta) in [
-            ("audio-volume-down", "音量 −", -10),
-            ("audio-volume-up", "音量 +", 10),
-        ] {
-            sound = sound.child(Button::new(id).label(label).on_click(cx.listener(
-                move |view, _, _, cx| {
-                    let volume = (view.snapshot.audio.volume + delta).clamp(0, 200);
-                    view.invoke(
-                        json!({"op":"audio_action", "action":"volume", "value":volume}),
-                        cx,
-                    );
-                },
-            )));
-        }
-        sound = sound.child(div().text_sm().child(format!("音量 {}%", state.volume)));
+        let mut sound = div()
+            .h_flex()
+            .flex_wrap()
+            .gap_2()
+            .items_center()
+            .child(rates)
+            .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.border))
+            .child(
+                Button::new("audio-volume-down")
+                    .icon(IconName::Minus)
+                    .accessibility_label("音量 −")
+                    .tooltip("音量 −10%")
+                    .ghost()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        let volume = (view.snapshot.audio.volume - 10).clamp(0, 200);
+                        view.invoke(
+                            json!({"op":"audio_action", "action":"volume", "value":volume}),
+                            cx,
+                        );
+                    })),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(p.muted_foreground)
+                    .child(format!("音量 {}%", state.volume)),
+            )
+            .child(
+                Button::new("audio-volume-up")
+                    .icon(IconName::Plus)
+                    .accessibility_label("音量 +")
+                    .tooltip("音量 +10%")
+                    .ghost()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        let volume = (view.snapshot.audio.volume + 10).clamp(0, 200);
+                        view.invoke(
+                            json!({"op":"audio_action", "action":"volume", "value":volume}),
+                            cx,
+                        );
+                    })),
+            );
         let mut karaoke = div().v_flex().gap_2();
         if state.karaoke {
             let mut syllables = div().flex().flex_wrap().gap_2();
