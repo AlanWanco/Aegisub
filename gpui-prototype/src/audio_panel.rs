@@ -578,6 +578,7 @@ impl AudioPanel {
                             .flex_1()
                             .min_w_0()
                             .overflow_hidden()
+                            .whitespace_nowrap()
                             .text_ellipsis()
                             .text_size(px(11.))
                             .text_color(Theme::global(cx).muted_foreground)
