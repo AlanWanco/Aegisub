@@ -4560,6 +4560,9 @@ impl Workspace {
                     .items_center()
                     .bg(header_bg)
                     .border_b_1()
+                    // Rows reserve 2px on the left for the active-line accent;
+                    // the header needs the same inset or its labels sit 2px off.
+                    .border_l_2()
                     .border_color(border)
                     .child(
                         div()
@@ -4673,24 +4676,38 @@ impl Workspace {
                                                     format_time(line.end)
                                                 )),
                                         )
-                                        .child(
-                                            div()
+                                        .child({
+                                            // Stack style over actor and centre the
+                                            // block, so a single-line cell lines up
+                                            // with the other columns instead of
+                                            // sitting on the top edge.
+                                            let mut cell = div()
+                                                .v_flex()
+                                                .justify_center()
                                                 .w(px(100.))
                                                 .flex_shrink_0()
+                                                .min_w_0()
                                                 .overflow_hidden()
                                                 .child(
                                                     div()
                                                         .text_xs()
+                                                        .overflow_hidden()
+                                                        .text_ellipsis()
                                                         .text_color(accent)
                                                         .child(line.style),
-                                                )
-                                                .child(
+                                                );
+                                            if !line.actor.is_empty() {
+                                                cell = cell.child(
                                                     div()
                                                         .text_xs()
+                                                        .overflow_hidden()
+                                                        .text_ellipsis()
                                                         .text_color(muted)
                                                         .child(line.actor),
-                                                ),
-                                        )
+                                                );
+                                            }
+                                            cell
+                                        })
                                         .child(
                                             div()
                                                 .flex_1()
