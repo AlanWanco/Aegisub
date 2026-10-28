@@ -9,12 +9,42 @@ use gpui_kit::component::{
     scroll::ScrollableElement,
 };
 use gpui_kit::{
-    App, AppContext, Context, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
+    App, AppContext, Context, Div, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::Workspace;
+
+/// Style fields are grouped by what they affect so the editor reads as
+/// sections instead of one 23-row grid.
+pub const STYLE_BASIC: &[(&str, &str)] =
+    &[("name", "样式名称"), ("font", "字体"), ("fontsize", "字号")];
+pub const STYLE_COLORS: &[(&str, &str)] = &[
+    ("primary", "主颜色"),
+    ("secondary", "次颜色"),
+    ("outline", "描边颜色"),
+    ("shadow", "阴影颜色"),
+];
+pub const STYLE_FLAGS: &[(&str, &str)] = &[
+    ("bold", "粗体"),
+    ("italic", "斜体"),
+    ("underline", "下划线"),
+    ("strikeout", "删除线"),
+];
+pub const STYLE_TRANSFORM: &[(&str, &str)] = &[
+    ("scalex", "水平缩放 %"),
+    ("scaley", "垂直缩放 %"),
+    ("spacing", "字间距"),
+    ("angle", "旋转角度"),
+];
+pub const STYLE_BORDER: &[(&str, &str)] = &[("outline_w", "描边宽度"), ("shadow_w", "阴影距离")];
+pub const STYLE_MARGINS: &[(&str, &str)] = &[
+    ("margin_left", "左边距"),
+    ("margin_right", "右边距"),
+    ("margin_vertical", "垂直边距"),
+];
+pub const STYLE_OTHER: &[(&str, &str)] = &[("encoding", "字体编码")];
 
 pub const STYLE_FIELDS: &[(&str, &str)] = &[
     ("name", "样式名称"),
@@ -394,11 +424,43 @@ impl DocumentPanels {
                     })))
                 .child(Button::new("cancel-delete-style").label("取消").on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
         }
-        editor = editor.child(render_fields(
-            "style-fields",
-            STYLE_FIELDS,
-            &self.style_form,
-        ));
+        editor = editor
+            .child(style_section(
+                cx,
+                "基本",
+                "style-basic",
+                STYLE_BASIC,
+                3,
+                &self.style_form,
+            ))
+            .child(style_color_section(cx, &self.style_form))
+            .child(style_flag_section(cx, &self.style_form))
+            .child(style_section(
+                cx,
+                "缩放与间距",
+                "style-transform",
+                STYLE_TRANSFORM,
+                4,
+                &self.style_form,
+            ))
+            .child(style_border_section(cx, &self.style_form))
+            .child(style_alignment_section(cx, &self.style_form))
+            .child(style_section(
+                cx,
+                "边距与编码",
+                "style-margins",
+                STYLE_MARGINS,
+                3,
+                &self.style_form,
+            ))
+            .child(style_section(
+                cx,
+                "其他",
+                "style-other",
+                STYLE_OTHER,
+                3,
+                &self.style_form,
+            ));
         let editor_card = div()
             .v_flex()
             .flex_1()
@@ -730,6 +792,254 @@ impl DocumentPanels {
         }
         panel
     }
+}
+
+fn style_label(cx: &App, text: &str) -> Div {
+    div()
+        .text_size(px(11.))
+        .text_color(crate::workspace_theme::Palette::current(cx).muted)
+        .child(text.to_owned())
+}
+
+fn style_group_title(cx: &mut Context<Workspace>, title: &str) -> Div {
+    div()
+        .text_sm()
+        .font_semibold()
+        .text_color(crate::workspace_theme::Palette::current(cx).muted)
+        .child(title.to_owned())
+}
+
+/// Equal-width grid of labelled inputs, `cols` per row.
+fn style_section(
+    cx: &mut Context<Workspace>,
+    title: &str,
+    id: &'static str,
+    fields: &'static [(&'static str, &'static str)],
+    cols: usize,
+    form: &Form,
+) -> Div {
+    let mut rows = div().v_flex().w_full().min_w_0().gap_2();
+    for chunk in fields.chunks(cols) {
+        let mut row = div().h_flex().items_start().w_full().min_w_0().gap_3();
+        for &(key, label) in chunk {
+            row = row.child(
+                div()
+                    .v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_1()
+                    .child(style_label(cx, label))
+                    .child(
+                        Input::new(&form.inputs[key])
+                            .id(format!("{id}-{key}"))
+                            .w_full(),
+                    ),
+            );
+        }
+        for _ in chunk.len()..cols {
+            row = row.child(div().flex_1().min_w_0());
+        }
+        rows = rows.child(row);
+    }
+    div()
+        .v_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .child(style_group_title(cx, title))
+        .child(rows)
+}
+
+/// Colour rows carry a swatch previewing the ASS colour next to the hex value.
+fn style_color_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
+    let mut rows = div().v_flex().w_full().min_w_0().gap_2();
+    for chunk in STYLE_COLORS.chunks(2) {
+        let mut row = div().h_flex().items_start().w_full().min_w_0().gap_3();
+        for &(key, label) in chunk {
+            let value = form.inputs[key].read(cx).value().to_string();
+            let swatch = parse_ass_color(&value)
+                .map(|color| {
+                    div()
+                        .w(px(18.))
+                        .h(px(18.))
+                        .rounded(px(4.))
+                        .bg(color)
+                        .border_1()
+                })
+                .unwrap_or_else(|| {
+                    div()
+                        .w(px(18.))
+                        .h(px(18.))
+                        .rounded(px(4.))
+                        .border_1()
+                        .border_color(crate::workspace_theme::Palette::current(cx).border)
+                });
+            row = row.child(
+                div()
+                    .v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_1()
+                    .child(style_label(cx, label))
+                    .child(
+                        div().h_flex().items_center().gap_2().child(swatch).child(
+                            Input::new(&form.inputs[key])
+                                .id(format!("style-colors-{key}"))
+                                .w_full(),
+                        ),
+                    ),
+            );
+        }
+        for _ in chunk.len()..2 {
+            row = row.child(div().flex_1().min_w_0());
+        }
+        rows = rows.child(row);
+    }
+    div()
+        .v_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .child(style_group_title(cx, "颜色"))
+        .child(rows)
+}
+
+fn parse_ass_color(value: &str) -> Option<gpui_kit::Hsla> {
+    let hex = value.trim().trim_start_matches('#');
+    if hex.len() < 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(gpui_kit::rgb(((r as u32) << 16 | (g as u32) << 8 | b as u32)).into())
+}
+
+/// Bold/italic/underline/strikeout are switches, not free-text numbers.
+fn style_flag_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
+    let mut row = div().h_flex().flex_wrap().items_center().w_full().gap_2();
+    for &(key, label) in STYLE_FLAGS {
+        let on = form.inputs[key].read(cx).value().as_ref() == "1";
+        let weak = form.inputs[key].clone();
+        row = row.child(
+            Button::new(format!("style-flag-{key}"))
+                .label(label)
+                .ghost()
+                .when(on, |button| button.primary())
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    let next = if weak.read(cx).value().as_ref() == "1" {
+                        "0"
+                    } else {
+                        "1"
+                    };
+                    weak.update(cx, |state, cx| state.set_value(next, window, cx));
+                    view.document.style_form.dirty.insert(key);
+                    cx.notify();
+                })),
+        );
+    }
+    div()
+        .v_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .child(style_group_title(cx, "字形"))
+        .child(row)
+}
+
+/// Border style is one of three documented values.
+fn style_border_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
+    let mut row = div().h_flex().flex_wrap().items_center().gap_2();
+    for (value, label) in [("1", "描边 + 阴影"), ("3", "不透明框"), ("4", "边框")] {
+        let on = form.inputs["borderstyle"].read(cx).value().as_ref() == value;
+        let input = form.inputs["borderstyle"].clone();
+        row = row.child(
+            Button::new(format!("style-border-{value}"))
+                .label(label)
+                .ghost()
+                .when(on, |button| button.primary())
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    input.update(cx, |state, cx| state.set_value(value, window, cx));
+                    view.document.style_form.dirty.insert("borderstyle");
+                    cx.notify();
+                })),
+        );
+    }
+    let mut numbers = div().h_flex().items_start().w_full().min_w_0().gap_3();
+    for &(key, label) in STYLE_BORDER {
+        numbers = numbers.child(
+            div()
+                .v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_1()
+                .child(style_label(cx, label))
+                .child(
+                    Input::new(&form.inputs[key])
+                        .id(format!("style-border-{key}"))
+                        .w_full(),
+                ),
+        );
+    }
+    div()
+        .v_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .child(style_group_title(cx, "描边与阴影"))
+        .child(row)
+        .child(numbers)
+}
+
+/// Alignment uses the familiar 3×3 ASS keypad instead of a number field.
+fn style_alignment_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
+    let current = form.inputs["alignment"].read(cx).value().to_string();
+    let input = form.inputs["alignment"].clone();
+    let mut grid = div().v_flex().gap_1();
+    for row_index in 0..3 {
+        let mut row = div().h_flex().gap_1();
+        for column in 0..3 {
+            let value = (row_index * 3 + column + 1).to_string();
+            let on = current == value;
+            let input = input.clone();
+            let key = value.clone();
+            row = row.child(
+                Button::new(format!("style-align-{value}"))
+                    .label(value.clone())
+                    .w(px(34.))
+                    .h(px(28.))
+                    .ghost()
+                    .when(on, |button| button.primary())
+                    .on_click(cx.listener(move |view, _, window, cx| {
+                        input.update(cx, |state, cx| state.set_value(key.clone(), window, cx));
+                        view.document.style_form.dirty.insert("alignment");
+                        cx.notify();
+                    })),
+            );
+        }
+        grid = grid.child(row);
+    }
+    div()
+        .v_flex()
+        .w_full()
+        .min_w_0()
+        .gap_2()
+        .child(style_group_title(cx, "对齐"))
+        .child(
+            div().h_flex().items_start().gap_4().child(grid).child(
+                div()
+                    .v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_1()
+                    .child(style_label(cx, "对齐值 · 1–9"))
+                    .child(
+                        Input::new(&form.inputs["alignment"])
+                            .id("style-alignment-value")
+                            .w(px(120.)),
+                    ),
+            ),
+        )
 }
 
 fn render_fields(
