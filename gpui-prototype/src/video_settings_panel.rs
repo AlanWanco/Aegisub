@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -144,14 +145,13 @@ impl VideoSettingsPanel {
                     })),
             );
         }
-        let mut panel = div()
-            .id("video-settings-panel")
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_4()
-            .overflow_y_scrollbar()
+        let mut panel = crate::page::page(cx, "video-settings-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Play,
+                "视频设置",
+                "查看视频详情、按时间或帧跳转，或创建空白视频用于排版。",
+            ))
             .child(pages);
         let fields: Vec<_> = match self.page {
             VideoPage::Dummy => vec![

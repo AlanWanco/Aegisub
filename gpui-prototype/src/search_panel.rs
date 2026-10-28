@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -146,56 +147,50 @@ impl SearchPanel {
 
     pub fn render(&self, snapshot: &Snapshot, cx: &mut Context<Workspace>) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
-        let mut panel = div()
-            .id("search-panel")
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_4()
-            .overflow_y_scrollbar()
+        let mut modes_row = div()
+            .h_flex()
+            .gap_2()
             .child(
-                div()
-                    .h_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("search-mode-find")
-                            .label("查找替换")
-                            .when(!self.selection_mode, |button| button.primary())
-                            .disabled(self.loading)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.open_search(false, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("search-mode-select")
-                            .label("条件选行")
-                            .when(self.selection_mode, |button| button.primary())
-                            .disabled(self.loading)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.open_search(true, cx);
-                            })),
-                    ),
+                Button::new("search-mode-find")
+                    .label("查找替换")
+                    .when(!self.selection_mode, |button| button.primary())
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.open_search(false, cx);
+                    })),
             )
             .child(
-                div()
-                    .v_flex()
-                    .gap_1()
-                    .w(px(500.))
-                    .max_w_full()
-                    .child("查找内容")
-                    .child(Input::new(&self.find).disabled(disabled)),
+                Button::new("search-mode-select")
+                    .label("条件选行")
+                    .when(self.selection_mode, |button| button.primary())
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.open_search(true, cx);
+                    })),
             );
+        let mut panel = crate::page::page(cx, "search-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Search,
+                if self.selection_mode {
+                    "条件选行"
+                } else {
+                    "查找替换"
+                },
+                "在字幕文本、样式、角色或效果中检索；可预览匹配后一次性替换，整次操作可撤销。",
+            ))
+            .child(modes_row)
+            .child(crate::page::field(
+                cx,
+                "查找内容",
+                Input::new(&self.find).disabled(disabled),
+            ));
         if !self.selection_mode {
-            panel = panel.child(
-                div()
-                    .v_flex()
-                    .gap_1()
-                    .w(px(500.))
-                    .max_w_full()
-                    .child("替换为")
-                    .child(Input::new(&self.replace).disabled(disabled)),
-            );
+            panel = panel.child(crate::page::field(
+                cx,
+                "替换为",
+                Input::new(&self.replace).disabled(disabled),
+            ));
         }
         let mut field = div().h_flex().flex_wrap().gap_2();
         for (value, label) in [(0, "字幕文本"), (1, "样式"), (2, "角色"), (3, "效果")] {

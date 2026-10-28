@@ -1,6 +1,7 @@
 use gpui_kit::base::Disableable;
 use std::collections::{BTreeMap, BTreeSet};
 
+use gpui_kit::assets::IconName;
 use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -623,8 +624,13 @@ impl DocumentPanels {
 
     pub fn render_project(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let media = &self.details.media;
-        let mut panel = div().id("project-properties").v_flex().flex_1().min_h_0().p_4().gap_3().overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().child("脚本属性"))
+        let mut panel = crate::page::page(cx, "project-properties")
+            .child(crate::page::header(
+                cx,
+                IconName::FileText,
+                "脚本属性",
+                "脚本信息、布局分辨率与关联媒体文件；修改后点应用写入当前字幕。",
+            ))
             .child(div().h_flex().gap_2()
                 .child(Button::new("apply-script-info").label("应用脚本属性").primary().on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"script_info", "fields":view.document.script_form.patch(cx)}), cx);

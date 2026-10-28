@@ -1,12 +1,13 @@
 use std::collections::BTreeSet;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
     scroll::ScrollableElement,
 };
-use gpui_kit::{Context, IntoElement, div, prelude::*};
+use gpui_kit::{Context, IntoElement, div, prelude::*, px};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -88,45 +89,42 @@ impl AttachmentPanel {
                     })),
             );
         }
-        let mut panel = div()
-            .id("attachment-panel")
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_3()
-            .overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().child("附件管理"))
-            .child(toolbar)
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child("附件嵌入 ASS 文件，添加和删除可撤销。列表大小为 ASS 编码后的数据量。"),
-            )
-            .child(format!(
-                "附件 {} 个 · 已选 {} 个",
-                self.state.items.len(),
-                self.selected.len()
-            ));
+        let mut list = div().v_flex().w_full().min_w_0().gap_1();
         if self.state.items.is_empty() && !self.loading {
-            panel = panel.child("当前字幕没有附件，可添加字体或图像。");
+            list = list.child(
+                div()
+                    .v_flex()
+                    .items_center()
+                    .gap_2()
+                    .py_8()
+                    .child(
+                        Icon::new(IconName::Paperclip)
+                            .size(px(28.))
+                            .text_color(Theme::global(cx).muted_foreground),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(Theme::global(cx).muted_foreground)
+                            .child("当前字幕没有附件"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(Theme::global(cx).muted_foreground)
+                            .child("可用上方按钮添加字体或图像，随 ASS 文件一起保存。"),
+                    ),
+            );
         }
         for attachment in &self.state.items {
             let index = attachment.index;
             let selected = self.selected.contains(&index);
-            panel = panel.child(
+            list = list.child(
                 Button::new(format!("attachment-row-{index}"))
-                    .label(format!(
-                        "{} · {} · {} 字节",
-                        attachment.name,
-                        if attachment.group == "font" {
-                            "字体"
-                        } else {
-                            "图像"
-                        },
-                        attachment.encoded_size
-                    ))
+                    .ghost()
+                    .h(px(34.))
+                    .w_full()
+                    .accessibility_label(attachment.name.clone())
                     .when(selected, |button| button.primary())
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -135,19 +133,78 @@ impl AttachmentPanel {
                         }
                         view.attachments.confirm_delete = false;
                         cx.notify();
-                    })),
+                    }))
+                    .child(
+                        div()
+                            .h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .gap_3()
+                            .items_center()
+                            .child(
+                                Icon::new(if attachment.group == "font" {
+                                    IconName::CaseSensitive
+                                } else {
+                                    IconName::Frame
+                                })
+                                .size(px(14.))
+                                .text_color(Theme::global(cx).muted_foreground),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .text_left()
+                                    .child(attachment.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_xs()
+                                    .text_color(Theme::global(cx).muted_foreground)
+                                    .child(format!(
+                                        "{} · {} 字节",
+                                        if attachment.group == "font" {
+                                            "字体"
+                                        } else {
+                                            "图像"
+                                        },
+                                        attachment.encoded_size
+                                    )),
+                            ),
+                    ),
             );
         }
         if self.loading {
-            panel = panel.child("正在处理附件…");
-        }
-        if let Some(error) = &self.error {
-            panel = panel.child(
+            list = list.child(
                 div()
                     .text_sm()
-                    .text_color(Theme::global(cx).danger)
-                    .child(error.clone()),
+                    .text_color(Theme::global(cx).muted_foreground)
+                    .child("正在处理附件…"),
             );
+        }
+        let mut panel = crate::page::page(cx, "attachment-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Paperclip,
+                "附件管理",
+                "附件嵌入 ASS 文件，添加和删除可撤销；列表大小为 ASS 编码后的数据量。",
+            ))
+            .child(toolbar)
+            .child(crate::page::section(
+                cx,
+                format!(
+                    "附件 · {} 个，已选 {} 个",
+                    self.state.items.len(),
+                    self.selected.len()
+                ),
+                None,
+                crate::page::section_body().child(list),
+            ));
+        if let Some(error) = &self.error {
+            panel = panel.child(crate::page::error(cx, error.clone()));
         }
         panel
     }

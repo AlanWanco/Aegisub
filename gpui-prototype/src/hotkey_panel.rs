@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -230,10 +231,30 @@ impl HotkeyPanel {
                     ),
             );
         }
-        let mut panel = div().v_flex().flex_1().min_h_0().p_4().gap_3()
-            .child(div().h_flex().items_center().gap_3().child(div().text_lg().font_semibold().child("快捷键配置"))
-                .child(Button::new("hotkeys-back").label("返回设置").on_click(cx.listener(|view, _, _, cx| { view.active_panel = crate::Panel::Preferences; view.hotkeys.recording = false; cx.notify(); }))))
-            .child(form).child(actions)
+        let mut panel = crate::page::page(cx, "hotkeys-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Asterisk,
+                "快捷键",
+                "为命令绑定组合键；上下文决定何时生效，空白命令名可屏蔽默认绑定。",
+            ))
+            .child(crate::page::toolbar([
+                Button::new("hotkeys-back")
+                    .label("返回设置")
+                    .ghost()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.active_panel = crate::Panel::Preferences;
+                        view.hotkeys.recording = false;
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            ]))
+            .child(crate::page::section(
+                cx,
+                "绑定",
+                None,
+                crate::page::section_body().child(form).child(actions),
+            ))
             .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("常用上下文：Default、Subtitle Grid、Subtitle Edit Box、Video、Audio、Translation Assistant、Styling Assistant、Always。"));
         if !conflicts.is_empty() {
             panel = panel.child(

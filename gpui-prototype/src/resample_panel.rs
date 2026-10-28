@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -132,21 +133,13 @@ impl ResamplePanel {
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
-        let mut form = div()
-            .id("resample-panel")
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .gap_4()
-            .p_4()
-            .overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().child("分辨率重采样"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child("同步缩放样式、坐标、边距、绘图和裁剪；整次处理可撤销。"),
-            )
+        let mut form = crate::page::page(cx, "resample-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Maximize,
+                "分辨率重采样",
+                "同步缩放样式、坐标、边距、绘图和裁剪；整次处理可撤销。",
+            ))
             .child(
                 div()
                     .h_flex()

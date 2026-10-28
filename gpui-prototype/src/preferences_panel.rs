@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -413,13 +414,13 @@ impl PreferencesPanel {
                     })),
             );
         }
-        let mut panel = div()
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_3()
-            .child(div().text_lg().font_semibold().child("偏好设置"))
+        let mut panel = crate::page::page(cx, "preferences-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Settings,
+                "偏好设置",
+                "修改后点应用才会写入配置；搜索可快速定位选项。",
+            ))
             .child(groups)
             .child(toolbar)
             .child(

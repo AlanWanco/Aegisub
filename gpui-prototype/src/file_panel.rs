@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -118,7 +119,14 @@ impl FilePanel {
                     })),
             );
         }
-        let mut panel = div().v_flex().flex_1().min_h_0().p_4().gap_3().child(tabs);
+        let mut panel = crate::page::page(cx, "file-tools-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::FolderOpen,
+                "文件与恢复",
+                "按指定编码重新打开字幕，或从自动保存副本中恢复。",
+            ))
+            .child(tabs);
         if self.loading {
             panel = panel.child("正在读取文件信息…");
         }
@@ -237,11 +245,15 @@ impl FilePanel {
                         }),
                 )
                 .child(
-                    Button::new("encoded-open-submit")
-                        .label("按所选编码打开")
-                        .primary()
-                        .disabled(self.loading || self.path.is_empty())
-                        .on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx))),
+                    div().h_flex().child(
+                        Button::new("encoded-open-submit")
+                            .label("按所选编码打开")
+                            .primary()
+                            .disabled(self.loading || self.path.is_empty())
+                            .on_click(
+                                cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx)),
+                            ),
+                    ),
                 );
         } else {
             let query = self.query.read(cx).value().to_lowercase();

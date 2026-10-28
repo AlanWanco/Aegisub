@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -186,38 +187,46 @@ impl SpellingPanel {
                     view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
                 })),
         );
-        let mut panel = div()
-            .id("spelling-panel")
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_3()
-            .overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().child("拼写检查"))
-            .child(toolbar);
-        if !self.state.available {
-            panel = panel.child("没有可用的拼写词典。请在设置中配置词典目录并安装对应词典。");
+        let p = crate::workspace_theme::Palette::current(cx);
+        let status = if !self.state.available {
+            "没有可用的拼写词典。请在设置中配置词典目录并安装对应词典。"
         } else if self.state.complete {
-            panel = panel.child("本次拼写检查已完成。");
+            "本次拼写检查已完成。"
         } else if !self.state.found {
-            panel =
-                panel.child("选择语言后，点击“从当前行检查”开始。标签、绘图和被过滤的行会跳过。");
-        }
-        if self.loading {
-            panel = panel.child("正在检查拼写…");
-        }
+            "选择语言后点击“从当前行检查”开始；标签、绘图和被过滤的行会跳过。"
+        } else if self.loading {
+            "正在检查拼写…"
+        } else {
+            "找到一处需要确认的拼写。"
+        };
+        let mut page = crate::page::page(cx, "spelling-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::SpellCheck,
+                "拼写检查",
+                "逐行检查字幕文本，替换、忽略或加入个人词典；每次修改都可撤销。",
+            ))
+            .child(toolbar)
+            .child(crate::page::section(
+                cx,
+                "状态",
+                None,
+                crate::page::section_body()
+                    .child(crate::page::hint(cx, status))
+                    .when(self.loading, |body| {
+                        body.child(crate::page::hint(cx, "正在检查拼写…"))
+                    }),
+            ));
         if let Some(error) = &self.error {
-            panel = panel.child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).danger)
-                    .child(error.clone()),
-            );
+            page = page.child(crate::page::error(cx, error.clone()));
         }
+        let candidate = self.replacement.read(cx).value().to_string();
+        let can_remove =
+            self.dictionary_checked && self.dictionary_word == candidate && self.state.can_remove;
+        let mut panel = page;
         if self.state.found {
-            panel = panel
-                .child(div().text_lg().font_semibold().child(format!(
+            let mut word_body = crate::page::section_body()
+                .child(div().text_base().font_semibold().child(format!(
                     "第 {} 行 · {}",
                     self.state.row + 1,
                     self.state.word
@@ -249,37 +258,41 @@ impl SpellingPanel {
                                 .to_owned(),
                         ),
                 )
-                .child(
-                    div().h_flex().gap_3().items_center().child("替换为").child(
-                        Input::new(&self.replacement)
-                            .w(px(380.))
-                            .disabled(self.loading),
-                    ),
-                );
+                .child(crate::page::field(
+                    cx,
+                    "替换为",
+                    Input::new(&self.replacement)
+                        .w(px(380.))
+                        .disabled(self.loading),
+                ));
             let mut actions = div().h_flex().flex_wrap().gap_2();
-            for (id, label) in [
-                ("replace", "替换并继续"),
-                ("replace_all", "替换本次全部同词"),
-                ("next", "忽略一次"),
-                ("ignore_all", "本次忽略同词"),
-                ("add", "加入个人词典"),
+            for (id, label, primary) in [
+                ("replace", "替换并继续", true),
+                ("replace_all", "替换本次全部同词", false),
+                ("next", "忽略一次", false),
+                ("ignore_all", "本次忽略同词", false),
+                ("add", "加入个人词典", false),
             ] {
                 actions = actions.child(
                     Button::new(format!("spelling-action-{id}"))
                         .label(label)
+                        .when(primary, |button| button.primary())
                         .disabled(self.loading || id == "add" && !self.state.can_add)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.spelling_request(json!({"action":id}), cx)
                         })),
                 );
             }
-            panel = panel.child(actions).child(div().text_sm().child("建议"));
+            word_body = word_body
+                .child(actions)
+                .child(crate::page::field_label(cx, "建议"));
             let mut suggestions = div().h_flex().flex_wrap().gap_2();
             for (index, suggestion) in self.state.suggestions.iter().enumerate() {
                 let value = suggestion.clone();
                 suggestions = suggestions.child(
                     Button::new(format!("spelling-suggestion-{index}"))
                         .label(value.clone())
+                        .ghost()
                         .disabled(self.loading)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.spelling.pending = Some(value.clone());
@@ -289,13 +302,16 @@ impl SpellingPanel {
                 );
             }
             if self.state.suggestions.is_empty() {
-                panel = panel.child("没有建议，可以直接输入替换内容。");
+                suggestions = suggestions.child(
+                    div()
+                        .text_sm()
+                        .text_color(p.muted)
+                        .child("没有建议，可以直接输入替换内容。"),
+                );
             }
-            panel = panel.child(suggestions);
+            word_body = word_body.child(suggestions);
+            panel = panel.child(crate::page::section(cx, "当前单词", None, word_body));
         }
-        let candidate = self.replacement.read(cx).value().to_string();
-        let can_remove =
-            self.dictionary_checked && self.dictionary_word == candidate && self.state.can_remove;
         panel.child(
             div()
                 .h_flex()

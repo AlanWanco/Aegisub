@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -91,14 +92,13 @@ impl AutomationPanel {
             .map(|engine| format!("{} ({})", engine.name, engine.pattern))
             .collect::<Vec<_>>()
             .join("、");
-        let mut panel = div()
-            .id("automation-panel")
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .gap_3()
-            .p_4()
-            .overflow_y_scrollbar()
+        let mut panel = crate::page::page(cx, "automation-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::SquareTerminal,
+                "自动化脚本",
+                "脚本随字幕项目关联；移除会卸载脚本，执行脚本会写入当前字幕并可撤销。",
+            ))
             .child(toolbar)
             .child(format!(
                 "项目脚本 {local} · 自动加载脚本 {}",

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -141,15 +142,6 @@ impl TimingProcessorPanel {
                     })),
             );
         }
-        let mut panel = div()
-            .id("timing-processor-panel").v_flex().flex_1().min_h_0().gap_4().p_4().overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().child("时间后处理"))
-            .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("按开始时间处理所选样式，跳过注释。提前/延后会避开原本不重叠的字幕；整次操作可撤销。"))
-            .child(div().h_flex().gap_2()
-                .child(Button::new("processor-all-styles").label("全部样式").disabled(disabled).on_click(cx.listener(|view, _, _, cx| { view.processor.selected_styles = view.processor.styles.iter().cloned().collect(); cx.notify(); })))
-                .child(Button::new("processor-no-styles").label("清除样式选择").disabled(disabled).on_click(cx.listener(|view, _, _, cx| { view.processor.selected_styles.clear(); cx.notify(); })))
-                .child(Button::new("processor-refresh").label("刷新参数").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.processor.initialized = false; view.processor_request("state", cx); }))))
-            .child(styles);
         let mut toggles = div().h_flex().flex_wrap().gap_2();
         for (key, label) in [
             ("only_selection", "仅选中行"),
@@ -161,6 +153,7 @@ impl TimingProcessorPanel {
             toggles = toggles.child(
                 Button::new(format!("processor-{key}"))
                     .label(label)
+                    .ghost()
                     .when(self.options[key], |button| button.primary())
                     .disabled(disabled || (key == "keyframes" && !self.can_keyframes))
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -170,7 +163,6 @@ impl TimingProcessorPanel {
                     })),
             );
         }
-        panel = panel.child(toggles);
         // A fixed-width wrap left the ninth field alone on its own line; lay the
         // thresholds out as a 3×3 grid instead.
         let mut numbers = div().v_flex().gap_3();
@@ -195,28 +187,110 @@ impl TimingProcessorPanel {
                         .child(Input::new(&self.inputs[key]).disabled(disabled || !enabled)),
                 );
             }
-            // Keep the last row's columns the same width as the full rows.
             for _ in row.len()..3 {
                 line = line.child(div().flex_1().min_w_0());
             }
             numbers = numbers.child(line);
         }
-        panel = panel.child(numbers).child(
-            div()
-                .text_sm()
-                .text_color(Theme::global(cx).muted_foreground)
-                .child("衔接偏向：0 只改后一句开始，100 只改前一句结束，50 取两者中间。"),
-        );
+        let enabled = ["has_lead_in", "has_lead_out", "adjacent", "keyframes"]
+            .iter()
+            .any(|key| self.options[key]);
+        let mut page = crate::page::page(cx, "timing-processor-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Clock3,
+                "时间后处理",
+                "按开始时间处理所选样式，跳过注释；提前/延后会避开原本不重叠的字幕，整次操作可撤销。",
+            ))
+            .child(crate::page::toolbar([
+                Button::new("processor-apply")
+                    .label(if self.loading {
+                        "处理中…"
+                    } else {
+                        "应用后处理"
+                    })
+                    .primary()
+                    .disabled(disabled || self.selected_styles.is_empty() || !enabled)
+                    .on_click(cx.listener(|view, _, _, cx| view.processor_request("apply", cx)))
+                    .into_any_element(),
+                Button::new("processor-undo")
+                    .label("撤销")
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
+                    }))
+                    .into_any_element(),
+            ]))
+            .child(crate::page::section(
+                cx,
+                "处理哪些样式",
+                None,
+                crate::page::section_body()
+                    .child(
+                        div()
+                            .h_flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(
+                                Button::new("processor-all-styles")
+                                    .label("全部样式")
+                                    .ghost()
+                                    .disabled(disabled)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.processor.selected_styles =
+                                            view.processor.styles.iter().cloned().collect();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("processor-no-styles")
+                                    .label("清除样式选择")
+                                    .ghost()
+                                    .disabled(disabled)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.processor.selected_styles.clear();
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("processor-refresh")
+                                    .label("刷新参数")
+                                    .ghost()
+                                    .disabled(self.loading)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.processor.initialized = false;
+                                        view.processor_request("state", cx);
+                                    })),
+                            ),
+                    )
+                    .child(styles),
+            ))
+            .child(crate::page::section(
+                cx,
+                "阈值",
+                None,
+                crate::page::section_body()
+                    .child(toggles)
+                    .child(numbers)
+                    .child(crate::page::hint(
+                        cx,
+                        "衔接偏向：0 只改后一句开始，100 只改前一句结束，50 取两者中间。",
+                    )),
+            ));
         if !self.can_keyframes {
-            panel = panel.child(
+            page = page.child(
                 div()
                     .h_flex()
                     .gap_2()
                     .items_center()
-                    .child("载入视频/时间码和关键帧后可吸附关键帧。")
+                    .child(crate::page::hint(
+                        cx,
+                        "载入视频/时间码和关键帧后可吸附关键帧。",
+                    ))
                     .child(
                         Button::new("processor-open-keyframes")
                             .label("打开关键帧…")
+                            .ghost()
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.invoke(json!({"op":"command", "name":"keyframe/open"}), cx)
                             })),
@@ -224,41 +298,8 @@ impl TimingProcessorPanel {
             );
         }
         if let Some(error) = &self.error {
-            panel = panel.child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).danger)
-                    .child(error.clone()),
-            );
+            page = page.child(crate::page::error(cx, error.clone()));
         }
-        let enabled = ["has_lead_in", "has_lead_out", "adjacent", "keyframes"]
-            .iter()
-            .any(|key| self.options[key]);
-        panel.child(
-            div()
-                .h_flex()
-                .gap_2()
-                .child(
-                    Button::new("processor-apply")
-                        .label(if self.loading {
-                            "处理中…"
-                        } else {
-                            "应用后处理"
-                        })
-                        .primary()
-                        .disabled(disabled || self.selected_styles.is_empty() || !enabled)
-                        .on_click(
-                            cx.listener(|view, _, _, cx| view.processor_request("apply", cx)),
-                        ),
-                )
-                .child(
-                    Button::new("processor-undo")
-                        .label("撤销")
-                        .disabled(self.loading)
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
-                        })),
-                ),
-        )
+        page
     }
 }

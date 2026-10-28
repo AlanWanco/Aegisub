@@ -29,6 +29,7 @@ mod search_panel;
 use search_panel::{SearchPanel, SearchReply};
 mod styling_panel;
 use resample_panel::{ResamplePanel, ResampleState};
+mod page;
 mod timing_panel;
 mod timing_processor_panel;
 use timing_panel::{ShiftState, TimingPanel};

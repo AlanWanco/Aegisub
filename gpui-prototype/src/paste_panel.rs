@@ -1,3 +1,4 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -79,28 +80,14 @@ impl PastePanel {
                     })),
             );
         }
-        let mut panel = div()
-            .v_flex()
-            .flex_1()
-            .min_h_0()
-            .p_4()
-            .gap_4()
-            .child(div().text_lg().font_semibold().child("选择字段覆盖粘贴"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child(
-                        "从剪贴板读取字幕行，覆盖勾选字段；其余字段保持当前值。整次操作可撤销。",
-                    ),
-            )
-            .child(presets)
-            .child(fields)
-            .child(if snapshot.selected.len() > 1 {
-                format!("按顺序覆盖选中的 {} 行。", snapshot.selected.len())
-            } else {
-                "从当前行向下逐行覆盖，直到剪贴板结束或文档末尾。".into()
-            })
+        let p = crate::workspace_theme::Palette::current(cx);
+        let scope = if snapshot.selected.len() > 1 {
+            format!("按顺序覆盖选中的 {} 行", snapshot.selected.len())
+        } else {
+            "从当前行向下逐行覆盖，直到剪贴板结束或文档末尾".to_owned()
+        };
+        let mut actions = div().h_flex().flex_wrap().items_center().gap_2();
+        actions = actions
             .child(
                 Button::new("paste-over-apply")
                     .label(if self.loading {
@@ -119,20 +106,40 @@ impl PastePanel {
             .child(
                 Button::new("paste-over-back")
                     .label("返回字幕")
+                    .ghost()
                     .on_click(cx.listener(|view, _, window, cx| {
                         view.active_panel = crate::Panel::Subtitles;
                         view.focus_handle.focus(window, cx);
                         cx.notify();
                     })),
-            );
+            )
+            .child(div().text_sm().text_color(p.muted).child(scope));
+        let mut panel = crate::page::page(cx, "paste-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::ClipboardPaste,
+                "覆盖粘贴",
+                "从剪贴板读取字幕行，覆盖勾选的字段；其余字段保持当前值，整次操作可撤销。",
+            ))
+            .child(actions)
+            .child(crate::page::section(
+                cx,
+                "预设",
+                None,
+                crate::page::section_body().child(presets),
+            ))
+            .child(crate::page::section(
+                cx,
+                "覆盖哪些字段",
+                None,
+                crate::page::section_body().child(fields),
+            ));
         if let Some(error) = &self.error {
-            panel = panel.child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).danger)
-                    .child(error.clone()),
-            );
+            panel = panel.child(crate::page::error(cx, error.clone()));
         }
-        panel.child(self.message.clone())
+        if !self.message.is_empty() {
+            panel = panel.child(crate::page::hint(cx, self.message.clone()));
+        }
+        panel
     }
 }
