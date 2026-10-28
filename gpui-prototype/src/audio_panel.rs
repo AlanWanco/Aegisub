@@ -496,7 +496,7 @@ impl AudioPanel {
                     .bg(Theme::global(cx).border),
             )
             .child(
-                icon_button("audio-gain-down", IconName::Minus, "增益 −").on_click(cx.listener(
+                icon_button("audio-gain-down", IconName::Volume1, "增益 −").on_click(cx.listener(
                     |view, _, _, cx| {
                         view.audio.gain = (view.audio.gain / 2).max(10);
                         view.refresh_audio(cx);
@@ -511,7 +511,7 @@ impl AudioPanel {
                     .child(format!("{}%", self.gain)),
             )
             .child(
-                icon_button("audio-gain-up", IconName::Plus, "增益 +").on_click(cx.listener(
+                icon_button("audio-gain-up", IconName::Volume2, "增益 +").on_click(cx.listener(
                     |view, _, _, cx| {
                         view.audio.gain = (view.audio.gain * 2).min(1000);
                         view.refresh_audio(cx);

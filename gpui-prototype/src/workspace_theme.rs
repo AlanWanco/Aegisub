@@ -25,6 +25,14 @@ gpui_kit::assets::icon_assets!(
         Strikethrough,
         SkipBack,
         SkipForward,
+        Crosshair,
+        Video,
+        FileInput,
+        RefreshCw,
+        Volume1,
+        Volume2,
+        Locate,
+        Target,
     ]
 );
 

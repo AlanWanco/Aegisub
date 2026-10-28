@@ -78,45 +78,67 @@ impl TranslationPanel {
         audio: bool,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        let mut options = div().h_flex().gap_2();
-        options = options.child(
-            Button::new("translation-seek")
-                .label("定位视频预览")
-                .when(self.seek, |button| button.primary())
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.translation.seek = !view.translation.seek;
-                    cx.notify();
-                })),
-        );
-        options = options.child(
-            Button::new("translation-skip-whitespace")
-                .label("跳过空白块")
-                .when(self.skip_whitespace, |button| button.primary())
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.translation.skip_whitespace = !view.translation.skip_whitespace;
-                    view.translation_action("start", cx);
-                })),
-        );
-        for (id, label, command, enabled) in [
+        // Toggles stay pills; the playback and undo actions are icon buttons.
+        let divider = crate::workspace_theme::Palette::current(cx).divider;
+        let mut options = div().h_flex().flex_wrap().items_center().gap_2();
+        options = options
+            .child(
+                Button::new("translation-seek")
+                    .icon(IconName::Crosshair)
+                    .label("定位视频预览")
+                    .tooltip("切块时把视频定位到该块开始时间")
+                    .ghost()
+                    .when(self.seek, |button| button.primary())
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.translation.seek = !view.translation.seek;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                Button::new("translation-skip-whitespace")
+                    .label("跳过空白块")
+                    .ghost()
+                    .when(self.skip_whitespace, |button| button.primary())
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.translation.skip_whitespace = !view.translation.skip_whitespace;
+                        view.translation_action("start", cx);
+                    })),
+            )
+            .child(div().w(px(1.)).h(px(18.)).mx_1().bg(divider));
+        for (id, icon, label, command, enabled) in [
             (
                 "translation-video",
+                IconName::Video,
                 "播放当前行视频",
                 "video/play/line",
                 video,
             ),
             (
                 "translation-audio",
+                IconName::AudioLines,
                 "播放当前行音频",
                 "audio/play/selection",
                 audio,
             ),
-            ("translation-undo", "撤销", "edit/undo", true),
+            (
+                "translation-undo",
+                IconName::Undo2,
+                "撤销",
+                "edit/undo",
+                true,
+            ),
         ] {
-            options = options.child(Button::new(id).label(label).disabled(!enabled).on_click(
-                cx.listener(move |view, _, _, cx| {
-                    view.invoke(json!({"op":"command", "name":command}), cx)
-                }),
-            ));
+            options = options.child(
+                Button::new(id)
+                    .icon(icon)
+                    .accessibility_label(label)
+                    .tooltip(label)
+                    .ghost()
+                    .disabled(!enabled)
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":command}), cx)
+                    })),
+            );
         }
         let p = crate::workspace_theme::Palette::current(cx);
         let status = if self.state.available {
@@ -135,6 +157,7 @@ impl TranslationPanel {
         } else {
             "当前脚本没有可翻译的文本块".to_owned()
         };
+        let divider = p.divider;
         crate::page::page(cx, "translation-assistant")
             .child(crate::page::header(
                 cx,
@@ -144,30 +167,40 @@ impl TranslationPanel {
             ))
             .child(crate::page::toolbar([
                 Button::new("translation-commit")
+                    .icon(IconName::Check)
                     .label("提交并前进")
                     .primary()
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("commit", cx)))
                     .into_any_element(),
                 Button::new("translation-preview")
+                    .icon(IconName::Eye)
                     .label("提交并预览")
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("preview", cx)))
                     .into_any_element(),
+                div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
                 Button::new("translation-prev")
-                    .label("上一块")
+                    .icon(IconName::ChevronLeft)
+                    .accessibility_label("上一块")
+                    .tooltip("上一块")
                     .ghost()
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("prev", cx)))
                     .into_any_element(),
                 Button::new("translation-next")
-                    .label("下一块")
+                    .icon(IconName::ChevronRight)
+                    .accessibility_label("下一块")
+                    .tooltip("下一块")
                     .ghost()
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("next", cx)))
                     .into_any_element(),
+                div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
                 Button::new("translation-original")
+                    .icon(IconName::FileInput)
                     .label("插入原文")
+                    .tooltip("把整行原文插入到译文")
                     .ghost()
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -175,7 +208,9 @@ impl TranslationPanel {
                     }))
                     .into_any_element(),
                 Button::new("translation-refresh")
-                    .label("从当前行刷新")
+                    .icon(IconName::RefreshCw)
+                    .accessibility_label("从当前行刷新")
+                    .tooltip("重新读取当前行与文本块")
                     .ghost()
                     .disabled(self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx)))
