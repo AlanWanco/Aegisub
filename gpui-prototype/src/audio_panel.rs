@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    Icon, Sizable, StyledExt, Theme,
+    Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
 };
 use gpui_kit::{

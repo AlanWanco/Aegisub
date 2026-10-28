@@ -2,7 +2,7 @@ use gpui_kit::base::Disableable;
 use std::collections::{BTreeMap, BTreeSet};
 
 use gpui_kit::component::{
-    Sizable, StyledExt, Theme,
+    StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     scroll::ScrollableElement,

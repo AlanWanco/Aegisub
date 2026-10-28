@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use gpui_kit::component::{
-    Sizable, StyledExt,
+    StyledExt,
     button::{Button, ButtonVariants},
 };
 use gpui_kit::{

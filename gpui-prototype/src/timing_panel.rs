@@ -1,6 +1,6 @@
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    Sizable, StyledExt, Theme,
+    StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     scroll::ScrollableElement,
@@ -184,11 +184,11 @@ impl TimingPanel {
                 .map_or(0, |index| snapshot.lines.len() - index),
             _ => snapshot.lines.len(),
         };
+        let form_max = (f32::from(window.viewport_size().height) * 0.62).max(260.) - 150.;
         let mut form = div()
             .id("shift-parameters-scroll")
             .v_flex()
-            .flex_1()
-            .min_h_0()
+            .max_h(px(form_max.max(160.)))
             .min_w_0()
             .p_4()
             .gap_3()
@@ -441,53 +441,18 @@ impl TimingPanel {
                     .child("点击记录填入参数，再点击应用；使用当前字幕选择。"),
             )
             .child(history);
-        let mut panel = div()
+        // Parameters on top, history underneath: the form keeps its natural
+        // height up to a share of the page and scrolls inside, the history
+        // list takes whatever is left.
+        div()
             .id("timing-panel")
             .flex_1()
             .min_h_0()
             .min_w_0()
             .p_3()
             .v_flex()
-            .gap_3();
-        if !wide {
-            panel = panel.child(
-                div()
-                    .h_flex()
-                    .flex_shrink_0()
-                    .gap_2()
-                    .child(
-                        Button::new("shift-show-parameters")
-                            .label("平移参数")
-                            .when(!self.show_history, |button| button.primary())
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.timing.show_history = false;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("shift-show-history")
-                            .label(format!("历史记录 · {}", self.history.len()))
-                            .when(self.show_history, |button| button.primary())
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.timing.show_history = true;
-                                cx.notify();
-                            })),
-                    ),
-            );
-        }
-        let mut content = div()
-            .h_flex()
-            .items_stretch()
-            .flex_1()
-            .min_w_0()
-            .min_h_0()
-            .gap_3();
-        if wide || !self.show_history {
-            content = content.child(parameters);
-        }
-        if wide || self.show_history {
-            content = content.child(history);
-        }
-        panel.child(content)
+            .gap_3()
+            .child(parameters.flex_none())
+            .child(history.flex_1())
     }
 }

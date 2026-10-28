@@ -72,7 +72,7 @@ use gpui_kit::{
 use gpui_kit::{
     base::{Disableable, Selectable},
     component::{
-        Icon, Root, Sizable, StyledExt, Theme, ThemeMode, WindowExt,
+        Icon, Root, StyledExt, Theme, ThemeMode, WindowExt,
         button::{Button, ButtonVariants},
         input::{Input, InputEvent, InputState, Textarea, TextareaState},
         menu::DropdownMenu,
