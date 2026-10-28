@@ -166,10 +166,16 @@ impl HotkeyPanel {
                         "当前未注册的命令".into()
                     }
                 });
+            let p = crate::workspace_theme::Palette::current(cx);
+            // A left-aligned row reads like a table; the previous centred
+            // single-line label made the list look like a wall of text.
             list = list.child(
                 Button::new(format!("hotkey-binding-{index}"))
-                    .label(format!(
-                        "{} · {} · {} · {label}",
+                    .ghost()
+                    .w_full()
+                    .h(px(34.))
+                    .accessibility_label(format!(
+                        "{} · {} · {}",
                         binding.context, binding.key, binding.command
                     ))
                     .disabled(self.loading)
@@ -178,7 +184,50 @@ impl HotkeyPanel {
                             Some((context.clone(), key.clone(), command.clone()));
                         view.hotkeys.replace = false;
                         cx.notify();
-                    })),
+                    }))
+                    .child(
+                        div()
+                            .h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .gap_3()
+                            .items_center()
+                            .child(
+                                div()
+                                    .w(px(150.))
+                                    .flex_shrink_0()
+                                    .text_left()
+                                    .text_size(px(12.))
+                                    .text_color(p.muted)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(binding.context.clone()),
+                            )
+                            .child(
+                                div()
+                                    .w(px(150.))
+                                    .flex_shrink_0()
+                                    .text_left()
+                                    .text_size(px(12.))
+                                    .text_color(p.accent)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(if binding.key.is_empty() {
+                                        "—".to_owned()
+                                    } else {
+                                        binding.key.clone()
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_left()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(format!("{label} · {}", binding.command)),
+                            ),
+                    ),
             );
         }
         let mut panel = div().v_flex().flex_1().min_h_0().p_4().gap_3()
