@@ -123,59 +123,94 @@ impl TimingPanel {
         let disabled = self.loading || !self.initialized;
         let wide = f32::from(window.viewport_size().width) >= 900.;
         let p = crate::workspace_theme::Palette::current(cx);
-        let mut units = div().h_flex().flex_wrap().gap_2();
-        for (id, label, by_time) in [("time", "按时间", true), ("frames", "按帧", false)] {
-            units = units.child(
-                Button::new(format!("shift-unit-{id}"))
-                    .label(label)
-                    .when(self.by_time == by_time, |button| button.primary())
-                    .disabled(disabled || (!by_time && !snapshot.timecodes))
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.timing.by_time = by_time;
-                        view.timing.error = None;
-                        cx.notify();
-                    })),
-            );
-        }
-        let mut direction = div().h_flex().flex_wrap().gap_2();
-        for (label, backward) in [("向后延迟", false), ("向前提前", true)] {
-            direction = direction.child(
-                Button::new(format!("shift-direction-{backward}"))
-                    .label(label)
-                    .when(self.backward == backward, |button| button.primary())
-                    .disabled(disabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.timing.backward = backward;
-                        cx.notify();
-                    })),
-            );
-        }
-        let mut scope = div().h_flex().flex_wrap().gap_2();
-        for (mode, label) in [(0, "全部行"), (1, "选中行"), (2, "首个选中行及以后")] {
-            scope = scope.child(
-                Button::new(format!("shift-mode-{mode}"))
-                    .label(label)
-                    .when(self.mode == mode, |button| button.primary())
-                    .disabled(disabled || (mode > 0 && snapshot.selected.is_empty()))
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.timing.mode = mode;
-                        cx.notify();
-                    })),
-            );
-        }
-        let mut fields = div().h_flex().flex_wrap().gap_2();
-        for (field, label) in [(0, "开始和结束"), (1, "只改开始"), (2, "只改结束")] {
-            fields = fields.child(
-                Button::new(format!("shift-fields-{field}"))
-                    .label(label)
-                    .when(self.fields == field, |button| button.primary())
-                    .disabled(disabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.timing.fields = field;
-                        cx.notify();
-                    })),
-            );
-        }
+        let units = crate::page::segmented(
+            cx,
+            vec![
+                ("shift-unit-time".into(), "按时间", self.by_time, disabled),
+                (
+                    "shift-unit-frames".into(),
+                    "按帧",
+                    !self.by_time,
+                    disabled || !snapshot.timecodes,
+                ),
+            ],
+            |view, index, _, cx| {
+                view.timing.by_time = index == 0;
+                view.timing.error = None;
+                cx.notify();
+            },
+        );
+        let direction = crate::page::segmented(
+            cx,
+            vec![
+                (
+                    "shift-direction-delay".into(),
+                    "向后延迟",
+                    !self.backward,
+                    disabled,
+                ),
+                (
+                    "shift-direction-advance".into(),
+                    "向前提前",
+                    self.backward,
+                    disabled,
+                ),
+            ],
+            |view, index, _, cx| {
+                view.timing.backward = index == 1;
+                cx.notify();
+            },
+        );
+        let no_selection = snapshot.selected.is_empty();
+        let scope = crate::page::segmented(
+            cx,
+            vec![
+                ("shift-mode-all".into(), "全部行", self.mode == 0, disabled),
+                (
+                    "shift-mode-selected".into(),
+                    "选中行",
+                    self.mode == 1,
+                    disabled || no_selection,
+                ),
+                (
+                    "shift-mode-onward".into(),
+                    "首个选中行及以后",
+                    self.mode == 2,
+                    disabled || no_selection,
+                ),
+            ],
+            |view, index, _, cx| {
+                view.timing.mode = index as i64;
+                cx.notify();
+            },
+        );
+        let fields = crate::page::segmented(
+            cx,
+            vec![
+                (
+                    "shift-fields-both".into(),
+                    "开始和结束",
+                    self.fields == 0,
+                    disabled,
+                ),
+                (
+                    "shift-fields-start".into(),
+                    "只改开始",
+                    self.fields == 1,
+                    disabled,
+                ),
+                (
+                    "shift-fields-end".into(),
+                    "只改结束",
+                    self.fields == 2,
+                    disabled,
+                ),
+            ],
+            |view, index, _, cx| {
+                view.timing.fields = index as i64;
+                cx.notify();
+            },
+        );
         let count = match self.mode {
             1 => snapshot.selected.len(),
             2 => snapshot

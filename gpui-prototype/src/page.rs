@@ -9,8 +9,10 @@
 //! * consistent 8/12/16/24 spacing.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     Icon, Sizable, StyledExt, Theme,
+    button::{Button, ButtonVariants},
     scroll::{Scrollable, ScrollableElement},
 };
 use gpui_kit::{IntoElement, ParentElement, Styled, div, prelude::*, px};
@@ -160,4 +162,39 @@ pub fn badge(cx: &gpui_kit::App, text: impl Into<gpui_kit::SharedString>) -> gpu
         .text_color(p.muted)
         .bg(p.inset)
         .child(text.into())
+}
+
+/// Mutually exclusive options rendered as one pill group, so the current
+/// choice is obvious and the row reads as a single control.
+pub fn segmented(
+    cx: &mut gpui_kit::Context<crate::Workspace>,
+    segments: Vec<(String, &'static str, bool, bool)>,
+    on_select: impl Fn(
+        &mut crate::Workspace,
+        usize,
+        &mut gpui_kit::Window,
+        &mut gpui_kit::Context<crate::Workspace>,
+    ) + 'static,
+) -> gpui_kit::Div {
+    let handler = std::rc::Rc::new(on_select);
+    let p = Palette::current(cx);
+    let mut row = div()
+        .h_flex()
+        .items_center()
+        .gap_0p5()
+        .p_0p5()
+        .rounded(px(8.))
+        .bg(p.inset);
+    for (index, (id, label, selected, disabled)) in segments.into_iter().enumerate() {
+        let handler = handler.clone();
+        row = row.child(
+            Button::new(id)
+                .label(label)
+                .ghost()
+                .when(selected, |button| button.primary())
+                .disabled(disabled)
+                .on_click(cx.listener(move |view, _, window, cx| handler(view, index, window, cx))),
+        );
+    }
+    row
 }
