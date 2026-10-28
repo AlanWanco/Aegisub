@@ -4908,7 +4908,7 @@ impl Render for Workspace {
         } else if self.active_panel == Panel::Resample {
             body = body.child(self.resample.render(cx));
         } else if self.active_panel == Panel::Timing {
-            body = body.child(self.timing.render(&self.snapshot, cx));
+            body = body.child(self.timing.render(&self.snapshot, window, cx));
         } else if self.active_panel == Panel::Styles {
             body = body.child(self.document.render_styles(cx));
         } else {

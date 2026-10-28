@@ -358,6 +358,23 @@ jobs:
         run: |
           python tools/verify-gpui-package.py build/aegisub-portable --arch "${{ matrix.config.os == 'windows-11-arm' && 'arm64' || 'x86_64' }}" --portable-zip (Get-Item build/Aegisub-*-portable.zip).FullName
 
+      - name: Exercise Windows GPUI desktop
+        if: matrix.config.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          tools/test-gpui-windows.ps1 -PackageDirectory build/aegisub-portable -OutputDirectory build/gpui-desktop-check
+
+      - name: Upload Windows desktop evidence
+        if: always() && matrix.config.os == 'windows-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Windows GPUI desktop evidence
+          path: |
+            build/gpui-desktop-check/*.png
+            build/gpui-desktop-check/result.json
+            build/gpui-desktop-check/runtime/log/*.json
+          if-no-files-found: warn
+
       - name: Upload artifacts - win_installer
         uses: actions/upload-artifact@v7
         if: matrix.config.windows && env.AEGISUB_SIGN_WINDOWS != 'true'

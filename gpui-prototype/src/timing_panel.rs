@@ -37,6 +37,7 @@ pub struct TimingPanel {
     pub error: Option<String>,
     pub history: Vec<Value>,
     pub confirm_clear: bool,
+    show_history: bool,
     pending_inputs: Option<(String, String)>,
     _events: Vec<Subscription>,
 }
@@ -71,6 +72,7 @@ impl TimingPanel {
             error: None,
             history: vec![],
             confirm_clear: false,
+            show_history: false,
             pending_inputs: None,
             _events: events,
         }
@@ -111,8 +113,15 @@ impl TimingPanel {
         self.error = None;
     }
 
-    pub fn render(&self, snapshot: &Snapshot, cx: &mut Context<Workspace>) -> impl IntoElement {
+    pub fn render(
+        &self,
+        snapshot: &Snapshot,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
+        let wide = f32::from(window.viewport_size().width) >= 900.;
+        let p = crate::workspace_theme::Palette::current(cx);
         let mut units = div().h_flex().flex_wrap().gap_2();
         for (id, label, by_time) in [("time", "按时间", true), ("frames", "按帧", false)] {
             units = units.child(
@@ -180,11 +189,14 @@ impl TimingPanel {
             _ => snapshot.lines.len(),
         };
         let mut form = div()
+            .id("shift-parameters-scroll")
             .v_flex()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .p_4()
             .gap_3()
-            .w_full()
-            .max_w(px(780.))
-            .child(div().text_lg().font_semibold().child("平移时间"))
+            .overflow_y_scrollbar()
             .child(units)
             .child(
                 div()
@@ -201,8 +213,14 @@ impl TimingPanel {
                         } else {
                             &self.frames
                         })
+                        .id("shift-amount")
+                        .aria_label(if self.by_time {
+                            "平移时长"
+                        } else {
+                            "平移帧数"
+                        })
                         .disabled(disabled)
-                        .w(px(260.)),
+                        .w_full(),
                     )
                     .child(
                         div()
@@ -217,10 +235,7 @@ impl TimingPanel {
             )
             .child(div().v_flex().gap_1().child("方向").child(direction))
             .child(div().v_flex().gap_1().child("影响范围").child(scope))
-            .child(div().v_flex().gap_1().child("修改时间字段").child(fields))
-            .child(format!(
-                "当前范围包含 {count} 行，使用字幕编辑器的撤销记录。"
-            ));
+            .child(div().v_flex().gap_1().child("修改时间字段").child(fields));
         if !snapshot.timecodes {
             form = form.child(
                 div()
@@ -236,42 +251,73 @@ impl TimingPanel {
                     .child(error.clone()),
             );
         }
-        form = form.child(
-            div()
-                .h_flex()
-                .gap_2()
-                .child(
-                    Button::new("shift-apply")
-                        .label(if self.loading {
-                            "处理中…"
-                        } else {
-                            "应用平移"
-                        })
-                        .primary()
-                        .disabled(disabled || count == 0 || (!self.by_time && !snapshot.timecodes))
-                        .on_click(
-                            cx.listener(|view, _, _, cx| view.shift_times_request("apply", cx)),
-                        ),
-                )
-                .child(
-                    Button::new("shift-undo")
-                        .label("撤销")
-                        .disabled(self.loading)
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
-                        })),
-                ),
-        );
-        let mut history = div()
-            .v_flex()
+        let actions = div()
+            .h_flex()
+            .flex_shrink_0()
+            .flex_wrap()
+            .items_center()
             .gap_2()
-            .child(div().text_lg().font_semibold().child("历史记录"))
+            .p_3()
+            .border_t_1()
+            .border_color(p.divider)
+            .bg(p.surface)
+            .child(
+                Button::new("shift-apply")
+                    .label(if self.loading {
+                        "处理中…"
+                    } else {
+                        "应用平移"
+                    })
+                    .primary()
+                    .disabled(disabled || count == 0 || (!self.by_time && !snapshot.timecodes))
+                    .on_click(cx.listener(|view, _, _, cx| view.shift_times_request("apply", cx))),
+            )
+            .child(
+                Button::new("shift-undo")
+                    .label("撤销")
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
+                    })),
+            )
             .child(
                 div()
                     .text_sm()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child("点击记录恢复平移参数；影响范围使用当前文档的选择。"),
+                    .text_color(p.muted)
+                    .child(format!("影响 {count} 行 · 可撤销")),
             );
+        let parameters = div()
+            .id("shift-parameters")
+            .v_flex()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .overflow_hidden()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .px_4()
+                    .py_3()
+                    .font_semibold()
+                    .border_b_1()
+                    .border_color(p.divider)
+                    .bg(p.surface)
+                    .child("平移参数"),
+            )
+            .child(form)
+            .child(actions);
+        let mut history = div()
+            .id("shift-history-list")
+            .v_flex()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .p_2()
+            .gap_1()
+            .overflow_y_scrollbar();
         for (index, entry) in self.history.iter().enumerate() {
             let entry = entry.clone();
             let filename = entry["filename"]
@@ -299,51 +345,156 @@ impl TimingPanel {
                 Some(2) => "结束",
                 _ => "开始+结束",
             };
+            let details = format!("{direction} {amount}{unit} · {scope} · {fields}");
+            let description = format!("{filename} · {details}");
             history = history.child(
                 Button::new(format!("shift-history-{index}"))
-                    .label(format!(
-                        "{filename} · {direction} {amount}{unit} · {scope} · {fields}"
-                    ))
-                    .small()
+                    .ghost()
+                    .w_full()
+                    .h(px(60.))
+                    .accessibility_label(description.clone())
+                    .tooltip(description)
+                    .child(
+                        div()
+                            .v_flex()
+                            .w_full()
+                            .min_w_0()
+                            .text_left()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(filename.to_owned()),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(p.muted)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(details),
+                            ),
+                    )
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.timing.restore(&entry, cx);
+                        view.timing.show_history = false;
+                        view.status = "已恢复平移参数，点击“应用平移”后生效".into();
                         cx.notify();
                     })),
             );
         }
         if self.history.is_empty() {
             history = history.child(div().text_sm().child("尚无平移记录。"));
-        } else {
-            history = history.child(
-                Button::new("shift-clear-history")
-                    .label(if self.confirm_clear {
-                        "确认清空历史记录"
-                    } else {
-                        "清空历史记录…"
-                    })
-                    .small()
-                    .disabled(disabled)
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        if view.timing.confirm_clear {
-                            view.timing.confirm_clear = false;
-                            view.shift_times_request("clear_history", cx);
-                        } else {
-                            view.timing.confirm_clear = true;
-                            cx.notify();
-                        }
-                    })),
-            );
         }
-        div()
+        let history = div()
+            .id("shift-history")
+            .v_flex()
+            .min_h_0()
+            .min_w_0()
+            .flex_1()
+            .overflow_hidden()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .child(
+                div()
+                    .h_flex()
+                    .flex_shrink_0()
+                    .justify_between()
+                    .items_center()
+                    .px_3()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(p.divider)
+                    .bg(p.surface)
+                    .child(
+                        div()
+                            .font_semibold()
+                            .child(format!("历史记录 · {}", self.history.len())),
+                    )
+                    .child(
+                        Button::new("shift-clear-history")
+                            .label(if self.confirm_clear {
+                                "确认清空"
+                            } else {
+                                "清空…"
+                            })
+                            .small()
+                            .disabled(disabled || self.history.is_empty())
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                if view.timing.confirm_clear {
+                                    view.timing.confirm_clear = false;
+                                    view.shift_times_request("clear_history", cx);
+                                } else {
+                                    view.timing.confirm_clear = true;
+                                    cx.notify();
+                                }
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .px_3()
+                    .py_2()
+                    .text_xs()
+                    .text_color(p.muted)
+                    .child("点击记录填入参数，再点击应用；使用当前字幕选择。"),
+            )
+            .child(history);
+        let mut panel = div()
             .id("timing-panel")
             .flex_1()
             .min_h_0()
-            .p_4()
+            .min_w_0()
+            .p_3()
             .v_flex()
-            .gap_6()
-            .overflow_y_scrollbar()
-            .child(form)
-            .child(history)
+            .gap_3();
+        if !wide {
+            panel = panel.child(
+                div()
+                    .h_flex()
+                    .flex_shrink_0()
+                    .gap_2()
+                    .child(
+                        Button::new("shift-show-parameters")
+                            .label("平移参数")
+                            .small()
+                            .when(!self.show_history, |button| button.primary())
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.timing.show_history = false;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("shift-show-history")
+                            .label(format!("历史记录 · {}", self.history.len()))
+                            .small()
+                            .when(self.show_history, |button| button.primary())
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.timing.show_history = true;
+                                cx.notify();
+                            })),
+                    ),
+            );
+        }
+        let mut content = div()
+            .h_flex()
+            .items_stretch()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .gap_3();
+        if wide || !self.show_history {
+            content = content.child(parameters);
+        }
+        if wide || self.show_history {
+            content = content.child(history);
+        }
+        panel.child(content)
     }
 }
