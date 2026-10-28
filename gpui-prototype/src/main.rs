@@ -4328,13 +4328,31 @@ impl Workspace {
         let highlight_visible = appearance.highlight_visible && self.snapshot.video;
         let video_time = self.snapshot.video_time;
         let focus_grid = appearance.focus_grid;
+        // The option is a point size. GPUI's logical pixel is a point on macOS
+        // but 1/96 inch elsewhere, so only Windows and Linux need the 4/3
+        // points-to-pixels conversion the wxWidgets grid got from wxDC.
+        let points_to_px = if cfg!(target_os = "macos") {
+            1.
+        } else {
+            4. / 3.
+        };
         let grid_size = if appearance.grid_size > 0 {
-            (appearance.grid_size as f32 * 4. / 3.).clamp(4., 56.)
+            (appearance.grid_size as f32 * points_to_px).clamp(4., 56.)
         } else {
             12.
         };
         let grid_font = appearance.grid_font.clone();
-        let row_height = (grid_size * 1.6 + 8.).max(34.);
+        // Secondary columns scale with the configured grid font so the list
+        // reads as one type scale instead of 16px text beside 11px labels.
+        let secondary_size = (grid_size * 0.8).clamp(10., 20.);
+        // Column widths follow the type size, otherwise a larger grid font
+        // pushes the time range into the style column.
+        // Cap the secondary columns so a large grid font does not squeeze the
+        // subtitle text out of the row entirely.
+        let id_width = (secondary_size * 4.2).clamp(46., 70.);
+        let time_width = (secondary_size * 15.5).clamp(170., 245.);
+        let style_width = (secondary_size * 8.4).clamp(100., 145.);
+        let row_height = (grid_size * 1.6 + 12.).max(36.);
         let stripe = p.surface;
         let border = appearance.color("Colour/Subtitle Grid/Lines", p.divider);
         let header_bg = appearance.color("Colour/Subtitle Grid/Header", p.inset);
@@ -4566,26 +4584,32 @@ impl Workspace {
                     .border_color(border)
                     .child(
                         div()
-                            .w(px(46.))
-                            .text_xs()
+                            .w(px(id_width))
+                            .text_size(px(secondary_size))
                             .text_color(muted)
                             .child("行 / 层"),
                     )
                     .child(
                         div()
-                            .w(px(170.))
-                            .text_xs()
+                            .w(px(time_width))
+                            .text_size(px(secondary_size))
                             .text_color(muted)
                             .child("开始 → 结束"),
                     )
                     .child(
                         div()
-                            .w(px(100.))
-                            .text_xs()
+                            .w(px(style_width))
+                            .text_size(px(secondary_size))
                             .text_color(muted)
                             .child("样式 / 角色"),
                     )
-                    .child(div().flex_1().text_xs().text_color(muted).child("字幕文本")),
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(secondary_size))
+                            .text_color(muted)
+                            .child("字幕文本"),
+                    ),
             )
             .child(
                 div().flex_1().min_h(px(90.)).child(
@@ -4653,9 +4677,9 @@ impl Workspace {
                                         })
                                         .child(
                                             div()
-                                                .w(px(46.))
+                                                .w(px(id_width))
                                                 .flex_shrink_0()
-                                                .text_xs()
+                                                .text_size(px(secondary_size))
                                                 .text_color(muted)
                                                 .child(format!(
                                                     "{:03} / {}",
@@ -4665,10 +4689,10 @@ impl Workspace {
                                         )
                                         .child(
                                             div()
-                                                .w(px(170.))
+                                                .w(px(time_width))
                                                 .flex_shrink_0()
                                                 .font_family(time_font.clone())
-                                                .text_size(px(11.))
+                                                .text_size(px(secondary_size))
                                                 .text_color(muted)
                                                 .child(format!(
                                                     "{} → {}",
@@ -4684,13 +4708,13 @@ impl Workspace {
                                             let mut cell = div()
                                                 .v_flex()
                                                 .justify_center()
-                                                .w(px(100.))
+                                                .w(px(style_width))
                                                 .flex_shrink_0()
                                                 .min_w_0()
                                                 .overflow_hidden()
                                                 .child(
                                                     div()
-                                                        .text_xs()
+                                                        .text_size(px(secondary_size))
                                                         .overflow_hidden()
                                                         .text_ellipsis()
                                                         .text_color(accent)
@@ -4699,7 +4723,7 @@ impl Workspace {
                                             if !line.actor.is_empty() {
                                                 cell = cell.child(
                                                     div()
-                                                        .text_xs()
+                                                        .text_size(px(secondary_size))
                                                         .overflow_hidden()
                                                         .text_ellipsis()
                                                         .text_color(muted)
