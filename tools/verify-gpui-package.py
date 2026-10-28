@@ -19,6 +19,44 @@ def pe_header(path: Path) -> tuple[str, int]:
     return {0x8664: "x86_64", 0xAA64: "arm64"}[machine], subsystem
 
 
+def pe_sections(path: Path) -> list[str]:
+    data = path.read_bytes()
+    offset = struct.unpack_from("<I", data, 0x3C)[0]
+    count = struct.unpack_from("<H", data, offset + 6)[0]
+    optional_size = struct.unpack_from("<H", data, offset + 20)[0]
+    table = offset + 24 + optional_size
+    names = []
+    for index in range(count):
+        header = table + index * 40
+        names.append(data[header : header + 8].rstrip(b"\0").decode("ascii", "replace"))
+    return names
+
+
+def pe_has_icon(path: Path) -> bool:
+    """True when the PE resource directory contains an icon group."""
+    data = path.read_bytes()
+    offset = struct.unpack_from("<I", data, 0x3C)[0]
+    count = struct.unpack_from("<H", data, offset + 6)[0]
+    optional_size = struct.unpack_from("<H", data, offset + 20)[0]
+    table = offset + 24 + optional_size
+    for index in range(count):
+        header = table + index * 40
+        if data[header : header + 8].rstrip(b"\0") != b".rsrc":
+            continue
+        base = struct.unpack_from("<I", data, header + 20)[0]
+        named, ids = struct.unpack_from("<HH", data, base + 12)
+        for entry in range(named + ids):
+            position = base + 16 + entry * 8
+            name = struct.unpack_from("<I", data, position)[0]
+            if name & 0x80000000:
+                continue
+            # RT_ICON (3) and RT_GROUP_ICON (14) both prove an icon exists.
+            if name in (3, 14):
+                return True
+        return False
+    return False
+
+
 def architecture(path: Path) -> str:
     data = path.read_bytes()
     if data[:2] == b"MZ":
@@ -58,6 +96,10 @@ def main() -> None:
                 raise SystemExit(
                     f"{binary}: expected GUI subsystem (2), found {subsystem}"
                 )
+            # Without an embedded resource section Windows shows a generic
+            # document glyph in the taskbar and window switcher.
+            if not pe_has_icon(binary):
+                raise SystemExit(f"{binary}: missing embedded icon resource")
     if args.portable_zip:
         with zipfile.ZipFile(args.portable_zip) as archive:
             names = set(archive.namelist())

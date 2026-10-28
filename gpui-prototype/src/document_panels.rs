@@ -247,14 +247,15 @@ impl DocumentPanels {
 
     pub fn render_styles(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let muted = Theme::global(cx).muted_foreground;
+        let p = crate::workspace_theme::Palette::current(cx);
         let mut list = div()
             .id("document-style-list")
             .v_flex()
-            .w(px(224.))
-            .flex_shrink_0()
+            .flex_1()
+            .min_h_0()
             .gap_1()
-            .overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().mb_2().child("当前脚本样式"));
+            .p_2()
+            .overflow_y_scrollbar();
         for style in &self.details.styles {
             let Some(name) = style.get("name") else {
                 continue;
@@ -262,13 +263,23 @@ impl DocumentPanels {
             let name = name.clone();
             list = list.child(
                 Button::new(format!("document-style-{name}"))
-                    .label(name.clone())
+                    .accessibility_label(name.clone())
                     .ghost()
                     .small()
+                    .h(px(30.))
                     .w_full()
                     .when(name == self.style && !self.editing_library, |button| {
                         button.primary()
                     })
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_left()
+                            .child(name.clone()),
+                    )
                     .on_click(cx.listener(move |view, _, _, cx| {
                         if view.document.style_form.dirty.is_empty() {
                             view.document.style = name.clone();
@@ -281,24 +292,64 @@ impl DocumentPanels {
                     })),
             );
         }
-        list = list.child(
-            Button::new("new-document-style")
-                .label("新建样式")
-                .small()
-                .on_click(cx.listener(|view, _, _, cx| view.new_style(cx))),
-        );
-        list = list.child(Button::new("style-copy-to-catalog").label("复制到样式库 →").small().disabled(self.library.catalog.is_empty())
-            .on_click(cx.listener(|view, _, _, cx| {
-                let request = json!({"action":"to_catalog", "catalog":view.document.library.catalog, "names":[view.document.style], "overwrite":view.document.overwrite_styles});
-                view.library_request(request, cx);
-            })));
+        let style_count = self.details.styles.len();
+        let style_card = div()
+            .v_flex()
+            .w(px(212.))
+            .flex_shrink_0()
+            .min_h_0()
+            .overflow_hidden()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .h_flex()
+                    .justify_between()
+                    .items_center()
+                    .px_3()
+                    .py_2p5()
+                    .border_b_1()
+                    .border_color(p.divider)
+                    .bg(p.surface)
+                    .child(div().font_semibold().child("当前脚本样式"))
+                    .child(div().text_xs().text_color(muted).child(style_count.to_string())),
+            )
+            .child(list)
+            .child(
+                div()
+                    .v_flex()
+                    .flex_shrink_0()
+                    .gap_1()
+                    .p_2()
+                    .border_t_1()
+                    .border_color(p.divider)
+                    .child(
+                        Button::new("new-document-style")
+                            .label("新建样式")
+                            .small()
+                            .w_full()
+                            .on_click(cx.listener(|view, _, _, cx| view.new_style(cx))),
+                    )
+                    .child(
+                        Button::new("style-copy-to-catalog")
+                            .label("复制到样式库 →")
+                            .small()
+                            .w_full()
+                            .disabled(self.library.catalog.is_empty())
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                let request = json!({"action":"to_catalog", "catalog":view.document.library.catalog, "names":[view.document.style], "overwrite":view.document.overwrite_styles});
+                                view.library_request(request, cx);
+                            })),
+                    ),
+            );
         let editing_name = if self.editing_library {
             &self.library_style
         } else {
             &self.style
         };
-        let mut editor = div().id("document-style-form").v_flex().flex_1().min_w_0().gap_3().overflow_y_scrollbar()
-            .child(div().font_semibold().child(format!("{} · {}", if self.editing_library { "样式库" } else { "当前脚本" }, editing_name)))
+        let mut editor = div().id("document-style-form").v_flex().flex_1().min_w_0().min_h_0().gap_3().p_3().overflow_y_scrollbar()
             .child(div().h_flex().flex_wrap().gap_2()
                 .child(Button::new("apply-style-fields").label("应用样式修改").primary().small()
                     .on_click(cx.listener(|view, _, _, cx| view.commit_style(cx))))
@@ -348,27 +399,79 @@ impl DocumentPanels {
             STYLE_FIELDS,
             &self.style_form,
         ));
+        let editor_card = div()
+            .v_flex()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .overflow_hidden()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .h_flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_2p5()
+                    .border_b_1()
+                    .border_color(p.divider)
+                    .bg(p.surface)
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .font_semibold()
+                            .child(format!(
+                                "{} · {}",
+                                if self.editing_library {
+                                    "样式库"
+                                } else {
+                                    "当前脚本"
+                                },
+                                editing_name
+                            )),
+                    )
+                    .child(div().text_xs().text_color(muted).child(
+                        if self.style_form.dirty.is_empty() {
+                            "无未应用修改"
+                        } else {
+                            "有未应用修改"
+                        },
+                    )),
+            )
+            .child(editor);
         div()
             .h_flex()
+            .items_stretch()
             .flex_1()
             .min_h_0()
             .p_4()
             .gap_4()
-            .child(list.w(px(180.)))
+            .child(style_card)
             .child(self.render_library(cx))
-            .child(editor)
+            .child(editor_card)
     }
 
     fn render_library(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
+        let p = crate::workspace_theme::Palette::current(cx);
         let mut panel = div()
             .id("style-library")
             .v_flex()
-            .w(px(245.))
+            .w(px(252.))
             .flex_shrink_0()
             .min_h_0()
             .gap_2()
+            .p_3()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
             .overflow_y_scrollbar()
-            .child(div().text_lg().font_semibold().child("样式库"))
+            .child(div().text_sm().font_semibold().child("样式库"))
             .child(
                 div()
                     .text_xs()

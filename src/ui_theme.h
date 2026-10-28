@@ -29,7 +29,9 @@
 #include <wx/control.h>
 #include <wx/dialog.h>
 #include <wx/frame.h>
+#include <wx/listbase.h>
 #include <wx/listbox.h>
+#include <wx/listctrl.h>
 #include <wx/list.h>
 #include <wx/menu.h>
 #include <wx/menuitem.h>
@@ -37,6 +39,7 @@
 #include <wx/nonownedwnd.h>
 #include <wx/panel.h>
 #include <wx/settings.h>
+#include <wx/scrolwin.h>
 #include <wx/sizer.h>
 #include <wx/slider.h>
 #include <wx/spinctrl.h>
@@ -45,11 +48,13 @@
 #include <wx/textctrl.h>
 #include <wx/toolbar.h>
 #include <wx/toplevel.h>
+#include <wx/treectrl.h>
 #include <wx/window.h>
 #ifdef __WXMSW__
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <uxtheme.h>
 #include <windows.h>
 #include <winreg.h>
 #include <dwmapi.h>
@@ -170,6 +175,40 @@ inline wxColour WindowBackground(wxWindow *window) {
 inline void ApplyAppearanceToMenu(wxMenu *menu);
 inline void ApplyAppearanceToMenuBar(wxMenuBar *menu_bar);
 
+#ifdef __WXMSW__
+#if defined(_MSC_VER)
+#pragma comment(lib, "uxtheme.lib")
+#endif
+// Native controls draw their own frame and scrollbar. wxWidgets only repaints
+// the client area, so a themed dialog otherwise keeps a light scrollbar and
+// light borders inside an otherwise dark window.
+inline void ApplyNativeDarkControlTheme(HWND handle) {
+	if (!handle) return;
+	using AllowDarkModeForWindowFn = BOOL(WINAPI *)(HWND, BOOL);
+	static AllowDarkModeForWindowFn allow_dark_mode = [] {
+		HMODULE module = GetModuleHandleW(L"uxtheme.dll");
+		return module ? reinterpret_cast<AllowDarkModeForWindowFn>(
+			GetProcAddress(module, MAKEINTRESOURCEA(135))) : nullptr;
+	}();
+	bool const dark = IsDark();
+	if (allow_dark_mode) allow_dark_mode(handle, dark);
+	SetWindowTheme(handle, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
+}
+
+inline void ApplyNativeDarkControlTheme(wxWindow *window) {
+	if (!window || window->IsBeingDeleted()) return;
+	// Text, list and scrollable controls own the parts that stay light.
+	if (!(wxDynamicCast(window, wxTextCtrl) || wxDynamicCast(window, wxListBox) ||
+		wxDynamicCast(window, wxComboBox) || wxDynamicCast(window, wxChoice) ||
+		wxDynamicCast(window, wxSpinCtrl) || wxDynamicCast(window, wxSpinCtrlDouble) ||
+		wxDynamicCast(window, wxListCtrl) || wxDynamicCast(window, wxTreeCtrl) ||
+		wxDynamicCast(window, wxScrolledWindow) || wxDynamicCast(window, wxDialog) ||
+		wxDynamicCast(window, wxFrame)))
+		return;
+	ApplyNativeDarkControlTheme(static_cast<HWND>(window->GetHandle()));
+}
+#endif
+
 inline void ApplyWindow(wxWindow *window) {
 	if (!window || window->IsBeingDeleted()) return;
 	if (auto frame = wxDynamicCast(window, wxFrame)) {
@@ -182,7 +221,11 @@ inline void ApplyWindow(wxWindow *window) {
 		BOOL const use_dark_title_bar = IsDark();
 		DwmSetWindowAttribute(static_cast<HWND>(window->GetHandle()), DWMWA_USE_IMMERSIVE_DARK_MODE,
 			&use_dark_title_bar, sizeof(use_dark_title_bar));
+		// Windows 11 draws the 1px window border separately from the title bar.
+		COLORREF const border = IsDark() ? RGB(0x3B, 0x48, 0x46) : RGB(0xCC, 0xD7, 0xD2);
+		DwmSetWindowAttribute(static_cast<HWND>(window->GetHandle()), 34, &border, sizeof(border));
 	}
+	ApplyNativeDarkControlTheme(window);
 #endif
 	if (OPT_GET("App/Theme")->GetInt() == static_cast<int>(ThemeMode::System)) {
 		window->SetBackgroundColour(wxNullColour);

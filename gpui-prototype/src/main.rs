@@ -65,9 +65,9 @@ use anyhow::{Context as _, Result, anyhow};
 use async_net::TcpStream;
 use futures_lite::io::{AsyncReadExt, AsyncWriteExt};
 use gpui_kit::{
-    App, AppContext, Context, Corners, Entity, Focusable, Image, IntoElement, Render, ScrollDelta,
-    Subscription, Window, WindowBounds, WindowOptions, canvas, div, prelude::*, px, rgb, size,
-    uniform_list,
+    App, AppContext, Context, Corners, Entity, ExternalPaths, Focusable, Image, IntoElement,
+    Render, ScrollDelta, Subscription, Window, WindowBounds, WindowOptions, canvas, div,
+    prelude::*, px, rgb, size, uniform_list,
 };
 use gpui_kit::{
     base::{Disableable, Selectable},
@@ -83,6 +83,158 @@ use gpui_kit::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
+
+#[derive(Clone, PartialEq)]
+struct RunCommand {
+    name: String,
+}
+
+// Native menu bars cannot carry a closure, so the menu item identifies the
+// catalog command and the app-level handler forwards it to the workspace.
+impl gpui_kit::Action for RunCommand {
+    fn boxed_clone(&self) -> Box<dyn gpui_kit::Action> {
+        Box::new(self.clone())
+    }
+
+    fn partial_eq(&self, other: &dyn gpui_kit::Action) -> bool {
+        other.as_any().downcast_ref::<Self>() == Some(self)
+    }
+
+    fn name(&self) -> &'static str {
+        "aegisub::RunCommand"
+    }
+
+    fn name_for_type() -> &'static str
+    where
+        Self: Sized,
+    {
+        "aegisub::RunCommand"
+    }
+
+    fn build(value: Value) -> Result<Box<dyn gpui_kit::Action>>
+    where
+        Self: Sized,
+    {
+        Ok(Box::new(Self {
+            name: value
+                .get("name")
+                .and_then(|name| name.as_str())
+                .unwrap_or_default()
+                .to_owned(),
+        }))
+    }
+}
+
+fn dropped_kind(path: &std::path::Path) -> Option<&'static str> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "ass" | "ssa" | "srt" | "vtt" | "sub" => Some("subtitle"),
+        "mp4" | "mkv" | "mov" | "avi" | "webm" | "m4v" | "mpg" | "mpeg" | "ts" => Some("video"),
+        "wav" | "flac" | "mp3" | "ogg" | "m4a" | "aac" | "opus" | "wma" => Some("audio"),
+        "txt" | "log" | "pass" | "stats" => Some("timecodes"),
+        _ => None,
+    }
+}
+
+fn menu_label(text: &str) -> String {
+    let label = text.split('\t').next().unwrap_or(text).replace('&', "");
+    let label = label.trim();
+    match label {
+        "File" => "文件",
+        "Edit" => "编辑",
+        "View" => "视图",
+        "Subtitle" => "字幕",
+        "Timing" => "时间",
+        "Video" => "视频",
+        "Audio" => "音频",
+        "Automation" => "自动化",
+        "Help" => "帮助",
+        _ => label,
+    }
+    .to_owned()
+}
+
+fn native_menu_items(catalog: &Catalog, submenu: &str) -> Vec<gpui_kit::MenuItem> {
+    let mut items = Vec::new();
+    for entry in catalog.menu(submenu) {
+        if !entry.submenu.is_empty() {
+            let children = native_menu_items(catalog, &entry.submenu);
+            if !children.is_empty() {
+                items.push(gpui_kit::MenuItem::submenu(
+                    gpui_kit::Menu::new(menu_label(&entry.text)).items(children),
+                ));
+            }
+            continue;
+        }
+        if entry.command.is_empty() {
+            if !matches!(items.last(), Some(gpui_kit::MenuItem::Separator)) {
+                items.push(gpui_kit::MenuItem::separator());
+            }
+            continue;
+        }
+        let Some(command) = catalog.command(&entry.command) else {
+            continue;
+        };
+        if !command.can_invoke() {
+            continue;
+        }
+        let label = if entry.text.is_empty() {
+            command.label.clone()
+        } else {
+            menu_label(&entry.text)
+        };
+        items.push(gpui_kit::MenuItem::action(
+            label,
+            RunCommand {
+                name: command.name.clone(),
+            },
+        ));
+    }
+    while matches!(items.last(), Some(gpui_kit::MenuItem::Separator)) {
+        items.pop();
+    }
+    items
+}
+
+/// macOS puts the menu bar in the system bar rather than inside the window.
+fn install_native_menus(catalog: &Catalog, cx: &mut App) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut menus = vec![gpui_kit::Menu::new("Aegisub").items(vec![
+        gpui_kit::MenuItem::action(
+            "关于 Aegisub",
+            RunCommand {
+                name: "app/about".into(),
+            },
+        ),
+        gpui_kit::MenuItem::separator(),
+        gpui_kit::MenuItem::action(
+            "退出 Aegisub",
+            RunCommand {
+                name: "app/exit".into(),
+            },
+        ),
+    ])];
+    for entry in catalog.menu("main") {
+        if entry.submenu.is_empty()
+            || entry.submenu == "main/window"
+            || entry.special == "automation"
+        {
+            continue;
+        }
+        let items = native_menu_items(catalog, &entry.submenu);
+        if items.is_empty() {
+            continue;
+        }
+        menus.push(gpui_kit::Menu::new(menu_label(&entry.text)).items(items));
+    }
+    cx.set_menus(menus);
+}
 
 #[derive(Clone, Debug, Deserialize)]
 struct Line {
@@ -862,6 +1014,38 @@ impl Workspace {
             ids[0]
         };
         self.invoke(json!({"op":"select", "id":active, "ids":ids}), cx);
+    }
+
+    /// Classify dropped files the same way the open dialogs do, so dragging a
+    /// subtitle, video, audio or timecode file onto the window opens it.
+    fn open_dropped(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
+        let mut opened = Vec::new();
+        for path in paths.paths() {
+            let Some(kind) = dropped_kind(path) else {
+                continue;
+            };
+            // Only one subtitle can be the active document; media files add to it.
+            if kind == "subtitle" && opened.iter().any(|(kind, _)| *kind == "subtitle") {
+                continue;
+            }
+            opened.push((kind, path.to_string_lossy().to_string()));
+        }
+        if opened.is_empty() {
+            self.status = "拖入的文件类型不受支持：可用字幕、视频、音频或时间码".into();
+            cx.notify();
+            return;
+        }
+        for (kind, path) in opened {
+            let label = match kind {
+                "subtitle" => "字幕",
+                "video" => "视频",
+                "audio" => "音频",
+                _ => "时间码",
+            };
+            self.status = format!("已拖入{label}：{path}");
+            self.invoke(json!({"op":"open", "kind":kind, "path":path}), cx);
+        }
+        cx.notify();
     }
 
     fn pick_file(&mut self, kind: &'static str, cx: &mut Context<Self>) {
@@ -2714,7 +2898,10 @@ impl Workspace {
             let _ = weak.update(cx, |view, cx| {
                 view.catalog_loading = false;
                 match result {
-                    Ok(catalog) => view.catalog = Arc::new(catalog),
+                    Ok(catalog) => {
+                        view.catalog = Arc::new(catalog);
+                        install_native_menus(&view.catalog, cx);
+                    }
                     Err(error) => view.status = format!("命令读取失败：{error}"),
                 }
                 cx.notify();
@@ -3241,9 +3428,9 @@ impl Workspace {
         let mut bar = div()
             .h_flex()
             .items_center()
-            .gap_1()
-            .px_3()
-            .h(px(32.))
+            .gap_2()
+            .px_4()
+            .h(px(38.))
             .bg(p.surface)
             .flex_shrink_0();
         for entry in self.catalog.menu("main") {
@@ -3547,9 +3734,9 @@ impl Workspace {
             .v_flex()
             .min_h_0()
             .flex_1()
-            .gap_0p5()
-            .px_2()
-            .py_3()
+            .gap_1()
+            .px_3()
+            .py_4()
             .overflow_y_scrollbar();
         for (group, panels) in [
             (
@@ -3590,8 +3777,8 @@ impl Workspace {
         ] {
             navigation = navigation.child(
                 div()
-                    .mt_3()
-                    .mb_1()
+                    .mt_4()
+                    .mb_2()
                     .px_2()
                     .text_size(px(11.))
                     .text_color(p.muted)
@@ -3616,7 +3803,7 @@ impl Workspace {
                     .accessibility_label(panel.label())
                     .tooltip(panel.label())
                     .w_full()
-                    .h(px(30.))
+                    .h(px(36.))
                     .px_2()
                     .child(content)
                     .on_click(cx.listener(move |view, _, window, cx| {
@@ -4763,6 +4950,9 @@ impl Render for Workspace {
             .id("aegisub-gpui-workspace")
             .track_focus(&self.focus_handle)
             .capture_key_down(cx.listener(Self::handle_key))
+            .on_drop(cx.listener(|view, paths: &ExternalPaths, _, cx| {
+                view.open_dropped(paths, cx)
+            }))
             .on_mouse_move(cx.listener(|view, event: &gpui_kit::MouseMoveEvent, _, cx| {
                 if let Some(drag) = view.layout_drag {
                     if event.pressed_button == Some(gpui_kit::MouseButton::Left) {
@@ -4823,8 +5013,8 @@ impl Render for Workspace {
                     .min_w_0()
                     .min_h_0()
                     .overflow_hidden()
-                    .gap_2()
-                    .p_3()
+                    .gap_3()
+                    .p_4()
                     .child(self.audio.render_compact(
                         &self.snapshot.audio,
                         self.snapshot.video,
@@ -4969,7 +5159,9 @@ impl Render for Workspace {
                 .flex_1()
                 .min_w_0()
                 .min_h_0()
-                .child(self.render_legacy_menus(cx))
+                .when(!cfg!(target_os = "macos"), |bar| {
+                    bar.child(self.render_legacy_menus(cx))
+                })
                 .when(self.snapshot.show_toolbar, |v| {
                     v.child(self.render_toolbar(cx))
                 })
@@ -5005,6 +5197,15 @@ fn run(endpoint: String, token: String) -> Result<()> {
                     cx.activate(true);
                     window.activate_window();
                     let workspace = cx.new(|cx| Workspace::new(bridge.clone(), window, cx));
+                    let menu_target = workspace.downgrade();
+                    cx.on_action(move |action: &RunCommand, cx| {
+                        let name = action.name.clone();
+                        if let Some(view) = menu_target.upgrade() {
+                            let _ = view.update(cx, |view, cx| {
+                                view.invoke(json!({"op":"command", "name":name}), cx)
+                            });
+                        }
+                    });
                     workspace.update(cx, |view, cx| {
                         view.refresh_catalog(cx);
                         view.refresh_document(cx);
@@ -5093,4 +5294,21 @@ fn main() -> Result<()> {
         endpoint.context("missing --bridge endpoint; launch this prototype from Aegisub")?;
     let token = token.context("missing --token; launch this prototype from Aegisub")?;
     run(endpoint, token)
+}
+
+#[cfg(test)]
+mod drop_tests {
+    use super::dropped_kind;
+    use std::path::Path;
+
+    #[test]
+    fn classifies_dropped_files_like_the_open_dialogs() {
+        assert_eq!(dropped_kind(Path::new("/tmp/a.ASS")), Some("subtitle"));
+        assert_eq!(dropped_kind(Path::new("/tmp/a.srt")), Some("subtitle"));
+        assert_eq!(dropped_kind(Path::new("/tmp/a.mkv")), Some("video"));
+        assert_eq!(dropped_kind(Path::new("/tmp/a.flac")), Some("audio"));
+        assert_eq!(dropped_kind(Path::new("/tmp/a.txt")), Some("timecodes"));
+        assert_eq!(dropped_kind(Path::new("/tmp/a.png")), None);
+        assert_eq!(dropped_kind(Path::new("/tmp/no-extension")), None);
+    }
 }

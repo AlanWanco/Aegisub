@@ -552,11 +552,21 @@ impl AudioPanel {
                     view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
                 }))
         };
+        let hint = if state.loaded {
+            format!(
+                "{} → {} · {}",
+                format_time(state.start),
+                format_time(state.end),
+                format_time(state.duration)
+            )
+        } else {
+            "加载视频音轨后可使用波形调时和卡拉 OK 工具".to_owned()
+        };
         let mut panel = div()
             .v_flex()
             .w_full()
             .min_w_0()
-            .gap_2()
+            .gap_3()
             .child(
                 div()
                     .h_flex()
@@ -565,11 +575,20 @@ impl AudioPanel {
                     .child(Icon::new(IconName::AudioLines).size(px(14.)))
                     .child(
                         div()
-                            .flex_1()
-                            .min_w_0()
+                            .flex_shrink_0()
                             .text_sm()
                             .font_semibold()
                             .child("音频波形"),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .text_size(px(11.))
+                            .text_color(Theme::global(cx).muted_foreground)
+                            .child(hint),
                     )
                     .when(!state.loaded, |row| row.child(load_audio))
                     .when(state.loaded, |row| {
@@ -592,21 +611,6 @@ impl AudioPanel {
                                     view.invoke(json!({"op":"command", "name":"audio/stop"}), cx)
                                 })),
                         )
-                    }),
-            )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child(if state.loaded {
-                        format!(
-                            "{} → {} · {}",
-                            format_time(state.start),
-                            format_time(state.end),
-                            format_time(state.duration)
-                        )
-                    } else {
-                        "加载视频音轨后可使用波形调时和卡拉 OK 工具".to_owned()
                     }),
             )
             .child(graph);

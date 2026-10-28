@@ -259,7 +259,9 @@ bool AegisubApp::OnInit() {
 		auto lang = OPT_GET("App/Language")->GetString();
 		if (lang.empty() || (lang != "en_US" && !locale.HasLanguage(lang))) {
 #ifdef WITH_GPUI_DEFAULT
-			lang = "en_US";
+			// The GPUI workspace ships Chinese interface strings; keep the legacy
+			// wxWidgets dialogs in the same language instead of mixing locales.
+			lang = "zh_CN";
 #else
 			lang = locale.PickLanguage();
 #endif
