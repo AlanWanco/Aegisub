@@ -171,22 +171,35 @@ impl TimingProcessorPanel {
             );
         }
         panel = panel.child(toggles);
-        let mut numbers = div().h_flex().flex_wrap().gap_3();
-        for &(key, label) in NUMBERS {
-            let enabled = match key {
-                "lead_in" => self.options["has_lead_in"],
-                "lead_out" => self.options["has_lead_out"],
-                "adjacent_gap" | "adjacent_overlap" | "adjacent_bias" => self.options["adjacent"],
-                _ => self.options["keyframes"] && self.can_keyframes,
-            };
-            numbers = numbers.child(
-                div()
-                    .v_flex()
-                    .gap_1()
-                    .w(px(250.))
-                    .child(div().text_sm().child(label))
-                    .child(Input::new(&self.inputs[key]).disabled(disabled || !enabled)),
-            );
+        // A fixed-width wrap left the ninth field alone on its own line; lay the
+        // thresholds out as a 3×3 grid instead.
+        let mut numbers = div().v_flex().gap_3();
+        for row in NUMBERS.chunks(3) {
+            let mut line = div().h_flex().items_start().gap_3();
+            for &(key, label) in row {
+                let enabled = match key {
+                    "lead_in" => self.options["has_lead_in"],
+                    "lead_out" => self.options["has_lead_out"],
+                    "adjacent_gap" | "adjacent_overlap" | "adjacent_bias" => {
+                        self.options["adjacent"]
+                    }
+                    _ => self.options["keyframes"] && self.can_keyframes,
+                };
+                line = line.child(
+                    div()
+                        .v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1()
+                        .child(div().text_sm().child(label))
+                        .child(Input::new(&self.inputs[key]).disabled(disabled || !enabled)),
+                );
+            }
+            // Keep the last row's columns the same width as the full rows.
+            for _ in row.len()..3 {
+                line = line.child(div().flex_1().min_w_0());
+            }
+            numbers = numbers.child(line);
         }
         panel = panel.child(numbers).child(
             div()

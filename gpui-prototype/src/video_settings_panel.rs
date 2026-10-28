@@ -301,13 +301,17 @@ impl VideoSettingsPanel {
                 } else {
                     panel = panel.child("尚未载入视频。可打开视频文件或创建空白视频。");
                 }
+                // A button directly inside a column stretches to the full
+                // width; keep it in a left-aligned row instead.
                 panel = panel.child(
-                    Button::new("refresh-video-details")
-                        .label("刷新详情")
-                        .disabled(self.loading)
-                        .on_click(
-                            cx.listener(|view, _, _, cx| view.video_settings_request("state", cx)),
-                        ),
+                    div().h_flex().child(
+                        Button::new("refresh-video-details")
+                            .label("刷新详情")
+                            .disabled(self.loading)
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.video_settings_request("state", cx)
+                            })),
+                    ),
                 );
             }
         }
@@ -320,13 +324,15 @@ impl VideoSettingsPanel {
             );
         }
         panel.child(
-            Button::new("video-settings-back")
-                .label("回到字幕预览")
-                .on_click(cx.listener(|view, _, window, cx| {
-                    view.active_panel = crate::Panel::Subtitles;
-                    view.focus_handle.focus(window, cx);
-                    cx.notify();
-                })),
+            div().h_flex().child(
+                Button::new("video-settings-back")
+                    .label("回到字幕预览")
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        view.active_panel = crate::Panel::Subtitles;
+                        view.focus_handle.focus(window, cx);
+                        cx.notify();
+                    })),
+            ),
         )
     }
 }

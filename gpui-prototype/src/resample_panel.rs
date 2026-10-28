@@ -181,13 +181,16 @@ impl ResamplePanel {
                             })),
                     ),
             );
-        let mut dimensions = div().h_flex().flex_wrap().gap_3();
+        // Four equal columns that fill the row instead of fixed-width boxes
+        // huddled on the left.
+        let mut dimensions = div().h_flex().items_start().gap_3();
         for &(key, label) in &FIELDS[..4] {
             dimensions = dimensions.child(
                 div()
                     .v_flex()
+                    .flex_1()
+                    .min_w_0()
                     .gap_1()
-                    .w(px(180.))
                     .child(label)
                     .child(Input::new(&self.inputs[key]).disabled(disabled)),
             );
@@ -211,13 +214,14 @@ impl ResamplePanel {
         }
         form = form.child(div().v_flex().gap_2().child("宽高比处理").child(aspect));
         if self.ar_mode == 3 {
-            let mut margins = div().h_flex().flex_wrap().gap_3();
+            let mut margins = div().h_flex().items_start().gap_3();
             for &(key, label) in &FIELDS[4..] {
                 margins = margins.child(
                     div()
                         .v_flex()
+                        .flex_1()
+                        .min_w_0()
                         .gap_1()
-                        .w(px(180.))
                         .child(label)
                         .child(Input::new(&self.inputs[key]).disabled(disabled)),
                 );
