@@ -560,6 +560,21 @@ enum WorkspaceResizeDrag {
         start_y: gpui_kit::Pixels,
         start_height: f32,
     },
+    /// Height of the compact waveform strip.
+    AudioPanel {
+        start_y: gpui_kit::Pixels,
+        start_height: f32,
+    },
+    /// Width of the video/properties column beside the subtitle list.
+    ColumnSplit {
+        start_x: gpui_kit::Pixels,
+        start_width: f32,
+    },
+    /// Height of the video preview above the line properties.
+    VideoPreview {
+        start_y: gpui_kit::Pixels,
+        start_height: f32,
+    },
 }
 
 struct Workspace {
@@ -575,6 +590,10 @@ struct Workspace {
     subtitle_filter_cache: Option<(u64, String, String, Arc<Vec<Line>>)>,
     subtitle_editor_height: f32,
     layout_drag: Option<WorkspaceResizeDrag>,
+    audio_panel_height: f32,
+    column_split: Option<f32>,
+    video_preview_height: Option<f32>,
+    last_preview_height: std::cell::Cell<f32>,
     editor: Entity<TextareaState>,
     search: Entity<InputState>,
     command_search: Entity<InputState>,
@@ -792,6 +811,10 @@ impl Workspace {
             subtitle_filter_cache: None,
             subtitle_editor_height: 210.,
             layout_drag: None,
+            audio_panel_height: 80.,
+            column_split: None,
+            video_preview_height: None,
+            last_preview_height: std::cell::Cell::new(220.),
             editor,
             search,
             command_search,
@@ -3982,6 +4005,8 @@ impl Workspace {
             let max_height = available_height - reserved_height;
             height.clamp(80., max_height.max(80.))
         };
+        let view_height = self.video_preview_height.unwrap_or(view_height);
+        self.last_preview_height.set(view_height);
         let image = self.frame_image.clone();
         let has_image = image.is_some();
         let overscan = self.snapshot.video && self.snapshot.video_overscan;
@@ -4987,6 +5012,32 @@ impl Render for Workspace {
                                     + f32::from(event.position.y - start_y))
                                     .clamp(165., 360.);
                             }
+                            WorkspaceResizeDrag::AudioPanel {
+                                start_y,
+                                start_height,
+                            } => {
+                                view.audio_panel_height = (start_height
+                                    + f32::from(event.position.y - start_y))
+                                    .clamp(60., 320.);
+                            }
+                            WorkspaceResizeDrag::ColumnSplit {
+                                start_x,
+                                start_width,
+                            } => {
+                                view.column_split = Some(
+                                    (start_width + f32::from(event.position.x - start_x))
+                                        .clamp(300., 1400.),
+                                );
+                            }
+                            WorkspaceResizeDrag::VideoPreview {
+                                start_y,
+                                start_height,
+                            } => {
+                                view.video_preview_height = Some(
+                                    (start_height + f32::from(event.position.y - start_y))
+                                        .clamp(120., 900.),
+                                );
+                            }
                         }
                         cx.notify();
                     } else {
@@ -5028,6 +5079,126 @@ impl Render for Workspace {
             .overflow_hidden();
         if self.active_panel == Panel::Subtitles {
             let side_by_side = f32::from(window.viewport_size().width) >= 900.;
+            let sidebar = if self
+                .sidebar_collapsed
+                .unwrap_or(f32::from(window.viewport_size().width) < 1150.)
+            {
+                60.
+            } else {
+                164.
+            };
+            let body_width = (f32::from(window.viewport_size().width) - sidebar - 48.).max(320.);
+            let column_width = self
+                .column_split
+                .unwrap_or((body_width - 12.) / 2.)
+                .clamp(280., (body_width - 280.).max(280.));
+            let divider = p.divider;
+            let audio_handle = div()
+                .id("audio-panel-resize-handle")
+                .aria_label("调整音频波形高度")
+                .role(gpui_kit::Role::Splitter)
+                .h(px(6.))
+                .w_full()
+                .flex_shrink_0()
+                .h_flex()
+                .items_center()
+                .justify_center()
+                .cursor_row_resize()
+                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(divider))
+                .on_mouse_down(
+                    gpui_kit::MouseButton::Left,
+                    cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                        view.layout_drag = Some(WorkspaceResizeDrag::AudioPanel {
+                            start_y: event.position.y,
+                            start_height: view.audio_panel_height,
+                        });
+                        cx.stop_propagation();
+                        cx.notify();
+                    }),
+                );
+            let column_handle = div()
+                .id("workspace-column-resize-handle")
+                .aria_label("调整视频与字幕列表宽度")
+                .role(gpui_kit::Role::Splitter)
+                .w(px(6.))
+                .h_full()
+                .flex_shrink_0()
+                .v_flex()
+                .items_center()
+                .justify_center()
+                .cursor_col_resize()
+                .child(div().h(px(48.)).w(px(3.)).rounded(px(2.)).bg(divider))
+                .on_mouse_down(
+                    gpui_kit::MouseButton::Left,
+                    cx.listener(move |view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                        view.layout_drag = Some(WorkspaceResizeDrag::ColumnSplit {
+                            start_x: event.position.x,
+                            start_width: column_width,
+                        });
+                        cx.stop_propagation();
+                        cx.notify();
+                    }),
+                );
+            let video_handle = div()
+                .id("video-preview-resize-handle")
+                .aria_label("调整视频预览高度")
+                .role(gpui_kit::Role::Splitter)
+                .h(px(6.))
+                .w_full()
+                .flex_shrink_0()
+                .h_flex()
+                .items_center()
+                .justify_center()
+                .cursor_row_resize()
+                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(divider))
+                .on_mouse_down(
+                    gpui_kit::MouseButton::Left,
+                    cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                        let current = view
+                            .video_preview_height
+                            .unwrap_or_else(|| view.last_preview_height.get());
+                        view.layout_drag = Some(WorkspaceResizeDrag::VideoPreview {
+                            start_y: event.position.y,
+                            start_height: current,
+                        });
+                        cx.stop_propagation();
+                        cx.notify();
+                    }),
+                );
+            let mut columns = div()
+                .h_flex()
+                .items_stretch()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .gap_2()
+                .child(
+                    div()
+                        .v_flex()
+                        .when(side_by_side, |column| column.w(px(column_width)))
+                        .when(!side_by_side, |column| column.flex_1())
+                        .flex_shrink_0()
+                        .min_w_0()
+                        .min_h_0()
+                        .gap_1()
+                        .child(self.render_player(window, side_by_side, cx))
+                        // The stacked layout has no spare height to trade
+                        // between the preview and the properties.
+                        .when(side_by_side, |column| column.child(video_handle))
+                        .child(self.render_properties(cx)),
+                )
+                .when(side_by_side, |row| row.child(column_handle))
+                .child(
+                    div()
+                        .v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .min_h_0()
+                        .child(self.render_subtitle_panel(cx)),
+                );
+            if !side_by_side {
+                columns = columns.flex_col();
+            }
             body = body.child(
                 div()
                     .v_flex()
@@ -5035,42 +5206,17 @@ impl Render for Workspace {
                     .min_w_0()
                     .min_h_0()
                     .overflow_hidden()
-                    .gap_3()
+                    .gap_2()
                     .p_4()
                     .child(self.audio.render_compact(
                         &self.snapshot.audio,
                         self.snapshot.video,
                         &self.snapshot.appearance,
+                        self.audio_panel_height,
                         cx,
                     ))
-                    .child(
-                        div()
-                            .h_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .min_h_0()
-                            .gap_2()
-                            .when(side_by_side, |row| row.items_stretch())
-                            .when(!side_by_side, |column| column.v_flex())
-                            .child(
-                                div()
-                                    .v_flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .min_h_0()
-                                    .gap_2()
-                                    .child(self.render_player(window, side_by_side, cx))
-                                    .child(self.render_properties(cx)),
-                            )
-                            .child(
-                                div()
-                                    .v_flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .min_h_0()
-                                    .child(self.render_subtitle_panel(cx)),
-                            ),
-                    ),
+                    .child(audio_handle)
+                    .child(columns),
             );
         } else if self.active_panel == Panel::Visual {
             body = body.child(div().v_flex().flex_1().min_h_0().p_3().gap_2()

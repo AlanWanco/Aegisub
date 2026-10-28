@@ -132,7 +132,7 @@ impl AudioPanel {
         appearance: &crate::Appearance,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        self.render_inner(state, video, appearance, cx, true)
+        self.render_inner(state, video, appearance, cx, true, 260.)
     }
 
     pub fn render_compact(
@@ -140,9 +140,10 @@ impl AudioPanel {
         state: &AudioState,
         video: bool,
         appearance: &crate::Appearance,
+        height: f32,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        self.render_inner(state, video, appearance, cx, false)
+        self.render_inner(state, video, appearance, cx, false, height)
     }
 
     fn render_inner(
@@ -152,6 +153,7 @@ impl AudioPanel {
         appearance: &crate::Appearance,
         cx: &mut Context<Workspace>,
         full_controls: bool,
+        graph_height: f32,
     ) -> impl IntoElement {
         let mut controls = div()
             .h_flex()
@@ -246,7 +248,7 @@ impl AudioPanel {
             .id("audio-graph")
             .relative()
             .w_full()
-            .h(px(if full_controls { 260. } else { 80. }))
+            .h(px(graph_height))
             .flex_shrink_0()
             .bg(rgb(0x101519))
             .overflow_hidden()
