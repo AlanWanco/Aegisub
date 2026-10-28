@@ -130,9 +130,10 @@ impl AudioPanel {
         state: &AudioState,
         video: bool,
         appearance: &crate::Appearance,
+        height: f32,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        self.render_inner(state, video, appearance, cx, true, 260.)
+        self.render_inner(state, video, appearance, cx, true, height)
     }
 
     pub fn render_compact(
@@ -155,6 +156,9 @@ impl AudioPanel {
         full_controls: bool,
         graph_height: f32,
     ) -> impl IntoElement {
+        // Three groups with different weights: file actions, playback and
+        // commit (one primary), then the view/option toggles as quiet pills.
+        let separator = Theme::global(cx).border;
         let mut controls = div()
             .h_flex()
             .flex_wrap()
@@ -174,24 +178,29 @@ impl AudioPanel {
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
                     })),
-            );
-        for (id, label, command) in [
-            ("audio-play", "播放选区", "audio/play/selection"),
-            ("audio-stop", "停止", "audio/stop"),
-            ("audio-save-clip", "导出音频剪辑…", "audio/save/clip"),
-            ("audio-commit", "提交并前进", "audio/commit/next"),
-            ("audio-commit-stay", "提交", "audio/commit/stay"),
-            ("audio-revert", "还原时间", "edit/revert"),
+            )
+            .child(div().w(px(1.)).h(px(20.)).mx_1().bg(separator));
+        for (id, label, command, primary) in [
+            ("audio-play", "播放选区", "audio/play/selection", false),
+            ("audio-stop", "停止", "audio/stop", false),
+            ("audio-save-clip", "导出音频剪辑…", "audio/save/clip", false),
+            ("audio-commit", "提交并前进", "audio/commit/next", true),
+            ("audio-commit-stay", "提交", "audio/commit/stay", false),
+            ("audio-revert", "还原时间", "edit/revert", false),
         ] {
+            let quiet = matches!(id, "audio-save-clip" | "audio-revert");
             controls = controls.child(
                 Button::new(id)
                     .label(label)
+                    .when(primary, |button| button.primary())
+                    .when(quiet, |button| button.ghost())
                     .disabled(!state.loaded)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":command}), cx)
                     })),
             );
         }
+        controls = controls.child(div().w(px(1.)).h(px(20.)).mx_1().bg(separator));
         for (id, label, mode) in [
             ("audio-waveform", "波形", "waveform"),
             ("audio-spectrum", "频谱", "spectrum"),
@@ -199,6 +208,7 @@ impl AudioPanel {
             controls = controls.child(
                 Button::new(id)
                     .label(label)
+                    .ghost()
                     .when(self.mode == mode, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.audio.mode = mode;
@@ -210,6 +220,7 @@ impl AudioPanel {
                     })),
             );
         }
+        controls = controls.child(div().w(px(1.)).h(px(20.)).mx_1().bg(separator));
         for (id, label, command, active) in [
             (
                 "audio-auto-commit",
@@ -233,15 +244,16 @@ impl AudioPanel {
             controls = controls.child(
                 Button::new(id)
                     .label(label)
+                    .ghost()
                     .when(active, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":command}), cx)
                     })),
             );
         }
-        controls = controls.child(Button::new("audio-snap").label("吸附").when(state.snap, |button| button.primary())
+        controls = controls.child(Button::new("audio-snap").label("吸附").ghost().when(state.snap, |button| button.primary())
             .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"snap", "enabled":!view.snapshot.audio.snap}), cx))));
-        controls = controls.child(Button::new("audio-karaoke-mode").label("卡拉 OK").when(state.karaoke, |button| button.primary()).disabled(!state.loaded)
+        controls = controls.child(Button::new("audio-karaoke-mode").label("卡拉 OK").ghost().when(state.karaoke, |button| button.primary()).disabled(!state.loaded)
             .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}), cx))));
         let bounds = self.bounds.clone();
         let mut graph = div()
@@ -409,7 +421,7 @@ impl AudioPanel {
             ("audio-gain-up", "增益 +", 5),
             ("audio-gain-down", "增益 −", 6),
         ] {
-            viewport = viewport.child(Button::new(id).label(label).on_click(cx.listener(
+            viewport = viewport.child(Button::new(id).label(label).ghost().on_click(cx.listener(
                 move |view, _, _, cx| {
                     let duration = view.snapshot.audio.duration;
                     match action {
@@ -605,11 +617,47 @@ impl AudioPanel {
             )
             .child(graph);
         if full_controls {
+            let divider = Theme::global(cx).border;
             panel = panel
                 .child(div().v_flex().gap_2().child(viewport).child(sound).child(karaoke))
+                .child(
+                    div()
+                        .id("audio-page-resize-handle")
+                        .aria_label("调整音频波形高度")
+                        .role(gpui_kit::Role::Splitter)
+                        .h(px(6.))
+                        .w_full()
+                        .flex_shrink_0()
+                        .h_flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_row_resize()
+                        .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(divider))
+                        .on_mouse_down(
+                            gpui_kit::MouseButton::Left,
+                            cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                                view.layout_drag = Some(crate::WorkspaceResizeDrag::AudioPage {
+                                    start_y: event.position.y,
+                                    start_height: view.audio_page_height,
+                                });
+                                cx.stop_propagation();
+                                cx.notify();
+                            }),
+                        ),
+                )
                 .child(controls)
                 .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"))
-                .child(Button::new("close-audio").label("关闭音频").disabled(!state.loaded).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"audio/close"}), cx))));
+                .child(
+                    div().h_flex().child(
+                        Button::new("close-audio")
+                            .label("关闭音频")
+                            .ghost()
+                            .disabled(!state.loaded)
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.invoke(json!({"op":"command", "name":"audio/close"}), cx)
+                            })),
+                    ),
+                );
         } else {
             let compact_viewport = div()
                 .h_flex()

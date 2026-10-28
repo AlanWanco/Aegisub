@@ -570,6 +570,11 @@ enum WorkspaceResizeDrag {
         start_x: gpui_kit::Pixels,
         start_width: f32,
     },
+    /// Height of the waveform on the full audio page.
+    AudioPage {
+        start_y: gpui_kit::Pixels,
+        start_height: f32,
+    },
     /// Height of the video preview above the line properties.
     VideoPreview {
         start_y: gpui_kit::Pixels,
@@ -591,6 +596,7 @@ struct Workspace {
     subtitle_editor_height: f32,
     layout_drag: Option<WorkspaceResizeDrag>,
     audio_panel_height: f32,
+    audio_page_height: f32,
     column_split: Option<f32>,
     video_preview_height: Option<f32>,
     last_preview_height: std::cell::Cell<f32>,
@@ -812,6 +818,7 @@ impl Workspace {
             subtitle_editor_height: 210.,
             layout_drag: None,
             audio_panel_height: 80.,
+            audio_page_height: 260.,
             column_split: None,
             video_preview_height: None,
             last_preview_height: std::cell::Cell::new(220.),
@@ -5024,6 +5031,14 @@ impl Render for Workspace {
                                     + f32::from(event.position.y - start_y))
                                     .clamp(60., 320.);
                             }
+                            WorkspaceResizeDrag::AudioPage {
+                                start_y,
+                                start_height,
+                            } => {
+                                view.audio_page_height = (start_height
+                                    + f32::from(event.position.y - start_y))
+                                    .clamp(120., 640.);
+                            }
                             WorkspaceResizeDrag::ColumnSplit {
                                 start_x,
                                 start_width,
@@ -5234,6 +5249,7 @@ impl Render for Workspace {
                 &self.snapshot.audio,
                 self.snapshot.video,
                 &self.snapshot.appearance,
+                self.audio_page_height,
                 cx,
             ));
         } else if self.active_panel == Panel::Styling {
