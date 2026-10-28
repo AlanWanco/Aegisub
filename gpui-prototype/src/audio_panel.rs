@@ -161,7 +161,6 @@ impl AudioPanel {
             .child(
                 Button::new("open-audio")
                     .label("打开音频")
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
                     })),
@@ -169,7 +168,6 @@ impl AudioPanel {
             .child(
                 Button::new("audio-from-video")
                     .label("从视频载入")
-                    .small()
                     .disabled(!video)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
@@ -186,7 +184,6 @@ impl AudioPanel {
             controls = controls.child(
                 Button::new(id)
                     .label(label)
-                    .small()
                     .disabled(!state.loaded)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":command}), cx)
@@ -200,7 +197,6 @@ impl AudioPanel {
             controls = controls.child(
                 Button::new(id)
                     .label(label)
-                    .small()
                     .when(self.mode == mode, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.audio.mode = mode;
@@ -235,16 +231,15 @@ impl AudioPanel {
             controls = controls.child(
                 Button::new(id)
                     .label(label)
-                    .small()
                     .when(active, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":command}), cx)
                     })),
             );
         }
-        controls = controls.child(Button::new("audio-snap").label("吸附").small().when(state.snap, |button| button.primary())
+        controls = controls.child(Button::new("audio-snap").label("吸附").when(state.snap, |button| button.primary())
             .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"snap", "enabled":!view.snapshot.audio.snap}), cx))));
-        controls = controls.child(Button::new("audio-karaoke-mode").label("卡拉 OK").small().when(state.karaoke, |button| button.primary()).disabled(!state.loaded)
+        controls = controls.child(Button::new("audio-karaoke-mode").label("卡拉 OK").when(state.karaoke, |button| button.primary()).disabled(!state.loaded)
             .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}), cx))));
         let bounds = self.bounds.clone();
         let mut graph = div()
@@ -412,7 +407,7 @@ impl AudioPanel {
             ("audio-gain-up", "增益 +", 5),
             ("audio-gain-down", "增益 −", 6),
         ] {
-            viewport = viewport.child(Button::new(id).label(label).small().on_click(cx.listener(
+            viewport = viewport.child(Button::new(id).label(label).on_click(cx.listener(
                 move |view, _, _, cx| {
                     let duration = view.snapshot.audio.duration;
                     match action {
@@ -447,7 +442,7 @@ impl AudioPanel {
             ("audio-rate-150", "1.5×", 150),
             ("audio-rate-200", "2×", 200),
         ] {
-            sound = sound.child(Button::new(id).label(label).small().on_click(cx.listener(
+            sound = sound.child(Button::new(id).label(label).on_click(cx.listener(
                 move |view, _, _, cx| {
                     view.invoke(
                         json!({"op":"audio_action", "action":"rate", "value":rate}),
@@ -460,7 +455,7 @@ impl AudioPanel {
             ("audio-volume-down", "音量 −", -10),
             ("audio-volume-up", "音量 +", 10),
         ] {
-            sound = sound.child(Button::new(id).label(label).small().on_click(cx.listener(
+            sound = sound.child(Button::new(id).label(label).on_click(cx.listener(
                 move |view, _, _, cx| {
                     let volume = (view.snapshot.audio.volume + delta).clamp(0, 200);
                     view.invoke(
@@ -490,11 +485,11 @@ impl AudioPanel {
                     )));
                 let mut splits = div().h_flex().gap_1();
                 for character in 1..syllable.characters {
-                    splits = splits.child(Button::new(format!("split-{index}-{character}")).label(format!("{character}｜")).small()
+                    splits = splits.child(Button::new(format!("split-{index}-{character}")).label(format!("{character}｜"))
                         .on_click(cx.listener(move |view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke_split", "syllable":index, "character":character}), cx))));
                 }
                 if index > 0 {
-                    splits = splits.child(Button::new(format!("merge-{index}")).label("合并前一节").small()
+                    splits = splits.child(Button::new(format!("merge-{index}")).label("合并前一节")
                         .on_click(cx.listener(move |view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke_merge", "syllable":index}), cx))));
                 }
                 cell = cell.child(splits);
@@ -507,7 +502,6 @@ impl AudioPanel {
                     Button::new("accept-karaoke-splits")
                         .label("应用音节拆分")
                         .primary()
-                        .small()
                         .disabled(!state.pending_splits)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.invoke(json!({"op":"audio_action", "action":"karaoke_accept"}), cx)
@@ -516,7 +510,6 @@ impl AudioPanel {
                 .child(
                     Button::new("cancel-karaoke-splits")
                         .label("还原音节")
-                        .small()
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.invoke(json!({"op":"audio_action", "action":"karaoke_cancel"}), cx)
                         })),
@@ -526,7 +519,7 @@ impl AudioPanel {
                 ("karaoke-kf", "\\kf"),
                 ("karaoke-ko", "\\ko"),
             ] {
-                actions = actions.child(Button::new(id).label(tag).small().on_click(cx.listener(
+                actions = actions.child(Button::new(id).label(tag).on_click(cx.listener(
                     move |view, _, _, cx| {
                         view.invoke(
                             json!({"op":"audio_action", "action":"karaoke_tag", "tag":tag}),
@@ -540,14 +533,12 @@ impl AudioPanel {
         let load_audio = if video {
             Button::new("audio-load-preview")
                 .label("从视频载入")
-                .small()
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
                 }))
         } else {
             Button::new("open-audio")
                 .label("打开音频")
-                .small()
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
                 }))
@@ -592,21 +583,17 @@ impl AudioPanel {
                     )
                     .when(!state.loaded, |row| row.child(load_audio))
                     .when(state.loaded, |row| {
-                        row.child(
-                            Button::new("audio-play")
-                                .label("播放选区")
-                                .small()
-                                .on_click(cx.listener(|view, _, _, cx| {
-                                    view.invoke(
-                                        json!({"op":"command", "name":"audio/play/selection"}),
-                                        cx,
-                                    )
-                                })),
-                        )
+                        row.child(Button::new("audio-play").label("播放选区").on_click(
+                            cx.listener(|view, _, _, cx| {
+                                view.invoke(
+                                    json!({"op":"command", "name":"audio/play/selection"}),
+                                    cx,
+                                )
+                            }),
+                        ))
                         .child(
                             Button::new("audio-stop")
                                 .label("停止")
-                                .small()
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.invoke(json!({"op":"command", "name":"audio/stop"}), cx)
                                 })),
@@ -619,7 +606,7 @@ impl AudioPanel {
                 .child(div().v_flex().gap_2().child(viewport).child(sound).child(karaoke))
                 .child(controls)
                 .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"))
-                .child(Button::new("close-audio").label("关闭音频").small().disabled(!state.loaded).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"audio/close"}), cx))));
+                .child(Button::new("close-audio").label("关闭音频").disabled(!state.loaded).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"audio/close"}), cx))));
         } else {
             let compact_viewport = div()
                 .h_flex()
@@ -628,7 +615,6 @@ impl AudioPanel {
                 .child(
                     Button::new("audio-gain-down")
                         .label("波形增益 −")
-                        .small()
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.gain = (view.audio.gain / 2).max(10);
@@ -645,7 +631,6 @@ impl AudioPanel {
                 .child(
                     Button::new("audio-gain-up")
                         .label("波形增益 +")
-                        .small()
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.gain = (view.audio.gain * 2).min(1000);
@@ -656,7 +641,6 @@ impl AudioPanel {
                 .child(
                     Button::new("audio-fit-line")
                         .label("定位当前句")
-                        .small()
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.view_start = (view.snapshot.audio.start - 1000).max(0);
@@ -670,7 +654,6 @@ impl AudioPanel {
                 .child(
                     Button::new("audio-zoom-in")
                         .label("放大波形")
-                        .small()
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.span = (view.audio.span / 2).max(250);
@@ -681,7 +664,6 @@ impl AudioPanel {
                 .child(
                     Button::new("audio-zoom-out")
                         .label("缩小波形")
-                        .small()
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.span = (view.audio.span * 2).min(600000);

@@ -3348,7 +3348,6 @@ impl Workspace {
                     .icon(IconName::FolderOpen)
                     .label("打开")
                     .ghost()
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| view.pick_file("subtitle", cx))),
             )
             .child(
@@ -3356,7 +3355,6 @@ impl Workspace {
                     .icon(IconName::Save)
                     .label("保存")
                     .ghost()
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"subtitle/save"}), cx)
                     })),
@@ -3368,7 +3366,6 @@ impl Workspace {
                     .accessibility_label("撤销")
                     .tooltip("撤销")
                     .ghost()
-                    .small()
                     .disabled(!enabled("edit/undo"))
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
@@ -3380,7 +3377,6 @@ impl Workspace {
                     .accessibility_label("重做")
                     .tooltip("重做")
                     .ghost()
-                    .small()
                     .disabled(!enabled("edit/redo"))
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"edit/redo"}), cx)
@@ -3392,7 +3388,6 @@ impl Workspace {
                     .icon(IconName::Play)
                     .label("视频")
                     .ghost()
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| view.pick_file("video", cx))),
             )
             .child(
@@ -3464,7 +3459,6 @@ impl Workspace {
                 Button::new(format!("legacy-menu-{label}"))
                     .label(label)
                     .ghost()
-                    .small()
                     .dropdown_menu(move |menu, window, cx| {
                         populate_menu(
                             menu,
@@ -3487,7 +3481,6 @@ impl Workspace {
                 .icon(IconName::Search)
                 .label("搜索命令")
                 .ghost()
-                .small()
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.active_panel = Panel::Commands;
                     view.refresh_catalog(cx);
@@ -3517,7 +3510,7 @@ impl Workspace {
             .child(div().h_flex().items_center().gap_3()
                 .child(div().font_semibold().child(format!("旧版命令 · {count} 项")))
                 .child(Input::new(&self.command_search).id("command-search").w(px(360.)))
-                .child(Button::new("refresh-command-catalog").label("刷新状态").small().on_click(cx.listener(|view, _, _, cx| view.refresh_catalog(cx)))))
+                .child(Button::new("refresh-command-catalog").label("刷新状态").on_click(cx.listener(|view, _, _, cx| view.refresh_catalog(cx)))))
             .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child("标有旧版对话框的项目会打开原界面；需旧版控件的项目仍在原窗口使用。快捷键栏为旧版配置，可用项目命令按原配置触发；命令搜索：Ctrl/⌘+Shift+P。"))
             .child(uniform_list("legacy-command-list", count, cx.processor(move |_, range: Range<usize>, _, cx| {
                 range.map(|index| {
@@ -3530,7 +3523,7 @@ impl Workspace {
                             .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child(format!("{} · {}", command.name, command.help))))
                         .child(div().w(px(120.)).flex_shrink_0().text_xs().child(command.surface_label()))
                         .child(div().w(px(100.)).flex_shrink_0().text_xs().child(command.shortcut.clone()))
-                        .child(Button::new(format!("invoke-{name}")).label("执行").small().disabled(!command.can_invoke()).on_click(move |_, _, cx| {
+                        .child(Button::new(format!("invoke-{name}")).label("执行").disabled(!command.can_invoke()).on_click(move |_, _, cx| {
                             let _ = weak.update(cx, |view, cx| view.invoke(json!({"op":"command", "name":name}), cx));
                         }))
                 }).collect()
@@ -3621,8 +3614,7 @@ impl Workspace {
                                 .id(format!("property-{key}"))
                                 .aria_label(label)
                                 .flex_1()
-                                .min_w_0()
-                                .small(),
+                                .min_w_0(),
                         ),
                 );
             }
@@ -3634,13 +3626,13 @@ impl Workspace {
             .find(|line| line.id == self.selected_line)
             .is_some_and(|line| line.comment);
         panel.child(div().h(px(1.)).my_1().bg(p.divider))
-            .child(Button::new("apply-line-fields").icon(IconName::Check).label("应用修改").primary().small()
+            .child(Button::new("apply-line-fields").icon(IconName::Check).label("应用修改").primary()
                 .disabled(self.selected_line < 0 || !self.properties_dirty).on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))))
-            .child(Button::new("toggle-comment").label(if commented { "改为对白" } else { "改为注释" }).ghost().small()
+            .child(Button::new("toggle-comment").label(if commented { "改为对白" } else { "改为注释" }).ghost()
                 .disabled(self.selected_line < 0).on_click(cx.listener(move |view, _, _, cx| {
                     view.invoke(json!({"op":"line_fields", "ids":view.snapshot.selected, "fields":{"comment":!commented}}), cx);
                 })))
-            .child(Button::new("save-as").icon(IconName::Save).label("另存为…").ghost().small()
+            .child(Button::new("save-as").icon(IconName::Save).label("另存为…").ghost()
                 .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx))))
             .child(div().text_size(px(11.)).text_color(p.muted).child("字段修改应用到所选字幕。"))
     }
@@ -3798,7 +3790,6 @@ impl Workspace {
                     });
                 let button = Button::new(format!("panel-{}", panel.label()))
                     .ghost()
-                    .small()
                     .selected(selected)
                     .accessibility_label(panel.label())
                     .tooltip(panel.label())
@@ -4041,7 +4032,6 @@ impl Workspace {
                     })
                     .icon(IconName::ChevronDown)
                     .ghost()
-                    .small()
                     .tooltip("视频框倍率")
                     .dropdown_menu(move |mut menu, _, _| {
                         for (name, label, value) in [
@@ -4080,7 +4070,6 @@ impl Workspace {
                     .accessibility_label("适应窗口")
                     .tooltip("适应窗口")
                     .ghost()
-                    .small()
                     .selected(fit)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.cancel_visual_drag(cx);
@@ -4096,7 +4085,6 @@ impl Workspace {
                     .accessibility_label("缩小画面")
                     .tooltip("缩小画面")
                     .ghost()
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         let bounds = *view.visual.viewport_bounds.borrow();
                         view.adjust_video_view(bounds.center(), view.visual.zoom / 1.125, cx);
@@ -4116,7 +4104,6 @@ impl Workspace {
                     .accessibility_label("放大画面")
                     .tooltip("放大画面")
                     .ghost()
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         let bounds = *view.visual.viewport_bounds.borrow();
                         view.adjust_video_view(bounds.center(), view.visual.zoom * 1.125, cx);
@@ -4128,7 +4115,6 @@ impl Workspace {
                     .accessibility_label("复位画面")
                     .tooltip("复位缩放和平移")
                     .ghost()
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"video/reset_pan"}), cx)
                     })),
@@ -4139,7 +4125,6 @@ impl Workspace {
                     .accessibility_label("平移画面")
                     .tooltip("平移画面")
                     .ghost()
-                    .small()
                     .dropdown_menu({
                         let weak = cx.weak_entity();
                         move |mut menu, _, _| {
@@ -4172,7 +4157,6 @@ impl Workspace {
                     .toggled(overscan)
                     .tooltip("电视过扫描安全区")
                     .ghost()
-                    .small()
                     .selected(overscan)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"video/show_overscan"}), cx)
@@ -4253,7 +4237,6 @@ impl Workspace {
                                         Button::new("empty-open-video")
                                             .label("打开视频")
                                             .icon(IconName::FolderOpen)
-                                            .small()
                                             .on_click(cx.listener(|view, _, _, cx| {
                                                 view.pick_file("video", cx)
                                             })),
@@ -4456,7 +4439,6 @@ impl Workspace {
                     .accessibility_label(label)
                     .tooltip(label)
                     .ghost()
-                    .small()
                     .disabled(!enabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":name}), cx)
@@ -4500,7 +4482,7 @@ impl Workspace {
                                     .accessibility_label("缩小字幕编辑区")
                                     .tooltip("缩小字幕编辑区")
                                     .ghost()
-                                    .small()
+
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.subtitle_editor_height =
                                             (view.subtitle_editor_height - 24.).max(165.);
@@ -4513,7 +4495,7 @@ impl Workspace {
                                     .accessibility_label("增大字幕编辑区")
                                     .tooltip("增大字幕编辑区")
                                     .ghost()
-                                    .small()
+
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.subtitle_editor_height =
                                             (view.subtitle_editor_height + 24.).min(360.);
@@ -4525,7 +4507,7 @@ impl Workspace {
                                     .icon(IconName::Check)
                                     .label("应用文本")
                                     .ghost()
-                                    .small()
+
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         let id = this.selected_line;
                                         let text = this.editor.read(cx).value().to_string();
@@ -4564,7 +4546,6 @@ impl Workspace {
                         Input::new(&self.search)
                             .id("subtitle-search")
                             .prefix(Icon::new(IconName::Search).size(px(13.)))
-                            .small()
                             .w(px(190.)),
                     ),
             )

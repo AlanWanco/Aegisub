@@ -53,7 +53,7 @@ impl VideoTimeline {
                     .icon(if snapshot.playing { IconName::Pause } else { IconName::Play })
                     .label(if snapshot.playing { "暂停" } else { "播放" })
                     .primary()
-                    .small()
+
                     .disabled(!snapshot.video)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":if view.snapshot.playing { "video/stop" } else { "video/play" }}), cx);
@@ -106,7 +106,6 @@ impl VideoTimeline {
                     .tooltip(label)
                     .ghost()
                     .when(id.starts_with("line-"), |button| button.label(label))
-                    .small()
                     .disabled(!enabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":command}), cx)

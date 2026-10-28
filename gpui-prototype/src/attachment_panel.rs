@@ -64,26 +64,24 @@ impl AttachmentPanel {
             toolbar = toolbar.child(
                 Button::new(format!("attachment-add-{id}"))
                     .label(label)
-                    .small()
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| view.pick_attachments(kind, cx))),
             );
         }
         toolbar = toolbar
-            .child(Button::new("attachment-extract").label("导出所选附件…").small().disabled(self.loading || self.selected.is_empty()).on_click(cx.listener(|view, _, _, cx| view.extract_attachments(cx))))
-            .child(Button::new("attachment-delete").label(if self.confirm_delete { "确认删除所选附件" } else { "删除所选…" }).small().disabled(self.loading || self.selected.is_empty()).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("attachment-extract").label("导出所选附件…").disabled(self.loading || self.selected.is_empty()).on_click(cx.listener(|view, _, _, cx| view.extract_attachments(cx))))
+            .child(Button::new("attachment-delete").label(if self.confirm_delete { "确认删除所选附件" } else { "删除所选…" }).disabled(self.loading || self.selected.is_empty()).on_click(cx.listener(|view, _, _, cx| {
                 if view.attachments.confirm_delete {
                     let items = view.attachments.selected_items();
                     view.attachment_request(json!({"action":"delete","items":items,"revision":view.attachments.state.revision}), cx);
                 } else { view.attachments.confirm_delete = true; cx.notify(); }
             })))
-            .child(Button::new("attachment-refresh").label("刷新").small().disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.attachment_request(json!({"action":"state"}), cx))))
-            .child(Button::new("attachment-undo").label("撤销").small().disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command","name":"edit/undo"}), cx))));
+            .child(Button::new("attachment-refresh").label("刷新").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.attachment_request(json!({"action":"state"}), cx))))
+            .child(Button::new("attachment-undo").label("撤销").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command","name":"edit/undo"}), cx))));
         if self.confirm_delete {
             toolbar = toolbar.child(
                 Button::new("attachment-cancel-delete")
                     .label("取消删除")
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.attachments.confirm_delete = false;
                         cx.notify();
@@ -129,7 +127,6 @@ impl AttachmentPanel {
                         },
                         attachment.encoded_size
                     ))
-                    .small()
                     .when(selected, |button| button.primary())
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {

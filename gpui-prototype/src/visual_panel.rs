@@ -164,7 +164,6 @@ impl VisualPanel {
                 Button::new(format!("visual-mode-{mode}"))
                     .label(label)
                     .ghost()
-                    .small()
                     .when(mode == self.tool, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.select_visual_tool(mode, None, cx);
@@ -186,7 +185,6 @@ impl VisualPanel {
                     Button::new(format!("visual-vector-{mode}"))
                         .label(label)
                         .ghost()
-                        .small()
                         .when(mode == self.subtool, |button| button.primary())
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.select_visual_tool("vector_clip", Some(mode), cx);
@@ -198,7 +196,6 @@ impl VisualPanel {
             bar = bar.child(
                 Button::new("visual-toggle-move")
                     .label("pos ↔ move")
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.queue_visual(json!({"action":"toggle_move"}), cx)
                     })),

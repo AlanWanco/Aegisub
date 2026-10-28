@@ -37,7 +37,6 @@ impl PastePanel {
             presets = presets.child(
                 Button::new(format!("paste-over-preset-{preset}"))
                     .label(label)
-                    .small()
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.paste.fields = [preset == 0; 11];
@@ -72,7 +71,6 @@ impl PastePanel {
             fields = fields.child(
                 Button::new(format!("paste-over-field-{index}"))
                     .label(label)
-                    .small()
                     .when(self.fields[index], |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {

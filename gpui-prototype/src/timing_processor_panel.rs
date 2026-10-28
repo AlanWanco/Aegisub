@@ -129,7 +129,6 @@ impl TimingProcessorPanel {
             styles = styles.child(
                 Button::new(format!("processor-style-{index}"))
                     .label(style.clone())
-                    .small()
                     .when(self.selected_styles.contains(style), |button| {
                         button.primary()
                     })
@@ -147,9 +146,9 @@ impl TimingProcessorPanel {
             .child(div().text_lg().font_semibold().child("时间后处理"))
             .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("按开始时间处理所选样式，跳过注释。提前/延后会避开原本不重叠的字幕；整次操作可撤销。"))
             .child(div().h_flex().gap_2()
-                .child(Button::new("processor-all-styles").label("全部样式").small().disabled(disabled).on_click(cx.listener(|view, _, _, cx| { view.processor.selected_styles = view.processor.styles.iter().cloned().collect(); cx.notify(); })))
-                .child(Button::new("processor-no-styles").label("清除样式选择").small().disabled(disabled).on_click(cx.listener(|view, _, _, cx| { view.processor.selected_styles.clear(); cx.notify(); })))
-                .child(Button::new("processor-refresh").label("刷新参数").small().disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.processor.initialized = false; view.processor_request("state", cx); }))))
+                .child(Button::new("processor-all-styles").label("全部样式").disabled(disabled).on_click(cx.listener(|view, _, _, cx| { view.processor.selected_styles = view.processor.styles.iter().cloned().collect(); cx.notify(); })))
+                .child(Button::new("processor-no-styles").label("清除样式选择").disabled(disabled).on_click(cx.listener(|view, _, _, cx| { view.processor.selected_styles.clear(); cx.notify(); })))
+                .child(Button::new("processor-refresh").label("刷新参数").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.processor.initialized = false; view.processor_request("state", cx); }))))
             .child(styles);
         let mut toggles = div().h_flex().flex_wrap().gap_2();
         for (key, label) in [
@@ -162,7 +161,6 @@ impl TimingProcessorPanel {
             toggles = toggles.child(
                 Button::new(format!("processor-{key}"))
                     .label(label)
-                    .small()
                     .when(self.options[key], |button| button.primary())
                     .disabled(disabled || (key == "keyframes" && !self.can_keyframes))
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -187,11 +185,7 @@ impl TimingProcessorPanel {
                     .gap_1()
                     .w(px(250.))
                     .child(div().text_sm().child(label))
-                    .child(
-                        Input::new(&self.inputs[key])
-                            .small()
-                            .disabled(disabled || !enabled),
-                    ),
+                    .child(Input::new(&self.inputs[key]).disabled(disabled || !enabled)),
             );
         }
         panel = panel.child(numbers).child(
@@ -210,7 +204,6 @@ impl TimingProcessorPanel {
                     .child(
                         Button::new("processor-open-keyframes")
                             .label("打开关键帧…")
-                            .small()
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.invoke(json!({"op":"command", "name":"keyframe/open"}), cx)
                             })),

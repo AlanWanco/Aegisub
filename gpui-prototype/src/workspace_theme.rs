@@ -92,7 +92,7 @@ pub fn apply(cx: &mut App) {
     let dark = Theme::global(cx).is_dark();
     let p = Palette::new(dark);
     let theme = Theme::global_mut(cx);
-    theme.font_size = px(14.);
+    theme.font_size = px(15.);
     theme.radius = px(6.);
     theme.radius_lg = px(10.);
     theme.background = p.surface;

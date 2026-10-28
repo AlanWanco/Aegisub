@@ -123,7 +123,7 @@ impl SpellingPanel {
                 Button::new("spelling-start")
                     .label("从当前行检查")
                     .primary()
-                    .small()
+
                     .disabled(self.loading || !self.state.available)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.spelling_request(json!({"action":"start"}), cx)
@@ -136,7 +136,7 @@ impl SpellingPanel {
                     } else {
                         selected.clone()
                     })
-                    .small()
+
                     .disabled(self.loading || languages.is_empty())
                     .dropdown_menu(move |mut menu, _, _| {
                         for language in &languages {
@@ -165,7 +165,6 @@ impl SpellingPanel {
             toolbar = toolbar.child(
                 Button::new(format!("spelling-option-{id}"))
                     .label(label)
-                    .small()
                     .when(value, |button| button.primary())
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -182,7 +181,6 @@ impl SpellingPanel {
         toolbar = toolbar.child(
             Button::new("spelling-undo")
                 .label("撤销")
-                .small()
                 .disabled(self.loading)
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
@@ -254,7 +252,6 @@ impl SpellingPanel {
                 .child(
                     div().h_flex().gap_3().items_center().child("替换为").child(
                         Input::new(&self.replacement)
-                            .small()
                             .w(px(380.))
                             .disabled(self.loading),
                     ),
@@ -270,7 +267,6 @@ impl SpellingPanel {
                 actions = actions.child(
                     Button::new(format!("spelling-action-{id}"))
                         .label(label)
-                        .small()
                         .disabled(self.loading || id == "add" && !self.state.can_add)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.spelling_request(json!({"action":id}), cx)
@@ -284,7 +280,6 @@ impl SpellingPanel {
                 suggestions = suggestions.child(
                     Button::new(format!("spelling-suggestion-{index}"))
                         .label(value.clone())
-                        .small()
                         .disabled(self.loading)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.spelling.pending = Some(value.clone());
@@ -310,7 +305,6 @@ impl SpellingPanel {
                 .child(
                     Button::new("spelling-dictionary-check")
                         .label("检查替换词是否在个人词典")
-                        .small()
                         .disabled(self.loading || candidate.is_empty())
                         .on_click(cx.listener(|view, _, _, cx| {
                             let value = view.spelling.replacement.read(cx).value().to_string();
@@ -325,7 +319,6 @@ impl SpellingPanel {
                         } else {
                             "从个人词典移除…"
                         })
-                        .small()
                         .disabled(self.loading || !can_remove)
                         .on_click(cx.listener(|view, _, _, cx| {
                             if view.spelling.confirm_remove {

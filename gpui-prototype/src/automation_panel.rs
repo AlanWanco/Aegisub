@@ -136,7 +136,6 @@ impl AutomationPanel {
             let mut actions = div().h_flex().gap_2().child(
                 Button::new(format!("automation-reload-{index}"))
                     .label("重新加载")
-                    .small()
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.automation_request(
@@ -149,7 +148,7 @@ impl AutomationPanel {
                 actions = actions.child(
                     Button::new(format!("automation-remove-{index}"))
                         .label(if confirming { "确认卸载项目脚本" } else { "卸载…" })
-                        .small()
+
                         .disabled(self.loading)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             if view.automation.confirm_remove.as_ref() == Some(&(remove_scope.clone(), remove_path.clone())) {
@@ -166,7 +165,6 @@ impl AutomationPanel {
                 actions = actions.child(
                     Button::new(format!("automation-cancel-remove-{index}"))
                         .label("取消")
-                        .small()
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.automation.confirm_remove = None;
                             cx.notify();
@@ -232,7 +230,6 @@ impl AutomationPanel {
                         .child(
                             Button::new(format!("automation-macro-{}-{index}", feature.name))
                                 .label(format!("执行 {}", feature.label))
-                                .small()
                                 .disabled(self.loading || !enabled)
                                 .on_click(cx.listener(move |view, _, _, cx| {
                                     view.invoke(json!({"op":"command", "name":name}), cx)

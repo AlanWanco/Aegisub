@@ -97,7 +97,6 @@ impl StylingPanel {
             styles = styles.child(
                 Button::new(format!("styling-select-{name}"))
                     .label(name.clone())
-                    .small()
                     .w_full()
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.styling_action("preview", Some(name.clone()), cx)
@@ -114,7 +113,6 @@ impl StylingPanel {
             actions = actions.child(
                 Button::new(id)
                     .label(label)
-                    .small()
                     .disabled(active.is_none())
                     .on_click(
                         cx.listener(move |view, _, _, cx| view.styling_action(action, None, cx)),
@@ -124,7 +122,6 @@ impl StylingPanel {
         actions = actions.child(
             Button::new("styling-seek")
                 .label("定位当前行视频")
-                .small()
                 .when(self.seek, |button| button.primary())
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.styling.seek = !view.styling.seek;
@@ -146,15 +143,11 @@ impl StylingPanel {
             ),
             ("styling-undo", "撤销", "edit/undo", true),
         ] {
-            actions = actions.child(
-                Button::new(id)
-                    .label(label)
-                    .small()
-                    .disabled(!enabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.invoke(json!({"op":"command","name":command}), cx)
-                    })),
-            );
+            actions = actions.child(Button::new(id).label(label).disabled(!enabled).on_click(
+                cx.listener(move |view, _, _, cx| {
+                    view.invoke(json!({"op":"command","name":command}), cx)
+                }),
+            ));
         }
         div()
             .v_flex()

@@ -137,7 +137,6 @@ impl PreferencesPanel {
             groups = groups.child(
                 Button::new(format!("preference-group-{index}"))
                     .label(group.clone())
-                    .small()
                     .when(self.group == group, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.preferences.group = value.clone();
@@ -218,7 +217,6 @@ impl PreferencesPanel {
                 control = control.child(
                     Switch::new(format!("preference-bool-{key}"))
                         .checked(value == "1")
-                        .small()
                         .accessibility_label(option.label.clone())
                         .disabled(self.loading)
                         .on_change(cx.listener(move |view, checked: &bool, _, cx| {
@@ -259,7 +257,6 @@ impl PreferencesPanel {
                         } else {
                             display
                         })
-                        .small()
                         .w(px(280.))
                         .disabled(loading)
                         .dropdown_menu(move |mut menu, _, _| {
@@ -311,7 +308,6 @@ impl PreferencesPanel {
                 };
                 control = control.child(
                     Input::new(input)
-                        .small()
                         .disabled(self.loading)
                         .w(px(if option.directory { 205. } else { 280. }))
                         .aria_label(option.label.clone()),
@@ -320,7 +316,6 @@ impl PreferencesPanel {
                     control = control.child(
                         Button::new(format!("preference-browse-{key}"))
                             .label("选择…")
-                            .small()
                             .disabled(self.loading)
                             .on_click(cx.listener(move |view, _, _, cx| {
                                 view.pick_preference_directory(key.clone(), cx)
@@ -360,7 +355,6 @@ impl PreferencesPanel {
                 Button::new("preferences-apply")
                     .label("应用修改")
                     .primary()
-                    .small()
                     .disabled(self.loading || self.drafts.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.preferences_request(
@@ -372,7 +366,6 @@ impl PreferencesPanel {
             .child(
                 Button::new("preferences-discard")
                     .label("放弃未应用修改")
-                    .small()
                     .disabled(self.loading || self.drafts.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.preferences.drafts.clear();
@@ -388,7 +381,6 @@ impl PreferencesPanel {
                     } else {
                         "恢复当前列表默认值…"
                     })
-                    .small()
                     .disabled(self.loading || reset_names.is_empty())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         if view.preferences.confirm_reset {
@@ -405,18 +397,16 @@ impl PreferencesPanel {
             .child(
                 Button::new("preferences-hotkeys")
                     .label("快捷键…")
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.active_panel = crate::Panel::Hotkeys;
                         view.hotkey_request(json!({"action":"state"}), cx);
                     })),
             )
-            .child(Input::new(&self.search).small().w(px(280.)));
+            .child(Input::new(&self.search).w(px(280.)));
         if self.confirm_reset {
             toolbar = toolbar.child(
                 Button::new("preferences-reset-cancel")
                     .label("取消恢复")
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.preferences.confirm_reset = false;
                         cx.notify();

@@ -111,7 +111,6 @@ impl FilePanel {
             tabs = tabs.child(
                 Button::new(format!("file-tools-page-{i}"))
                     .label(label)
-                    .small()
                     .when(self.page == page, |button| button.primary())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.files.page = page;
@@ -164,7 +163,6 @@ impl FilePanel {
                     common = common.child(
                         Button::new(format!("encoding-preset-{index}"))
                             .label(code)
-                            .small()
                             .when(value == self.encoding, |button| button.primary())
                             .disabled(self.loading)
                             .on_click(cx.listener(move |view, _, _, cx| {
@@ -184,7 +182,6 @@ impl FilePanel {
                         .child(
                             Button::new("encoded-open-pick")
                                 .label("选择字幕文件…")
-                                .small()
                                 .disabled(self.loading)
                                 .on_click(
                                     cx.listener(|view, _, _, cx| view.pick_encoded_subtitle(cx)),
@@ -205,7 +202,6 @@ impl FilePanel {
                         .child(
                             Button::new("encoded-open-charset")
                                 .label(self.encoding.clone())
-                                .small()
                                 .w(px(330.))
                                 .disabled(self.loading)
                                 .dropdown_menu(move |mut menu, _, _| {
@@ -244,7 +240,6 @@ impl FilePanel {
                     Button::new("encoded-open-submit")
                         .label("按所选编码打开")
                         .primary()
-                        .small()
                         .disabled(self.loading || self.path.is_empty())
                         .on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx))),
                 );
@@ -265,7 +260,6 @@ impl FilePanel {
                 files = files.child(
                     Button::new(format!("recovery-file-{index}"))
                         .label(format!("{} · {} 个版本", file.name, file.versions.len()))
-                        .small()
                         .when(self.group == file.name, |button| button.primary())
                         .disabled(self.loading)
                         .on_click(cx.listener(move |view, _, _, cx| {
@@ -309,7 +303,6 @@ impl FilePanel {
                             .child(
                                 Button::new(format!("recovery-version-{index}"))
                                     .label(format!("{kind} · {}", version.display))
-                                    .small()
                                     .when(self.version == version.path, |button| button.primary())
                                     .disabled(self.loading)
                                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -328,9 +321,9 @@ impl FilePanel {
             }
             panel = panel.child(div().h_flex().flex_wrap().gap_2().items_center()
                 .child(div().text_lg().font_semibold().child("自动保存与恢复"))
-                .child(Button::new("recovery-refresh").label("刷新版本").small().disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.file_tools_request(json!({"action":"state"}), cx))))
-                .child(Button::new("recovery-open").label("打开所选版本").primary().small().disabled(self.loading || self.version.is_empty()).on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx))))
-                .child(Input::new(&self.query).small().w(px(300.))))
+                .child(Button::new("recovery-refresh").label("刷新版本").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.file_tools_request(json!({"action":"state"}), cx))))
+                .child(Button::new("recovery-open").label("打开所选版本").primary().disabled(self.loading || self.version.is_empty()).on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx))))
+                .child(Input::new(&self.query).w(px(300.))))
                 .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("版本来自已配置的自动保存、原始备份和异常恢复目录；打开后可用“另存为”保存新的副本。"))
                 .when(self.state.files.is_empty(), |panel| panel.child("没有找到可恢复的字幕版本。"))
                 .child(div().h_flex().items_stretch().flex_1().min_h_0().overflow_hidden().gap_4()

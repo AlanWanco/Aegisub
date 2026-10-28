@@ -161,7 +161,6 @@ impl SearchPanel {
                     .child(
                         Button::new("search-mode-find")
                             .label("查找替换")
-                            .small()
                             .when(!self.selection_mode, |button| button.primary())
                             .disabled(self.loading)
                             .on_click(cx.listener(|view, _, _, cx| {
@@ -171,7 +170,6 @@ impl SearchPanel {
                     .child(
                         Button::new("search-mode-select")
                             .label("条件选行")
-                            .small()
                             .when(self.selection_mode, |button| button.primary())
                             .disabled(self.loading)
                             .on_click(cx.listener(|view, _, _, cx| {
@@ -204,7 +202,6 @@ impl SearchPanel {
             field = field.child(
                 Button::new(format!("search-field-{value}"))
                     .label(label)
-                    .small()
                     .when(self.field == value, |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -235,7 +232,6 @@ impl SearchPanel {
             options = options.child(
                 Button::new(format!("search-option-{key}"))
                     .label(label)
-                    .small()
                     .when(self.options[key], |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -260,7 +256,6 @@ impl SearchPanel {
                 modes = modes.child(
                     Button::new(format!("selection-match-mode-{mode}"))
                         .label(label)
-                        .small()
                         .when(self.mode == mode, |button| button.primary())
                         .disabled(disabled)
                         .on_click(cx.listener(move |view, _, _, cx| {
@@ -279,7 +274,6 @@ impl SearchPanel {
                 actions = actions.child(
                     Button::new(format!("selection-action-{action}"))
                         .label(label)
-                        .small()
                         .when(self.selection_action == action, |button| button.primary())
                         .disabled(disabled)
                         .on_click(cx.listener(move |view, _, _, cx| {
@@ -351,7 +345,6 @@ impl SearchPanel {
                 history = history.child(
                     Button::new(format!("search-history-{index}"))
                         .label(text.clone())
-                        .small()
                         .disabled(disabled)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.find_panel.pending_find = Some(value.clone());

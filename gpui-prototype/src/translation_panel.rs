@@ -88,7 +88,6 @@ impl TranslationPanel {
             actions = actions.child(
                 Button::new(id)
                     .label(label)
-                    .small()
                     .disabled(!self.state.available || self.loading)
                     .on_click(
                         cx.listener(move |view, _, _, cx| view.translation_action(action, cx)),
@@ -98,7 +97,6 @@ impl TranslationPanel {
         actions = actions.child(
             Button::new("translation-refresh")
                 .label("从当前行刷新")
-                .small()
                 .disabled(self.loading)
                 .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx))),
         );
@@ -106,7 +104,6 @@ impl TranslationPanel {
         options = options.child(
             Button::new("translation-seek")
                 .label("定位视频预览")
-                .small()
                 .when(self.seek, |button| button.primary())
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.translation.seek = !view.translation.seek;
@@ -116,7 +113,6 @@ impl TranslationPanel {
         options = options.child(
             Button::new("translation-skip-whitespace")
                 .label("跳过空白块")
-                .small()
                 .when(self.skip_whitespace, |button| button.primary())
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.translation.skip_whitespace = !view.translation.skip_whitespace;
@@ -138,15 +134,11 @@ impl TranslationPanel {
             ),
             ("translation-undo", "撤销", "edit/undo", true),
         ] {
-            options = options.child(
-                Button::new(id)
-                    .label(label)
-                    .small()
-                    .disabled(!enabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":command}), cx)
-                    })),
-            );
+            options = options.child(Button::new(id).label(label).disabled(!enabled).on_click(
+                cx.listener(move |view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":command}), cx)
+                }),
+            ));
         }
         div().id("translation-assistant").v_flex().flex_1().min_h_0().p_4().gap_3()
             .child(div().text_lg().font_semibold().child("翻译助手"))

@@ -136,7 +136,6 @@ impl VideoSettingsPanel {
             pages = pages.child(
                 Button::new(format!("video-page-{id}"))
                     .label(label)
-                    .small()
                     .when(self.page == page, |button| button.primary())
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -182,7 +181,6 @@ impl VideoSettingsPanel {
                 resolutions = resolutions.child(
                     Button::new(format!("dummy-resolution-{width}-{height}"))
                         .label(format!("{width} × {height}"))
-                        .small()
                         .disabled(disabled)
                         .on_click(cx.listener(move |view, _, window, cx| {
                             for (key, value) in [("width", width), ("height", height)] {
@@ -205,7 +203,7 @@ impl VideoSettingsPanel {
                     .gap_1()
                     .w(px(290.))
                     .child(div().text_sm().child(label))
-                    .child(Input::new(&self.inputs[key]).small().disabled(
+                    .child(Input::new(&self.inputs[key]).disabled(
                         disabled || (self.page != VideoPage::Dummy && !self.state.loaded),
                     )),
             );
@@ -217,7 +215,6 @@ impl VideoSettingsPanel {
                     .child(
                         Button::new("dummy-pattern")
                             .label("棋盘格图案")
-                            .small()
                             .when(self.pattern, |button| button.primary())
                             .disabled(disabled)
                             .on_click(cx.listener(|view, _, _, cx| {
@@ -307,7 +304,6 @@ impl VideoSettingsPanel {
                 panel = panel.child(
                     Button::new("refresh-video-details")
                         .label("刷新详情")
-                        .small()
                         .disabled(self.loading)
                         .on_click(
                             cx.listener(|view, _, _, cx| view.video_settings_request("state", cx)),
@@ -326,7 +322,6 @@ impl VideoSettingsPanel {
         panel.child(
             Button::new("video-settings-back")
                 .label("回到字幕预览")
-                .small()
                 .on_click(cx.listener(|view, _, window, cx| {
                     view.active_panel = crate::Panel::Subtitles;
                     view.focus_handle.focus(window, cx);

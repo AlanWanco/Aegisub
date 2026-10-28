@@ -155,7 +155,6 @@ impl ResamplePanel {
                     .child(
                         Button::new("resample-reset")
                             .label("从当前脚本重新读取")
-                            .small()
                             .disabled(self.loading)
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.resample.initialized = false;
@@ -165,7 +164,6 @@ impl ResamplePanel {
                     .child(
                         Button::new("resample-from-video")
                             .label("目标使用视频分辨率")
-                            .small()
                             .disabled(disabled || self.state.video_x == 0)
                             .on_click(cx.listener(|view, _, window, cx| {
                                 let state = &view.resample.state;
@@ -191,7 +189,7 @@ impl ResamplePanel {
                     .gap_1()
                     .w(px(180.))
                     .child(label)
-                    .child(Input::new(&self.inputs[key]).small().disabled(disabled)),
+                    .child(Input::new(&self.inputs[key]).disabled(disabled)),
             );
         }
         form = form.child(dimensions).child(div().text_sm().child(format!(
@@ -203,7 +201,6 @@ impl ResamplePanel {
             aspect = aspect.child(
                 Button::new(format!("resample-aspect-{mode}"))
                     .label(label)
-                    .small()
                     .when(self.ar_mode == mode, |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -222,7 +219,7 @@ impl ResamplePanel {
                         .gap_1()
                         .w(px(180.))
                         .child(label)
-                        .child(Input::new(&self.inputs[key]).small().disabled(disabled)),
+                        .child(Input::new(&self.inputs[key]).disabled(disabled)),
                 );
             }
             form = form.child(margins).child(
@@ -250,7 +247,6 @@ impl ResamplePanel {
                     } else {
                         value.clone()
                     })
-                    .small()
                     .disabled(disabled)
                     .dropdown_menu(move |mut menu, _, _| {
                         for &matrix in MATRICES {

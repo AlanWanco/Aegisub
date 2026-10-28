@@ -96,7 +96,7 @@ impl HotkeyPanel {
                     .gap_1()
                     .w(px(340.))
                     .child(div().text_sm().child(label))
-                    .child(Input::new(input).small().disabled(self.loading)),
+                    .child(Input::new(input).disabled(self.loading)),
             );
         }
         let selected_context = self.context.read(cx).value().to_string();
@@ -113,15 +113,15 @@ impl HotkeyPanel {
             .map(|binding| binding.command.clone())
             .collect();
         let mut actions = div().h_flex().flex_wrap().gap_2()
-            .child(Button::new("hotkey-record").label(if self.recording { "按下要绑定的组合键，Esc 取消" } else { "录入组合键" }).small().disabled(self.loading).on_click(cx.listener(|view, _, window, cx| { view.hotkeys.recording = !view.hotkeys.recording; view.focus_handle.focus(window, cx); cx.notify(); })))
-            .child(Button::new("hotkey-save").label("保存绑定").primary().small().disabled(self.loading || selected_key.is_empty() || selected_context.is_empty()).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("hotkey-record").label(if self.recording { "按下要绑定的组合键，Esc 取消" } else { "录入组合键" }).disabled(self.loading).on_click(cx.listener(|view, _, window, cx| { view.hotkeys.recording = !view.hotkeys.recording; view.focus_handle.focus(window, cx); cx.notify(); })))
+            .child(Button::new("hotkey-save").label("保存绑定").primary().disabled(self.loading || selected_key.is_empty() || selected_context.is_empty()).on_click(cx.listener(|view, _, _, cx| {
                 view.hotkey_request(json!({"action":"set","context":view.hotkeys.context.read(cx).value().to_string(),"key":view.hotkeys.key.read(cx).value().to_string(),"command":view.hotkeys.command.read(cx).value().to_string(),"replace":view.hotkeys.replace}), cx);
             })))
-            .child(Button::new("hotkey-remove").label("移除此绑定").small().disabled(self.loading || !self.bindings.iter().any(|binding| binding.context == selected_context && binding.key == selected_key && binding.command == selected_command)).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("hotkey-remove").label("移除此绑定").disabled(self.loading || !self.bindings.iter().any(|binding| binding.context == selected_context && binding.key == selected_key && binding.command == selected_command)).on_click(cx.listener(|view, _, _, cx| {
                 view.hotkey_request(json!({"action":"remove","context":view.hotkeys.context.read(cx).value().to_string(),"key":view.hotkeys.key.read(cx).value().to_string(),"command":view.hotkeys.command.read(cx).value().to_string()}), cx);
             })))
-            .child(Button::new("hotkey-replace").label("替换同上下文的冲突绑定").small().when(self.replace, |button| button.primary()).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.hotkeys.replace = !view.hotkeys.replace; cx.notify(); })))
-            .child(Button::new("hotkey-reset").label(if self.confirm_reset { "确认恢复全部默认快捷键" } else { "恢复默认快捷键…" }).small().disabled(self.loading).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("hotkey-replace").label("替换同上下文的冲突绑定").when(self.replace, |button| button.primary()).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.hotkeys.replace = !view.hotkeys.replace; cx.notify(); })))
+            .child(Button::new("hotkey-reset").label(if self.confirm_reset { "确认恢复全部默认快捷键" } else { "恢复默认快捷键…" }).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| {
                 if view.hotkeys.confirm_reset { view.hotkey_request(json!({"action":"reset"}), cx); }
                 else { view.hotkeys.confirm_reset = true; cx.notify(); }
             })));
@@ -129,7 +129,6 @@ impl HotkeyPanel {
             actions = actions.child(
                 Button::new("hotkey-cancel-reset")
                     .label("取消恢复")
-                    .small()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.hotkeys.confirm_reset = false;
                         cx.notify();
@@ -173,7 +172,6 @@ impl HotkeyPanel {
                         "{} · {} · {} · {label}",
                         binding.context, binding.key, binding.command
                     ))
-                    .small()
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.hotkeys.pending =
@@ -185,7 +183,7 @@ impl HotkeyPanel {
         }
         let mut panel = div().v_flex().flex_1().min_h_0().p_4().gap_3()
             .child(div().h_flex().items_center().gap_3().child(div().text_lg().font_semibold().child("快捷键配置"))
-                .child(Button::new("hotkeys-back").label("返回设置").small().on_click(cx.listener(|view, _, _, cx| { view.active_panel = crate::Panel::Preferences; view.hotkeys.recording = false; cx.notify(); }))))
+                .child(Button::new("hotkeys-back").label("返回设置").on_click(cx.listener(|view, _, _, cx| { view.active_panel = crate::Panel::Preferences; view.hotkeys.recording = false; cx.notify(); }))))
             .child(form).child(actions)
             .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("常用上下文：Default、Subtitle Grid、Subtitle Edit Box、Video、Audio、Translation Assistant、Styling Assistant、Always。"));
         if !conflicts.is_empty() {
@@ -204,7 +202,7 @@ impl HotkeyPanel {
             );
         }
         panel
-            .child(Input::new(&self.search).small().w(px(450.)))
+            .child(Input::new(&self.search).w(px(450.)))
             .child(list)
     }
 }

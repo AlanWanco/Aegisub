@@ -127,7 +127,6 @@ impl TimingPanel {
             units = units.child(
                 Button::new(format!("shift-unit-{id}"))
                     .label(label)
-                    .small()
                     .when(self.by_time == by_time, |button| button.primary())
                     .disabled(disabled || (!by_time && !snapshot.timecodes))
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -142,7 +141,6 @@ impl TimingPanel {
             direction = direction.child(
                 Button::new(format!("shift-direction-{backward}"))
                     .label(label)
-                    .small()
                     .when(self.backward == backward, |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -156,7 +154,6 @@ impl TimingPanel {
             scope = scope.child(
                 Button::new(format!("shift-mode-{mode}"))
                     .label(label)
-                    .small()
                     .when(self.mode == mode, |button| button.primary())
                     .disabled(disabled || (mode > 0 && snapshot.selected.is_empty()))
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -170,7 +167,6 @@ impl TimingPanel {
             fields = fields.child(
                 Button::new(format!("shift-fields-{field}"))
                     .label(label)
-                    .small()
                     .when(self.fields == field, |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -423,7 +419,6 @@ impl TimingPanel {
                             } else {
                                 "清空…"
                             })
-                            .small()
                             .disabled(disabled || self.history.is_empty())
                             .on_click(cx.listener(|view, _, _, cx| {
                                 if view.timing.confirm_clear {
@@ -463,7 +458,6 @@ impl TimingPanel {
                     .child(
                         Button::new("shift-show-parameters")
                             .label("平移参数")
-                            .small()
                             .when(!self.show_history, |button| button.primary())
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.timing.show_history = false;
@@ -473,7 +467,6 @@ impl TimingPanel {
                     .child(
                         Button::new("shift-show-history")
                             .label(format!("历史记录 · {}", self.history.len()))
-                            .small()
                             .when(self.show_history, |button| button.primary())
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.timing.show_history = true;
