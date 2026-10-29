@@ -336,7 +336,6 @@ impl DocumentPanels {
                     .py_2p5()
                     .border_b_1()
                     .border_color(p.divider)
-                    .bg(p.surface)
                     .child(div().font_semibold().child("当前脚本样式"))
                     .child(div().text_xs().text_color(muted).child(style_count.to_string())),
             )
@@ -477,7 +476,6 @@ impl DocumentPanels {
                     .py_2p5()
                     .border_b_1()
                     .border_color(p.divider)
-                    .bg(p.surface)
                     .child(
                         div()
                             .flex_1()
@@ -772,7 +770,6 @@ impl DocumentPanels {
                     .py_2p5()
                     .border_b_1()
                     .border_color(p.divider)
-                    .bg(p.surface)
                     .child(div().text_sm().font_semibold().child("样式库"))
                     .child(
                         div()

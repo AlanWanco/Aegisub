@@ -292,7 +292,6 @@ impl TimingPanel {
             .p_3()
             .border_t_1()
             .border_color(p.divider)
-            .bg(p.surface)
             .child(
                 Button::new("shift-apply")
                     .icon(IconName::Check)
@@ -348,7 +347,6 @@ impl TimingPanel {
                     .font_semibold()
                     .border_b_1()
                     .border_color(p.divider)
-                    .bg(p.surface)
                     .child("平移参数"),
             )
             .child(form)
@@ -461,7 +459,6 @@ impl TimingPanel {
                     .py_2()
                     .border_b_1()
                     .border_color(p.divider)
-                    .bg(p.surface)
                     .child(
                         div()
                             .font_semibold()
