@@ -403,6 +403,90 @@ struct Notice {
     body: String,
 }
 
+/// Host-drawn dialogs the front end renders itself: about, log, language and
+/// the font picker.
+struct LogEntry {
+    section: String,
+    message: String,
+    severity: String,
+}
+
+struct LanguageItem {
+    code: String,
+    name: String,
+}
+
+struct FontState {
+    face: String,
+    size: i64,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+}
+
+enum HostDialog {
+    About {
+        version: String,
+        long_version: String,
+        build_time: String,
+        credit: String,
+        official: bool,
+    },
+    Log {
+        entries: Vec<LogEntry>,
+    },
+    Language {
+        items: Vec<LanguageItem>,
+        active: String,
+        restart: bool,
+    },
+    Font {
+        faces: Vec<String>,
+        state: FontState,
+        error: Option<String>,
+    },
+    Export {
+        formats: Vec<ExportFormat>,
+        encodings: Vec<String>,
+        encoding: String,
+        busy: bool,
+    },
+    Fonts {
+        fonts: Vec<FontEntry>,
+        busy: bool,
+    },
+    Kanji {
+        styles: Vec<String>,
+        source: String,
+        dest: String,
+        pairs: Vec<KanjiPair>,
+        source_count: i64,
+        dest_count: i64,
+        busy: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct KanjiPair {
+    source: String,
+    dest: String,
+    start: i64,
+    end: i64,
+}
+
+#[derive(Clone, Debug)]
+struct ExportFormat {
+    name: String,
+    description: String,
+    checked: bool,
+}
+
+#[derive(Clone, Debug)]
+struct FontEntry {
+    name: String,
+    size: i64,
+}
+
 /// The override colour dialog. The host owns the per-line override tags; this
 /// only picks the colour and hands it back.
 struct ColorDialog {
@@ -828,6 +912,10 @@ struct Workspace {
     color_hex_input: Entity<InputState>,
     color_alpha_input: Entity<InputState>,
     _color_events: Vec<Subscription>,
+    host_dialog: Option<HostDialog>,
+    font_filter: Entity<InputState>,
+    log_filter: Entity<InputState>,
+    _host_dialog_events: Vec<Subscription>,
     _editor_events: Subscription,
     _search_events: Subscription,
 }
@@ -860,6 +948,24 @@ impl Workspace {
                 .default_value("100")
                 .placeholder("100")
         });
+        let font_filter = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("")
+                .placeholder("筛选字体")
+        });
+        let log_filter = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("")
+                .placeholder("筛选日志")
+        });
+        let mut host_dialog_events = Vec::new();
+        for input in [&font_filter, &log_filter] {
+            host_dialog_events.push(cx.subscribe(input, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            }));
+        }
         let mut color_events = Vec::new();
         for input in [&color_hex_input, &color_alpha_input] {
             color_events.push(cx.subscribe(input, |view, _, event: &InputEvent, cx| {
@@ -1087,6 +1193,10 @@ impl Workspace {
             color_hex_input,
             color_alpha_input,
             _color_events: color_events,
+            host_dialog: None,
+            font_filter,
+            log_filter,
+            _host_dialog_events: host_dialog_events,
             _editor_events: editor_events,
             _search_events: search_events,
         }
@@ -1417,6 +1527,1311 @@ impl Workspace {
 
     /// The host can answer a colour pick with its own wx dialog; the front end
     /// asks for the starting colour first so the picker can be ours.
+    fn dialog_call(
+        &mut self,
+        action: &'static str,
+        cx: &mut Context<Self>,
+        apply: impl FnOnce(&mut Self, &Value, &mut Context<Self>) + 'static,
+    ) {
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge.call(json!({"op": "dialog", "action": action})).await;
+            let _ = weak.update(cx, |view, cx| match result {
+                Ok(value) => {
+                    apply(view, &value, cx);
+                    cx.notify();
+                }
+                Err(error) => {
+                    view.status = format!("对话框请求失败：{error}");
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn open_about(&mut self, cx: &mut Context<Self>) {
+        self.dialog_call("about", cx, |view, value, _| {
+            let text = |key: &str| value[key].as_str().unwrap_or("").to_owned();
+            view.host_dialog = Some(HostDialog::About {
+                version: text("version"),
+                long_version: text("long_version"),
+                build_time: text("build_time"),
+                credit: text("credit"),
+                official: value["official"].as_bool().unwrap_or(false),
+            });
+        });
+    }
+
+    fn open_log(&mut self, cx: &mut Context<Self>) {
+        self.dialog_call("log", cx, |view, value, _| {
+            let entries = value["entries"]
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|entry| LogEntry {
+                            section: entry["section"].as_str().unwrap_or("").to_owned(),
+                            message: entry["message"].as_str().unwrap_or("").to_owned(),
+                            severity: entry["severity"].as_str().unwrap_or("").to_owned(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            view.host_dialog = Some(HostDialog::Log { entries });
+        });
+    }
+
+    fn open_language(&mut self, cx: &mut Context<Self>) {
+        self.dialog_call("languages", cx, |view, value, _| {
+            let items = value["languages"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .map(|item| LanguageItem {
+                            code: item["code"].as_str().unwrap_or("").to_owned(),
+                            name: item["name"].as_str().unwrap_or("").to_owned(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            view.host_dialog = Some(HostDialog::Language {
+                items,
+                active: value["active"].as_str().unwrap_or("").to_owned(),
+                restart: false,
+            });
+        });
+    }
+
+    fn open_export(&mut self, cx: &mut Context<Self>) {
+        self.dialog_call("export_formats", cx, |view, value, _| {
+            let formats = value["formats"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .map(|format| ExportFormat {
+                            name: format["name"].as_str().unwrap_or("").to_owned(),
+                            description: format["description"].as_str().unwrap_or("").to_owned(),
+                            checked: format["checked"].as_bool().unwrap_or(false),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let encodings = value["encodings"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|name| name.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let encoding = value["encoding"].as_str().unwrap_or("").to_owned();
+            view.host_dialog = Some(HostDialog::Export {
+                formats,
+                encodings,
+                encoding,
+                busy: false,
+            });
+        });
+    }
+
+    fn export_script(&mut self, cx: &mut Context<Self>) {
+        let Some(HostDialog::Export {
+            formats,
+            encoding,
+            busy,
+            ..
+        }) = &mut self.host_dialog
+        else {
+            return;
+        };
+        if *busy {
+            return;
+        }
+        let filters: Vec<String> = formats
+            .iter()
+            .filter(|format| format.checked)
+            .map(|format| format.name.clone())
+            .collect();
+        if filters.is_empty() {
+            self.status = "至少选择一个导出格式".into();
+            cx.notify();
+            return;
+        }
+        let encoding = encoding.clone();
+        *busy = true;
+        let stem = std::path::Path::new(&self.snapshot.file)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_string())
+            .unwrap_or_else(|| "subtitles".to_owned());
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let Some(file) = rfd::AsyncFileDialog::new()
+                .set_title("导出字幕")
+                .set_file_name(format!("{stem}.ass"))
+                .save_file()
+                .await
+            else {
+                let _ = weak.update(cx, |view, cx| {
+                    if let Some(HostDialog::Export { busy, .. }) = &mut view.host_dialog {
+                        *busy = false;
+                    }
+                    cx.notify();
+                });
+                return;
+            };
+            let path = file.path().to_string_lossy().to_string();
+            let result = bridge
+                .call(json!({
+                    "op": "dialog",
+                    "action": "export",
+                    "path": path,
+                    "filters": filters,
+                    "encoding": encoding,
+                }))
+                .await;
+            let _ = weak.update(cx, |view, cx| {
+                match result {
+                    Ok(_) => {
+                        view.host_dialog = None;
+                        view.status = format!("已导出到 {path}");
+                    }
+                    Err(error) => {
+                        if let Some(HostDialog::Export { busy, .. }) = &mut view.host_dialog {
+                            *busy = false;
+                        }
+                        view.status = format!("导出失败：{error}");
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn open_font_collector(&mut self, cx: &mut Context<Self>) {
+        self.dialog_call("font_collect", cx, |view, value, _| {
+            let fonts = value["fonts"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .map(|font| FontEntry {
+                            name: font["name"].as_str().unwrap_or("").to_owned(),
+                            size: font["size"].as_i64().unwrap_or(0),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            view.host_dialog = Some(HostDialog::Fonts { fonts, busy: false });
+        });
+    }
+
+    fn copy_fonts(&mut self, cx: &mut Context<Self>) {
+        let Some(HostDialog::Fonts { busy, .. }) = &mut self.host_dialog else {
+            return;
+        };
+        if *busy {
+            return;
+        }
+        *busy = true;
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let Some(directory) = rfd::AsyncFileDialog::new()
+                .set_title("选择字体保存目录")
+                .pick_folder()
+                .await
+            else {
+                let _ = weak.update(cx, |view, cx| {
+                    if let Some(HostDialog::Fonts { busy, .. }) = &mut view.host_dialog {
+                        *busy = false;
+                    }
+                    cx.notify();
+                });
+                return;
+            };
+            let destination = directory.path().to_string_lossy().to_string();
+            let result = bridge
+                .call(json!({
+                    "op": "dialog",
+                    "action": "font_copy",
+                    "destination": destination,
+                }))
+                .await;
+            let _ = weak.update(cx, |view, cx| {
+                if let Some(HostDialog::Fonts { busy, .. }) = &mut view.host_dialog {
+                    *busy = false;
+                }
+                match result {
+                    Ok(value) => {
+                        let copied = value["copied"].as_i64().unwrap_or(0);
+                        view.status = format!("已复制 {copied} 个字体文件到 {destination}");
+                    }
+                    Err(error) => view.status = format!("复制字体失败：{error}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn open_kanji(&mut self, cx: &mut Context<Self>) {
+        self.dialog_request(
+            json!({"op": "dialog", "action": "kanji_preview", "source": "", "dest": ""}),
+            cx,
+            |view, value, cx| {
+                let styles: Vec<String> = value["styles"]
+                    .as_array()
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(|name| name.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if styles.len() < 2 {
+                    view.status = "至少需要两个样式才能配对打轴".into();
+                    return;
+                }
+                view.host_dialog = Some(HostDialog::Kanji {
+                    source: styles[0].clone(),
+                    dest: styles[1].clone(),
+                    styles,
+                    pairs: Vec::new(),
+                    source_count: 0,
+                    dest_count: 0,
+                    busy: false,
+                });
+                view.refresh_kanji(cx);
+            },
+        );
+    }
+
+    fn refresh_kanji(&mut self, cx: &mut Context<Self>) {
+        let Some(HostDialog::Kanji { source, dest, .. }) = &self.host_dialog else {
+            return;
+        };
+        let payload = json!({
+            "op": "dialog",
+            "action": "kanji_preview",
+            "source": source,
+            "dest": dest,
+        });
+        self.dialog_request(payload, cx, |view, value, _| {
+            let pairs = value["pairs"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .map(|pair| KanjiPair {
+                            source: pair["source"].as_str().unwrap_or("").to_owned(),
+                            dest: pair["dest"].as_str().unwrap_or("").to_owned(),
+                            start: pair["start"].as_i64().unwrap_or(0),
+                            end: pair["end"].as_i64().unwrap_or(0),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let styles: Vec<String> = value["styles"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|name| name.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(HostDialog::Kanji {
+                pairs: slot,
+                styles: styles_slot,
+                source_count,
+                dest_count,
+                ..
+            }) = view.host_dialog.as_mut()
+            {
+                *slot = pairs;
+                if !styles.is_empty() {
+                    *styles_slot = styles;
+                }
+                *source_count = value["source_count"].as_i64().unwrap_or(0);
+                *dest_count = value["dest_count"].as_i64().unwrap_or(0);
+            }
+        });
+    }
+
+    fn apply_kanji(&mut self, cx: &mut Context<Self>) {
+        let Some(HostDialog::Kanji {
+            source, dest, busy, ..
+        }) = &mut self.host_dialog
+        else {
+            return;
+        };
+        if *busy {
+            return;
+        }
+        let payload = json!({
+            "op": "dialog",
+            "action": "kanji_apply",
+            "source": source,
+            "dest": dest,
+        });
+        *busy = true;
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge.call(payload).await;
+            let _ = weak.update(cx, |view, cx| {
+                match result {
+                    Ok(value) => {
+                        let changed = value["changed"].as_i64().unwrap_or(0);
+                        view.host_dialog = None;
+                        view.status = format!("已按配对复制 {changed} 行的时轴");
+                        view.refresh_document(cx);
+                    }
+                    Err(error) => {
+                        if let Some(HostDialog::Kanji { busy, .. }) = view.host_dialog.as_mut() {
+                            *busy = false;
+                        }
+                        view.status = format!("打轴失败：{error}");
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn dialog_request(
+        &mut self,
+        payload: Value,
+        cx: &mut Context<Self>,
+        apply: impl FnOnce(&mut Self, &Value, &mut Context<Self>) + 'static,
+    ) {
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge.call(payload).await;
+            let _ = weak.update(cx, |view, cx| match result {
+                Ok(value) => {
+                    apply(view, &value, cx);
+                    cx.notify();
+                }
+                Err(error) => {
+                    view.status = format!("对话框请求失败：{error}");
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn open_font(&mut self, cx: &mut Context<Self>) {
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let faces = bridge.call(json!({"op": "dialog", "action": "fonts"})).await;
+            let state = bridge
+                .call(json!({"op": "dialog", "action": "font_state"}))
+                .await;
+            let _ = weak.update(cx, |view, cx| {
+                let (Ok(faces), Ok(state)) = (faces, state) else {
+                    view.status = "无法读取字体列表".into();
+                    cx.notify();
+                    return;
+                };
+                if !state["available"].as_bool().unwrap_or(false) {
+                    view.status = "先选中一行字幕再改字体".into();
+                    cx.notify();
+                    return;
+                }
+                let faces = faces["fonts"]
+                    .as_array()
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(|face| face.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                view.host_dialog = Some(HostDialog::Font {
+                    faces,
+                    state: FontState {
+                        face: state["face"].as_str().unwrap_or("").to_owned(),
+                        size: state["size"].as_i64().unwrap_or(20),
+                        bold: state["bold"].as_bool().unwrap_or(false),
+                        italic: state["italic"].as_bool().unwrap_or(false),
+                        underline: state["underline"].as_bool().unwrap_or(false),
+                    },
+                    error: None,
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn apply_language(&mut self, code: String, cx: &mut Context<Self>) {
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge
+                .call(json!({"op": "dialog", "action": "set_language", "code": code}))
+                .await;
+            let _ = weak.update(cx, |view, cx| match result {
+                Ok(value) => {
+                    if let Some(HostDialog::Language { restart, .. }) = view.host_dialog.as_mut() {
+                        *restart = value["restart"].as_bool().unwrap_or(false);
+                    }
+                    view.status = if value["restart"].as_bool().unwrap_or(false) {
+                        "界面语言已保存，重启后生效".into()
+                    } else {
+                        "界面语言已保存".into()
+                    };
+                    cx.notify();
+                }
+                Err(error) => {
+                    view.status = format!("切换语言失败：{error}");
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn apply_font(&mut self, cx: &mut Context<Self>) {
+        let Some(HostDialog::Font { state, error, .. }) = self.host_dialog.as_mut() else {
+            return;
+        };
+        if state.size < 1 || state.size > 999 {
+            *error = Some("字号需要在 1 到 999 之间".into());
+            cx.notify();
+            return;
+        }
+        let payload = json!({
+            "op": "dialog",
+            "action": "font_apply",
+            "face": state.face,
+            "size": state.size,
+            "bold": state.bold,
+            "italic": state.italic,
+            "underline": state.underline,
+        });
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge.call(payload).await;
+            let _ = weak.update(cx, |view, cx| match result {
+                Ok(_) => {
+                    view.host_dialog = None;
+                    view.status = "已应用字体".into();
+                    view.refresh_document(cx);
+                }
+                Err(error) => {
+                    if let Some(HostDialog::Font { error: slot, .. }) = view.host_dialog.as_mut() {
+                        *slot = Some(format!("应用失败：{error}"));
+                    }
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn close_host_dialog(&mut self, cx: &mut Context<Self>) {
+        self.host_dialog = None;
+        cx.notify();
+    }
+
+    fn render_host_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        let p = Palette::current(cx);
+        let Some(mut dialog) = self.host_dialog.take() else {
+            return None;
+        };
+        let font_query = self.font_filter.read(cx).value().to_lowercase();
+        let log_query = self.log_filter.read(cx).value().to_lowercase();
+
+        let (title, hint, body, _footer): (
+            gpui_kit::SharedString,
+            gpui_kit::SharedString,
+            gpui_kit::AnyElement,
+            gpui_kit::AnyElement,
+        ) = match &mut dialog {
+            HostDialog::About {
+                version,
+                long_version,
+                build_time,
+                credit,
+                official,
+            } => {
+                let mut rows: Vec<gpui_kit::AnyElement> = Vec::new();
+                let mut add = |label: &'static str, value: String| {
+                    rows.push(
+                        div()
+                            .h_flex()
+                            .gap_3()
+                            .items_baseline()
+                            .child(
+                                div()
+                                    .w(px(96.))
+                                    .flex_shrink_0()
+                                    .text_xs()
+                                    .text_color(p.muted)
+                                    .child(label),
+                            )
+                            .child(div().text_sm().child(value))
+                            .into_any_element(),
+                    );
+                };
+                add("版本", version.clone());
+                if long_version != version {
+                    add("构建", long_version.clone());
+                }
+                if !build_time.is_empty() {
+                    add("构建时间", build_time.clone());
+                }
+                if !credit.is_empty() {
+                    add("构建者", credit.clone());
+                }
+                add(
+                    "发布版本",
+                    if *official { "正式版" } else { "开发版" }.to_owned(),
+                );
+                add("界面", "GPUI 工作台".to_owned());
+                drop(add);
+                let rows = div().v_flex().gap_2().children(rows);
+                (
+                    "关于 Aegisub".into(),
+                    "字幕编辑与卡拉 OK 打轴工具".into(),
+                    rows.into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+            HostDialog::Log { entries } => {
+                let shown: Vec<&LogEntry> = entries
+                    .iter()
+                    .filter(|entry| {
+                        log_query.is_empty()
+                            || entry.message.to_lowercase().contains(&log_query)
+                            || entry.section.to_lowercase().contains(&log_query)
+                    })
+                    .collect();
+                let mut list = div()
+                    .id("host-dialog-log")
+                    .v_flex()
+                    .gap_1()
+                    .h(px(340.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.inset)
+                    .p(px(8.));
+                for (index, entry) in shown.iter().enumerate() {
+                    let tone: gpui_kit::Hsla = match entry.severity.as_str() {
+                        "error" | "exception" | "assert" => gpui_kit::rgb(0xFF6B6B).into(),
+                        "warning" => gpui_kit::rgb(0xE0A030).into(),
+                        _ => p.muted,
+                    };
+                    list = list.child(
+                        div()
+                            .id(("log-entry", index))
+                            .h_flex()
+                            .gap_2()
+                            .items_start()
+                            .child(
+                                div()
+                                    .w(px(120.))
+                                    .flex_shrink_0()
+                                    .text_xs()
+                                    .text_color(tone)
+                                    .child(entry.section.clone()),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_xs()
+                                    .text_color(p.text)
+                                    .child(entry.message.clone()),
+                            ),
+                    );
+                }
+                (
+                    "日志".into(),
+                    format!("最近 {} 条记录，仅显示末尾 400 条", shown.len()).into(),
+                    div()
+                        .v_flex()
+                        .gap_2()
+                        .child(self.log_filter.clone())
+                        .child(list)
+                        .into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+            HostDialog::Language {
+                items,
+                active,
+                restart,
+            } => {
+                let mut list = div()
+                    .id("host-dialog-language")
+                    .v_flex()
+                    .gap_1()
+                    .h(px(340.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.inset)
+                    .p(px(8.));
+                for item in items.iter() {
+                    let code = item.code.clone();
+                    list = list.child(
+                        crate::page::list_row(
+                            cx,
+                            format!("language-{}", item.code),
+                            item.name.clone(),
+                            &item.code == active,
+                            false,
+                        )
+                        .on_click(cx.listener(move |view, _, _, cx| {
+                            view.apply_language(code.clone(), cx)
+                        })),
+                    );
+                }
+                (
+                    "界面语言".into(),
+                    if *restart {
+                        "已保存，重启后生效".into()
+                    } else {
+                        "选择界面显示语言".into()
+                    },
+                    div()
+                        .v_flex()
+                        .gap_2()
+                        .child(list)
+                        .into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+            HostDialog::Font {
+                faces,
+                state,
+                error,
+            } => {
+                let matching: Vec<&String> = faces
+                    .iter()
+                    .filter(|face| font_query.is_empty() || face.to_lowercase().contains(&font_query))
+                    .collect();
+                let mut list = div()
+                    .id("host-dialog-fonts")
+                    .v_flex()
+                    .gap_1()
+                    .h(px(260.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.inset)
+                    .p(px(8.));
+                for face in matching.iter().take(300) {
+                    let picked = face.as_str().to_owned();
+                    list = list.child(
+                        crate::page::list_row(
+                            cx,
+                            format!("font-{picked}"),
+                            picked.clone(),
+                            picked == state.face,
+                            false,
+                        )
+                        .on_click(cx.listener(move |view, _, _, cx| {
+                            if let Some(HostDialog::Font { state, .. }) = view.host_dialog.as_mut()
+                            {
+                                state.face = picked.clone();
+                            }
+                            cx.notify();
+                        })),
+                    );
+                }
+                let size_row = div()
+                    .h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(div().text_xs().text_color(p.muted).child("字号"))
+                    .child(
+                        Button::new("font-size-down")
+                            .label("−")
+                            .ghost()
+                            .rounded(px(999.))
+                            .small()
+                            .px(px(13.))
+                            .py(px(3.))
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                if let Some(HostDialog::Font { state, .. }) =
+                                    view.host_dialog.as_mut()
+                                {
+                                    state.size = (state.size - 1).max(1);
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .w(px(56.))
+                            .text_center()
+                            .text_sm()
+                            .child(state.size.to_string()),
+                    )
+                    .child(
+                        Button::new("font-size-up")
+                            .label("+")
+                            .ghost()
+                            .rounded(px(999.))
+                            .small()
+                            .px(px(13.))
+                            .py(px(3.))
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                if let Some(HostDialog::Font { state, .. }) =
+                                    view.host_dialog.as_mut()
+                                {
+                                    state.size = (state.size + 1).min(999);
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .child(div().w(px(16.)).into_any_element())
+                    .child(font_flag_button(
+                        cx,
+                        "font-bold",
+                        "粗体",
+                        state.bold,
+                        |state| state.bold = !state.bold,
+                    ))
+                    .child(font_flag_button(
+                        cx,
+                        "font-italic",
+                        "斜体",
+                        state.italic,
+                        |state| state.italic = !state.italic,
+                    ))
+                    .child(font_flag_button(
+                        cx,
+                        "font-underline",
+                        "下划线",
+                        state.underline,
+                        |state| state.underline = !state.underline,
+                    ));
+                let body = div()
+                    .v_flex()
+                    .gap_2()
+                    .child(self.font_filter.clone())
+                    .child(list)
+                    .child(size_row)
+                    .when_some(error.clone(), |v, message| {
+                        v.child(
+                            div()
+                                .text_xs()
+                                .text_color(gpui_kit::rgb(0xFF6B6B))
+                                .child(message),
+                        )
+                    });
+                (
+                    "字体".into(),
+                    format!("当前 {} · {} pt", state.face, state.size).into(),
+                    body.into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+            HostDialog::Export {
+                formats,
+                encodings,
+                encoding,
+                busy,
+            } => {
+                let busy = *busy;
+                let mut list = div()
+                    .id("host-dialog-formats")
+                    .v_flex()
+                    .gap_1()
+                    .h(px(230.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.inset)
+                    .p(px(8.));
+                for (index, format) in formats.iter().enumerate() {
+                    let checked = format.checked;
+                    let name = format.name.clone();
+                    let description = format.description.clone();
+                    list = list.child(
+                        div()
+                            .id(("export-format", index))
+                            .h_flex()
+                            .gap_3()
+                            .items_start()
+                            .px(px(8.))
+                            .py(px(6.))
+                            .rounded(px(workspace_theme::RADIUS_SM))
+                            .cursor_pointer()
+                            .when(checked, |v| v.bg(p.raised))
+                            .child(
+                                div()
+                                    .mt(px(2.))
+                                    .size(px(15.))
+                                    .rounded(px(4.))
+                                    .border_1()
+                                    .border_color(if checked { p.accent } else { p.border })
+                                    .when(checked, |v| v.bg(p.accent))
+                                    .child(div().size_full().when(checked, |v| {
+                                        v.child(
+                                            Icon::new(IconName::Check)
+                                                .size(px(11.))
+                                                .text_color(p.surface),
+                                        )
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .v_flex()
+                                    .gap_1()
+                                    .child(div().text_sm().child(name))
+                                    .when(!description.is_empty(), |v| {
+                                        v.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(p.muted)
+                                                .child(description),
+                                        )
+                                    }),
+                            )
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                if let Some(HostDialog::Export { formats, .. }) =
+                                    view.host_dialog.as_mut()
+                                {
+                                    if let Some(format) = formats.get_mut(index) {
+                                        format.checked = !format.checked;
+                                    }
+                                }
+                                cx.notify();
+                            })),
+                    );
+                }
+                let options = encodings.clone();
+                let encoding_weak = cx.weak_entity();
+                let encoding_row = div()
+                    .h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(div().w(px(64.)).text_xs().text_color(p.muted).child("编码"))
+                    .child(
+                        crate::page::select_trigger(cx, "export-encoding", encoding.clone(), false)
+                            .w(px(240.))
+                            .dropdown_menu(move |mut menu, _, _| {
+                                for name in options.iter() {
+                                    let choice = name.clone();
+                                    let target = encoding_weak.clone();
+                                    menu = menu.item(PopupMenuItem::new(choice.clone()).on_click(
+                                        move |_, _, cx| {
+                                            let choice = choice.clone();
+                                            let _ = target.update(cx, |view, cx| {
+                                                if let Some(HostDialog::Export { encoding, .. }) =
+                                                    view.host_dialog.as_mut()
+                                                {
+                                                    *encoding = choice;
+                                                }
+                                                cx.notify();
+                                            });
+                                        },
+                                    ));
+                                }
+                                menu
+                            }),
+                    );
+                let body = div()
+                    .v_flex()
+                    .gap_3()
+                    .child(list)
+                    .child(encoding_row)
+                    .when(busy, |v| {
+                        v.child(div().text_xs().text_color(p.muted).child("正在导出…"))
+                    });
+                (
+                    "导出字幕".into(),
+                    "选择要写入的格式与编码".into(),
+                    body.into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+            HostDialog::Fonts { fonts, busy } => {
+                let busy = *busy;
+                let mut list = div()
+                    .id("host-dialog-font-files")
+                    .v_flex()
+                    .gap_1()
+                    .h(px(230.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.inset)
+                    .p(px(8.));
+                for font in fonts.iter() {
+                    let size = if font.size > 0 {
+                        format!("{} KB", (font.size as f64 / 1024.).round() as i64)
+                    } else {
+                        String::new()
+                    };
+                    list = list.child(
+                        div()
+                            .h_flex()
+                            .gap_3()
+                            .items_center()
+                            .px(px(8.))
+                            .py(px(6.))
+                            .rounded(px(workspace_theme::RADIUS_SM))
+                            .child(
+                                Icon::new(IconName::ALargeSmall)
+                                    .size(px(14.))
+                                    .text_color(p.muted),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .text_sm()
+                                    .child(font.name.clone()),
+                            )
+                            .child(div().text_xs().text_color(p.muted).child(size)),
+                    );
+                }
+                let body = div()
+                    .v_flex()
+                    .gap_3()
+                    .child(list)
+                    .when(fonts.is_empty(), |v| {
+                        v.child(
+                            div()
+                                .text_xs()
+                                .text_color(p.muted)
+                                .child("脚本没有用到需要打包的字体"),
+                        )
+                    })
+                    .when(busy, |v| {
+                        v.child(div().text_xs().text_color(p.muted).child("正在复制…"))
+                    });
+                (
+                    "字体收集".into(),
+                    format!("找到 {} 个字体文件", fonts.len()).into(),
+                    body.into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+            HostDialog::Kanji {
+                styles,
+                source,
+                dest,
+                pairs,
+                source_count,
+                dest_count,
+                busy,
+            } => {
+                let busy = *busy;
+                let style_select = |id: &'static str, current: String, target_source: bool, cx: &mut Context<Self>| {
+                    let options = styles.clone();
+                    let weak = cx.weak_entity();
+                    let current = if current.is_empty() {
+                        "选择样式".to_owned()
+                    } else {
+                        current
+                    };
+                    crate::page::select_trigger(cx, id, current, busy)
+                        .w(px(200.))
+                        .dropdown_menu(move |mut menu, _, _| {
+                            for name in options.iter() {
+                                let choice = name.clone();
+                                let target = weak.clone();
+                                menu = menu.item(PopupMenuItem::new(choice.clone()).on_click(
+                                    move |_, _, cx| {
+                                        let choice = choice.clone();
+                                        let _ = target.update(cx, |view, cx| {
+                                            if let Some(HostDialog::Kanji { source, dest, .. }) =
+                                                view.host_dialog.as_mut()
+                                            {
+                                                if target_source {
+                                                    *source = choice;
+                                                } else {
+                                                    *dest = choice;
+                                                }
+                                            }
+                                            view.refresh_kanji(cx);
+                                            cx.notify();
+                                        });
+                                    },
+                                ));
+                            }
+                            menu
+                        })
+                };
+                let style_row = div()
+                    .h_flex()
+                    .gap_3()
+                    .items_center()
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(div().text_xs().text_color(p.muted).child("源样式"))
+                            .child(style_select("kanji-source", source.clone(), true, cx)),
+                    )
+                    .child(
+                        Icon::new(IconName::ArrowRight)
+                            .size(px(14.))
+                            .text_color(p.muted),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(div().text_xs().text_color(p.muted).child("目标样式"))
+                            .child(style_select("kanji-dest", dest.clone(), false, cx)),
+                    );
+                let mut list = div()
+                    .id("host-dialog-kanji")
+                    .v_flex()
+                    .gap_1()
+                    .h(px(220.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.inset)
+                    .p(px(8.));
+                for (index, pair) in pairs.iter().enumerate() {
+                    list = list.child(
+                        div()
+                            .id(("kanji-pair", index))
+                            .v_flex()
+                            .gap_1()
+                            .px(px(8.))
+                            .py(px(6.))
+                            .rounded(px(workspace_theme::RADIUS_SM))
+                            .child(
+                                div()
+                                    .h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .w(px(150.))
+                                            .flex_shrink_0()
+                                            .text_xs()
+                                            .text_color(p.muted)
+                                            .child(format!(
+                                                "{} → {}",
+                                                format_time(pair.start),
+                                                format_time(pair.end)
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .text_sm()
+                                            .child(pair.source.clone()),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(div().w(px(58.)).flex_shrink_0())
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .text_xs()
+                                            .text_color(p.muted)
+                                            .child(pair.dest.clone()),
+                                    ),
+                            ),
+                    );
+                }
+                let note = format!(
+                    "源 {} 行 · 目标 {} 行 · 可配对 {} 对",
+                    source_count,
+                    dest_count,
+                    pairs.len()
+                );
+                let body = div()
+                    .v_flex()
+                    .gap_3()
+                    .child(style_row)
+                    .child(list)
+                    .child(div().text_xs().text_color(p.muted).child(note))
+                    .when(busy, |v| {
+                        v.child(div().text_xs().text_color(p.muted).child("正在写入…"))
+                    });
+                (
+                    "汉字打轴".into(),
+                    "按样式顺序把源行的时轴复制到目标行".into(),
+                    body.into_any_element(),
+                    div().into_any_element(),
+                )
+            }
+        };
+
+        self.host_dialog = Some(dialog);
+
+        let footer = div()
+            .h_flex()
+            .items_center()
+            .justify_between()
+            .px(px(20.))
+            .py(px(14.))
+            .border_t_1()
+            .border_color(p.divider)
+            .rounded_b(px(workspace_theme::RADIUS_LG - 1.))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(p.muted)
+                    .child(match &self.host_dialog {
+                        Some(HostDialog::Log { entries }) => {
+                            format!("{} 条记录", entries.len())
+                        }
+                        Some(HostDialog::Language { active, .. }) => {
+                            format!("当前 {active}")
+                        }
+                        Some(HostDialog::Font { state, .. }) => {
+                            format!("{} · {} pt", state.face, state.size)
+                        }
+                        Some(HostDialog::Export { formats, .. }) => {
+                            let checked = formats.iter().filter(|format| format.checked).count();
+                            format!("{checked} / {} 个格式", formats.len())
+                        }
+                        Some(HostDialog::Fonts { fonts, .. }) => {
+                            format!("{} 个字体文件", fonts.len())
+                        }
+                        Some(HostDialog::Kanji { pairs, .. }) => {
+                            format!("{} 对可写入", pairs.len())
+                        }
+                        _ => String::new(),
+                    }),
+            )
+            .child(
+                div()
+                    .h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("host-dialog-close")
+                            .label("关闭")
+                            .ghost()
+                            .rounded(px(999.))
+                            .small()
+                            .px(px(13.))
+                            .py(px(3.))
+                            .on_click(cx.listener(|view, _, _, cx| view.close_host_dialog(cx))),
+                    )
+                    .when(matches!(self.host_dialog, Some(HostDialog::Font { .. })), |v| {
+                        v.child(
+                            Button::new("host-dialog-apply-font")
+                                .label("应用字体")
+                                .primary()
+                                .rounded(px(999.))
+                                .small()
+                                .px(px(13.))
+                                .py(px(3.))
+                                .on_click(cx.listener(|view, _, _, cx| view.apply_font(cx))),
+                        )
+                    })
+                    .when(matches!(self.host_dialog, Some(HostDialog::Export { .. })), |v| {
+                        v.child(
+                            Button::new("host-dialog-export")
+                                .label("导出…")
+                                .primary()
+                                .rounded(px(999.))
+                                .small()
+                                .px(px(13.))
+                                .py(px(3.))
+                                .on_click(cx.listener(|view, _, _, cx| view.export_script(cx))),
+                        )
+                    })
+                    .when(matches!(self.host_dialog, Some(HostDialog::Fonts { .. })), |v| {
+                        v.child(
+                            Button::new("host-dialog-copy-fonts")
+                                .label("复制到文件夹…")
+                                .primary()
+                                .rounded(px(999.))
+                                .small()
+                                .px(px(13.))
+                                .py(px(3.))
+                                .on_click(cx.listener(|view, _, _, cx| view.copy_fonts(cx))),
+                        )
+                    })
+                    .when(matches!(self.host_dialog, Some(HostDialog::Kanji { .. })), |v| {
+                        v.child(
+                            Button::new("host-dialog-kanji-apply")
+                                .label("应用打轴")
+                                .primary()
+                                .rounded(px(999.))
+                                .small()
+                                .px(px(13.))
+                                .py(px(3.))
+                                .on_click(cx.listener(|view, _, _, cx| view.apply_kanji(cx))),
+                        )
+                    }),
+            );
+
+        let card = div()
+            .id("host-dialog")
+            .w(px(560.))
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|_, _, _, cx| cx.stop_propagation()),
+            )
+            .max_w_full()
+            .v_flex()
+            .rounded(px(workspace_theme::RADIUS_LG))
+            .border_1()
+            .border_color(p.border)
+            .bg(p.surface)
+            .overflow_hidden()
+            .shadow_lg()
+            .child(
+                div()
+                    .v_flex()
+                    .gap_1()
+                    .px(px(20.))
+                    .py(px(16.))
+                    .border_b_1()
+                    .border_color(p.divider)
+                    .rounded_t(px(workspace_theme::RADIUS_LG - 1.))
+                    .child(div().text_size(px(15.)).font_semibold().child(title))
+                    .child(div().text_xs().text_color(p.muted).child(hint)),
+            )
+            .child(div().v_flex().gap_3().p(px(20.)).child(body))
+            .child(footer);
+        let _ = window;
+        Some(card.into_any_element())
+    }
+
     fn request_color(&mut self, kind: &'static str, cx: &mut Context<Self>) {
         let bridge = self.bridge.clone();
         let weak = cx.weak_entity();
@@ -1745,6 +3160,42 @@ impl Workspace {
                 }
                 Some("app/new_window") => {
                     self.open_new_window(cx);
+                    return;
+                }
+                Some("app/about") => {
+                    self.open_about(cx);
+                    return;
+                }
+                Some("app/log") => {
+                    self.open_log(cx);
+                    return;
+                }
+                Some("app/language") => {
+                    self.open_language(cx);
+                    return;
+                }
+                Some("app/updates") => {
+                    self.status = "正在检查更新…".into();
+                    self.dialog_call("updates", cx, |view, _, cx| {
+                        view.status = "已发出更新检查，结果会以提示卡显示".into();
+                        cx.notify();
+                    });
+                    return;
+                }
+                Some("edit/font") => {
+                    self.open_font(cx);
+                    return;
+                }
+                Some("tool/export") => {
+                    self.open_export(cx);
+                    return;
+                }
+                Some("tool/font_collector") => {
+                    self.open_font_collector(cx);
+                    return;
+                }
+                Some("tool/time/kanji") => {
+                    self.open_kanji(cx);
                     return;
                 }
                 Some(name @ ("edit/color/primary"
@@ -5991,6 +7442,30 @@ fn subtitle_cell(
 }
 
 /// Parses `#RRGGBB`, `#RRGGBBAA` or the same without the hash.
+fn font_flag_button(
+    cx: &mut Context<Workspace>,
+    id: &'static str,
+    label: &'static str,
+    checked: bool,
+    toggle: fn(&mut FontState),
+) -> gpui_kit::AnyElement {
+    Button::new(id)
+        .label(label)
+        .rounded(px(999.))
+        .small()
+        .px(px(13.))
+        .py(px(3.))
+        .when(checked, |button| button.primary())
+        .when(!checked, |button| button.ghost())
+        .on_click(cx.listener(move |view, _, _, cx| {
+            if let Some(HostDialog::Font { state, .. }) = view.host_dialog.as_mut() {
+                toggle(state);
+            }
+            cx.notify();
+        }))
+        .into_any_element()
+}
+
 fn parse_color(text: &str) -> Option<(u8, u8, u8, u8)> {
     let digits: String = text
         .trim()
@@ -6647,6 +8122,22 @@ impl Render for Workspace {
                     .on_mouse_down(
                         gpui_kit::MouseButton::Left,
                         cx.listener(|view, _, _, cx| view.cancel_color_dialog(cx)),
+                    )
+                    .child(card),
+            );
+        }
+        if let Some(card) = self.render_host_dialog(window, cx) {
+            layered = layered.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .h_flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(gpui_kit::hsla(0., 0., 0., 0.42))
+                    .on_mouse_down(
+                        gpui_kit::MouseButton::Left,
+                        cx.listener(|view, _, _, cx| view.close_host_dialog(cx)),
                     )
                     .child(card),
             );

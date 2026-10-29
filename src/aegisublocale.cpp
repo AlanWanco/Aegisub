@@ -79,6 +79,18 @@ bool AegisubLocale::HasLanguage(std::string const& language) {
 	return std::find(langs.begin(), langs.end(), to_wx(language)) != langs.end();
 }
 
+std::vector<std::pair<std::string, std::string>> AegisubLocale::GetAvailableLanguages() {
+	wxArrayString codes = GetTranslations()->GetAvailableTranslations(AEGISUB_CATALOG);
+	std::vector<std::pair<std::string, std::string>> languages;
+	languages.emplace_back("en_US", from_wx(LocalizedLanguageName("en_US")));
+	for (auto const& code : codes) {
+		auto language = from_wx(code);
+		if (language == "en_US") continue;
+		languages.emplace_back(language, from_wx(LocalizedLanguageName(code)));
+	}
+	return languages;
+}
+
 std::string AegisubLocale::PickLanguage() {
 	if (active_language.empty()) {
 		wxString os_ui_language = GetTranslations()->GetBestTranslation(AEGISUB_CATALOG);

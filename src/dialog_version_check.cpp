@@ -31,6 +31,7 @@
 
 #include "compat.h"
 #include "format.h"
+#include "gpui_bridge.h"
 #include "options.h"
 #include "version.h"
 
@@ -164,7 +165,10 @@ DEFINE_EXCEPTION(VersionCheckError, agi::Exception);
 void PostErrorEvent(bool interactive, wxString const& error_text) {
 	if (interactive) {
 		agi::dispatch::Main().Async([=]{
-			new VersionCheckerResultDialog(error_text, {});
+			if (gpui::FrontendAttached())
+				gpui::PushNotice("Check for Updates", from_wx(error_text));
+			else
+				new VersionCheckerResultDialog(error_text, {});
 		});
 	}
 }
@@ -341,7 +345,14 @@ void DoCheck(bool interactive) {
 			else
 				text = _("There are no updates to Aegisub.");
 
-			new VersionCheckerResultDialog(text, results);
+			if (gpui::FrontendAttached()) {
+				std::string body = from_wx(text);
+				for (auto const& update : results)
+					body += "\n\n" + update.friendly_name + "\n" + update.description + "\n" + update.url;
+				gpui::PushNotice("Check for Updates", body);
+			}
+			else
+				new VersionCheckerResultDialog(text, results);
 		});
 	}
 }

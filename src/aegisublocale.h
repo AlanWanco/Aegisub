@@ -30,6 +30,8 @@
 #pragma once
 
 #include <string>
+#include <utility>
+#include <vector>
 
 class wxTranslations;
 
@@ -41,4 +43,8 @@ public:
 	void Init(std::string const& language);
 	bool HasLanguage(std::string const& language);
 	std::string PickLanguage();
+	/// Interface languages as (code, name) pairs, English first.
+	std::vector<std::pair<std::string, std::string>> GetAvailableLanguages();
+	/// Language the interface is currently running in.
+	std::string const& GetActiveLanguage() const { return active_language; }
 };

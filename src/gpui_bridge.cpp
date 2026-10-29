@@ -5,6 +5,7 @@
 #include "gpui_audio.h"
 #include "gpui_automation.h"
 #include "gpui_color.h"
+#include "gpui_dialogs.h"
 #include "gpui_command_catalog.h"
 #include "gpui_document.h"
 #include "gpui_translation.h"
@@ -432,7 +433,11 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "audio_render") { BeginResponse(socket, client, audio.Render(object)); return; }
 		if (op == "audio_action") { BeginResponse(socket, client, audio.Interact(object)); return; }
 		if (op == "automation_manager") { BeginResponse(socket, client, gpui::AutomationManager(context, object)); return; }
-		if (op == "color") { BeginResponse(socket, client, gpui::ColorPanel(context, object)); return; }
+		if (op == "dialog") {
+		BeginResponse(socket, client, gpui::Dialog(context, object));
+		return;
+	}
+	if (op == "color") { BeginResponse(socket, client, gpui::ColorPanel(context, object)); return; }
 		if (op == "catalog") { BeginResponse(socket, client, gpui::CommandCatalog(context, visual)); return; }
 		if (op == "attachments") {
 			if (auto expected = object.find("revision"); expected != object.end()) {

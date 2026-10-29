@@ -40,6 +40,7 @@
 #include "../dialog_manager.h"
 #include "../dialogs.h"
 #include "../frame_main.h"
+#include "../gpui_bridge.h"
 #include "../include/aegisub/context.h"
 #include "../libresrc/libresrc.h"
 #include "../main.h"
@@ -70,6 +71,10 @@ struct app_about final : public Command {
 	STR_HELP("About Aegisub")
 
 	void operator()(agi::Context *c) override {
+		if (gpui::FrontendAttached()) {
+			gpui::PushCommand("app/about");
+			return;
+		}
 		ShowAboutDialog(c->parent);
 	}
 };
@@ -169,6 +174,11 @@ struct app_language final : public Command {
 	STR_HELP("Select Aegisub interface language")
 
 	void operator()(agi::Context *c) override {
+		if (gpui::FrontendAttached()) {
+			gpui::PushCommand("app/language");
+			return;
+		}
+
 		// Get language
 		auto new_language = wxGetApp().locale.PickLanguage();
 		if (new_language.empty()) return;
@@ -194,6 +204,10 @@ struct app_log final : public Command {
 	STR_HELP("View the event log")
 
 	void operator()(agi::Context *c) override {
+		if (gpui::FrontendAttached()) {
+			gpui::PushCommand("app/log");
+			return;
+		}
 		ShowLogWindow(c);
 	}
 };
@@ -305,6 +319,10 @@ struct app_updates final : public Command {
 	STR_HELP("Check to see if there is a new version of Aegisub available")
 
 	void operator()(agi::Context *) override {
+		if (gpui::FrontendAttached()) {
+			gpui::PushCommand("app/updates");
+			return;
+		}
 		PerformVersionCheck(true);
 	}
 };

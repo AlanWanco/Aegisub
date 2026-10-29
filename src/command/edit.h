@@ -24,4 +24,18 @@ std::size_t PasteLinesOver(agi::Context *context, std::vector<bool> fields);
 std::optional<agi::Color> BeginColorPick(agi::Context *context, std::string const& kind);
 void ApplyColorPick(agi::Context *context, agi::Color color);
 void CancelColorPick(agi::Context *context);
+
+/// The font a line renders with at the cursor: style defaults overlaid with the
+/// \fn, \fs, \b, \i and \u tags that apply there.
+struct LineFont {
+	std::string face;
+	int size = 0;
+	bool bold = false;
+	bool italic = false;
+	bool underline = false;
+	bool operator==(LineFont const&) const = default;
+};
+std::optional<LineFont> CurrentFont(agi::Context *context);
+/// Applies font tags to the selection, writing only the fields that differ.
+void ApplyFont(agi::Context *context, LineFont const& font);
 }

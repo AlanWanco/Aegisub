@@ -560,51 +560,27 @@ struct edit_font final : public Command {
 	STR_HELP("Select a font face and size")
 
 	void operator()(agi::Context *c) override {
-		const parsed_line active(c->selectionController->GetActiveLine());
-		const int insertion_point = normalize_pos(active.line->Text, c->textSelectionController->GetInsertionPoint());
-
-		auto font_for_line = [&](parsed_line const& line) -> wxFont {
-			const int blockn = line.block_at_pos(insertion_point);
-
-			const AssStyle *style = c->ass->GetStyle(line.line->Style);
-			const AssStyle default_style;
-			if (!style)
-				style = &default_style;
-
-			return wxFont(
-				line.get_value(blockn, (int)style->fontsize, "\\fs"),
-				wxFONTFAMILY_DEFAULT,
-				line.get_value(blockn, style->italic, "\\i") ? wxFONTSTYLE_ITALIC : wxFONTSTYLE_NORMAL,
-				line.get_value(blockn, style->bold, "\\b") ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL,
-				line.get_value(blockn, style->underline, "\\u"),
-				to_wx(line.get_value(blockn, style->font, "\\fn")));
-		};
-
-		const wxFont initial = font_for_line(active);
-		const wxFont font = wxGetFontFromUser(c->parent, initial);
-		if (!font.Ok() || font == initial) return;
-
-		update_lines(c, _("set font"), [&](AssDialogue *line, int sel_start, int, int norm_sel_start, int) {
-			parsed_line parsed(line);
-			const wxFont startfont = font_for_line(parsed);
-			int shift = 0;
-			auto do_set_tag = [&](const char *tag_name, std::string const& value) {
-				shift += parsed.set_tag(tag_name, value, norm_sel_start, sel_start + shift);
-			};
-
-			if (font.GetFaceName() != startfont.GetFaceName())
-				do_set_tag("\\fn", from_wx(font.GetFaceName()));
-			if (font.GetPointSize() != startfont.GetPointSize())
-				do_set_tag("\\fs", std::to_string(font.GetPointSize()));
-			if (font.GetWeight() != startfont.GetWeight())
-				do_set_tag("\\b", std::to_string(font.GetWeight() == wxFONTWEIGHT_BOLD));
-			if (font.GetStyle() != startfont.GetStyle())
-				do_set_tag("\\i", std::to_string(font.GetStyle() == wxFONTSTYLE_ITALIC));
-			if (font.GetUnderlined() != startfont.GetUnderlined())
-				do_set_tag("\\u", std::to_string(font.GetUnderlined()));
-
-			return shift;
-		});
+		if (gpui::FrontendAttached()) {
+			gpui::PushCommand("edit/font");
+			return;
+		}
+		auto current = cmd::CurrentFont(c);
+		if (!current) return;
+		cmd::LineFont const start = *current;
+		wxFont const initial(start.size, wxFONTFAMILY_DEFAULT,
+			start.italic ? wxFONTSTYLE_ITALIC : wxFONTSTYLE_NORMAL,
+			start.bold ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL,
+			start.underline, to_wx(start.face));
+		wxFont const font = wxGetFontFromUser(c->parent, initial);
+		if (!font.Ok()) return;
+		cmd::LineFont const picked{
+			from_wx(font.GetFaceName()),
+			font.GetPointSize(),
+			font.GetWeight() == wxFONTWEIGHT_BOLD,
+			font.GetStyle() == wxFONTSTYLE_ITALIC,
+			font.GetUnderlined()};
+		if (picked == start) return;
+		cmd::ApplyFont(c, picked);
 	}
 };
 
@@ -1450,4 +1426,45 @@ namespace cmd {
 		reg(std::make_unique<edit_clear>());
 		reg(std::make_unique<edit_clear_text>());
 	}
+}
+
+namespace cmd {
+static LineFont font_at(agi::Context *c, parsed_line const& line, int pos) {
+	int const blockn = line.block_at_pos(pos);
+	AssStyle const* style = c->ass->GetStyle(line.line->Style);
+	AssStyle const fallback;
+	if (!style) style = &fallback;
+	LineFont font;
+	font.size = line.get_value(blockn, (int)style->fontsize, "\\fs");
+	font.italic = line.get_value(blockn, style->italic, "\\i");
+	font.bold = line.get_value(blockn, style->bold, "\\b");
+	font.underline = line.get_value(blockn, style->underline, "\\u");
+	font.face = line.get_value(blockn, style->font, "\\fn");
+	return font;
+}
+
+std::optional<LineFont> CurrentFont(agi::Context *c) {
+	AssDialogue *active = c->selectionController->GetActiveLine();
+	if (!active) return std::nullopt;
+	parsed_line line(active);
+	int const pos = normalize_pos(line.line->Text, c->textSelectionController->GetInsertionPoint());
+	return font_at(c, line, pos);
+}
+
+void ApplyFont(agi::Context *c, LineFont const& font) {
+	update_lines(c, _("set font"), [&](AssDialogue *line, int sel_start, int, int norm_sel_start, int) {
+		parsed_line parsed(line);
+		LineFont const start = font_at(c, parsed, norm_sel_start);
+		int shift = 0;
+		auto set = [&](char const* tag, std::string const& value) {
+			shift += parsed.set_tag(tag, value, norm_sel_start, sel_start + shift);
+		};
+		if (font.face != start.face) set("\\fn", font.face);
+		if (font.size != start.size) set("\\fs", std::to_string(font.size));
+		if (font.bold != start.bold) set("\\b", font.bold ? "1" : "0");
+		if (font.italic != start.italic) set("\\i", font.italic ? "1" : "0");
+		if (font.underline != start.underline) set("\\u", font.underline ? "1" : "0");
+		return shift;
+	});
+}
 }
