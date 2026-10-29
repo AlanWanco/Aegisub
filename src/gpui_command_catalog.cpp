@@ -35,7 +35,7 @@ std::string_view CommandSurface(std::string_view name) {
 	};
 	static const std::set<std::string_view> wx_controls = {
 		"app/bring_to_front", "app/hide", "app/hide_others", "app/maximize", "app/minimize", "app/show_all",
-		"app/exit", "app/new_window", "subtitle/close", "app/display/audio_subs", "app/display/full", "app/display/subs", "app/display/video_subs",
+		"subtitle/close", "app/display/audio_subs", "app/display/full", "app/display/subs", "app/display/video_subs",
 		"video/copy_coordinates", "video/detach", "video/focus_seek",
 		"edit/line/paste/over"
 	};

@@ -216,6 +216,13 @@ fn install_native_menus(catalog: &Catalog, cx: &mut App) {
         ),
         gpui_kit::MenuItem::separator(),
         gpui_kit::MenuItem::action(
+            "新建窗口",
+            RunCommand {
+                name: "app/new_window".into(),
+            },
+        ),
+        gpui_kit::MenuItem::separator(),
+        gpui_kit::MenuItem::action(
             "退出 Aegisub",
             RunCommand {
                 name: "app/exit".into(),
@@ -1238,9 +1245,48 @@ impl Workspace {
         }).detach();
     }
 
+    /// 新建窗口：同一份文档的第二个窗口，各自持有自己的桥接连接。
+    fn open_new_window(&mut self, cx: &mut Context<Self>) {
+        // Cascade the new window: offset it and shrink it a little, otherwise every
+        // window ends up centered on exactly the same spot.
+        let cascade = cx.windows().len() as f32;
+        let bounds = cx.primary_display().map(|display| {
+            let screen = display.bounds();
+            let step = px(32.) * cascade;
+            let width = (screen.size.width - step * 2. - px(64.))
+                .min(px(1420.))
+                .max(px(880.));
+            let height = (screen.size.height - step * 2. - px(64.))
+                .min(px(920.))
+                .max(px(560.));
+            gpui_kit::Bounds {
+                origin: gpui_kit::point(
+                    screen.origin.x + (screen.size.width - width) / 2. + step,
+                    screen.origin.y + (screen.size.height - height) / 2. + step,
+                ),
+                size: size(width, height),
+            }
+        });
+        if let Err(error) = open_workspace(cx, self.bridge.clone(), bounds) {
+            eprintln!("Could not open another GPUI window: {error:#}");
+            self.status = format!("无法打开新窗口：{error}");
+            cx.notify();
+        }
+    }
+
     fn invoke(&mut self, mut payload: Value, cx: &mut Context<Self>) {
         if payload["op"] == "command" {
             match payload["name"].as_str() {
+                // These two belong to the front end: the host would answer them
+                // by opening its own wx window or frame.
+                Some("app/exit") => {
+                    cx.quit();
+                    return;
+                }
+                Some("app/new_window") => {
+                    self.open_new_window(cx);
+                    return;
+                }
                 Some(name @ ("audio/save/clip" | "keyframe/save" | "timecode/save")) => {
                     self.save_media_file(
                         match name {
@@ -5987,6 +6033,105 @@ impl Render for Workspace {
     }
 }
 
+/// Opens a workspace window wired to the bridge. Every window keeps its own
+/// connection, so File > New Window gives an independent view of the document.
+fn open_workspace(
+    cx: &mut App,
+    bridge: Bridge,
+    bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
+) -> Result<gpui_kit::WindowHandle<gpui_kit::component::Root>> {
+    let window_bounds = match bounds {
+        Some(bounds) => WindowBounds::Windowed(bounds),
+        None => WindowBounds::centered(size(px(1420.), px(920.)), cx),
+    };
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(window_bounds),
+            titlebar: Some(gpui_kit::TitlebarOptions {
+                title: Some("Aegisub".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        move |window, cx| {
+            cx.activate(true);
+            window.activate_window();
+            let workspace = cx.new(|cx| Workspace::new(bridge.clone(), window, cx));
+            let menu_target = workspace.downgrade();
+            cx.on_action(move |action: &RunCommand, cx| {
+                let name = action.name.clone();
+                if let Some(view) = menu_target.upgrade() {
+                    let _ = view.update(cx, |view, cx| {
+                        view.invoke(json!({"op":"command", "name":name}), cx)
+                    });
+                }
+            });
+            workspace.update(cx, |view, cx| {
+                view.refresh_catalog(cx);
+                view.refresh_document(cx);
+            });
+            let weak = workspace.downgrade();
+            let poll_bridge = bridge.clone();
+            cx.spawn(async move |cx| {
+                let mut consecutive_failures = 0;
+                let mut playing = false;
+                let mut last_document_snapshot = Instant::now();
+                loop {
+                    if weak.upgrade().is_none() {
+                        break;
+                    }
+                    let read_document =
+                        !playing || last_document_snapshot.elapsed() >= Duration::from_millis(350);
+                    let result = if read_document {
+                        poll_bridge.snapshot().await.map(Ok)
+                    } else {
+                        poll_bridge.playback().await.map(Err)
+                    };
+                    match result {
+                        Ok(Ok(snapshot)) => {
+                            consecutive_failures = 0;
+                            last_document_snapshot = Instant::now();
+                            playing = snapshot.playing || snapshot.audio.playing;
+                            if let Some(view) = weak.upgrade() {
+                                let _ = view.update(cx, |view, cx| {
+                                    if view.status.starts_with("Aegisub 连接中断") {
+                                        view.status = "已重新连接 Aegisub".into();
+                                    }
+                                    view.apply_snapshot(snapshot, cx);
+                                    view.refresh_frame(cx);
+                                });
+                            }
+                        }
+                        Ok(Err(playback)) => {
+                            consecutive_failures = 0;
+                            playing = playback.playing || playback.audio_playing;
+                            if let Some(view) = weak.upgrade() {
+                                let _ = view.update(cx, |view, cx| {
+                                    view.apply_playback(playback, cx);
+                                    view.refresh_frame(cx);
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            consecutive_failures += 1;
+                            set_status(&weak, cx, format!("Aegisub 连接中断：{error}"));
+                            if consecutive_failures >= 5 {
+                                cx.update(|app| app.quit());
+                                break;
+                            }
+                        }
+                    }
+                    cx.background_executor()
+                        .timer(Duration::from_millis(if playing { 40 } else { 350 }))
+                        .await;
+                }
+            })
+            .detach();
+            cx.new(|cx| Root::new(workspace, window, cx))
+        },
+    )
+}
+
 fn run(endpoint: String, token: String) -> Result<()> {
     application()
         .with_assets(workspace_theme::StudioAssets)
@@ -6001,93 +6146,7 @@ fn run(endpoint: String, token: String) -> Result<()> {
             })
             .detach();
             let bridge = Bridge { endpoint, token };
-            let window = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::centered(size(px(1420.), px(920.)), cx)),
-                    titlebar: Some(gpui_kit::TitlebarOptions {
-                        title: Some("Aegisub".into()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    cx.activate(true);
-                    window.activate_window();
-                    let workspace = cx.new(|cx| Workspace::new(bridge.clone(), window, cx));
-                    let menu_target = workspace.downgrade();
-                    cx.on_action(move |action: &RunCommand, cx| {
-                        let name = action.name.clone();
-                        if let Some(view) = menu_target.upgrade() {
-                            let _ = view.update(cx, |view, cx| {
-                                view.invoke(json!({"op":"command", "name":name}), cx)
-                            });
-                        }
-                    });
-                    workspace.update(cx, |view, cx| {
-                        view.refresh_catalog(cx);
-                        view.refresh_document(cx);
-                    });
-                    let weak = workspace.downgrade();
-                    let poll_bridge = bridge.clone();
-                    cx.spawn(async move |cx| {
-                        let mut consecutive_failures = 0;
-                        let mut playing = false;
-                        let mut last_document_snapshot = Instant::now();
-                        loop {
-                            if weak.upgrade().is_none() {
-                                break;
-                            }
-                            let read_document = !playing
-                                || last_document_snapshot.elapsed() >= Duration::from_millis(350);
-                            let result = if read_document {
-                                poll_bridge.snapshot().await.map(Ok)
-                            } else {
-                                poll_bridge.playback().await.map(Err)
-                            };
-                            match result {
-                                Ok(Ok(snapshot)) => {
-                                    consecutive_failures = 0;
-                                    last_document_snapshot = Instant::now();
-                                    playing = snapshot.playing || snapshot.audio.playing;
-                                    if let Some(view) = weak.upgrade() {
-                                        let _ = view.update(cx, |view, cx| {
-                                            if view.status.starts_with("Aegisub 连接中断") {
-                                                view.status = "已重新连接 Aegisub".into();
-                                            }
-                                            view.apply_snapshot(snapshot, cx);
-                                            view.refresh_frame(cx);
-                                        });
-                                    }
-                                }
-                                Ok(Err(playback)) => {
-                                    consecutive_failures = 0;
-                                    playing = playback.playing || playback.audio_playing;
-                                    if let Some(view) = weak.upgrade() {
-                                        let _ = view.update(cx, |view, cx| {
-                                            view.apply_playback(playback, cx);
-                                            view.refresh_frame(cx);
-                                        });
-                                    }
-                                }
-                                Err(error) => {
-                                    consecutive_failures += 1;
-                                    set_status(&weak, cx, format!("Aegisub 连接中断：{error}"));
-                                    if consecutive_failures >= 5 {
-                                        cx.update(|app| app.quit());
-                                        break;
-                                    }
-                                }
-                            }
-                            cx.background_executor()
-                                .timer(Duration::from_millis(if playing { 40 } else { 350 }))
-                                .await;
-                        }
-                    })
-                    .detach();
-                    cx.new(|cx| Root::new(workspace, window, cx))
-                },
-            );
-            if let Err(error) = window {
+            if let Err(error) = open_workspace(cx, bridge, None) {
                 eprintln!("Could not create GPUI window: {error:#}");
                 cx.quit();
             }
