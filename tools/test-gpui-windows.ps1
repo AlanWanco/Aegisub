@@ -167,10 +167,11 @@ try {
     }
     Assert-Clean $base
 
-    # Scroll the independent history pane; its movement must not move the input.
-    $windowBounds = [GpuiDesktop+Rect]::new()
-    [void][GpuiDesktop]::GetWindowRect($script:windowHandle, [ref]$windowBounds)
-    [void][GpuiDesktop]::SetCursorPos($windowBounds.Right - 100, $windowBounds.Top + 350)
+    # Scroll the independent history list; its movement must not move the input.
+    $clearHistory = (Find-Control '清空…').Current.BoundingRectangle
+    [void][GpuiDesktop]::SetCursorPos(
+        [int](($clearHistory.Left + $clearHistory.Right) / 2),
+        [int]($clearHistory.Bottom + 120))
     [GpuiDesktop]::mouse_event(0x0800, 0, 0, -12000, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 500
     $afterBounds = (Find-Control '平移时长' -Kind Edit).Current.BoundingRectangle
@@ -184,14 +185,15 @@ try {
     Press-Control '时间平移'
     [void][GpuiDesktop]::SetWindowPos($script:windowHandle, [IntPtr]::Zero, $screen.X, $screen.Y, 800, 600, 0x0040)
     Start-Sleep -Milliseconds 350
-    Press-Control '历史记录 · 50'
-    Save-Screenshot 'timing-compact-history'
-    Press-Control '平移参数'
+    # The compact window stacks both cards: the parameter field stays visible and
+    # the history card keeps its own scroll area underneath.
     if ((Find-Control '平移时长' -Kind Edit).Current.IsOffscreen) { throw 'Compact layout hides the amount field' }
     Save-Screenshot 'timing-compact-parameters'
+    if ((Find-Control '清空…').Current.IsOffscreen) { throw 'Compact layout hides the history card' }
+    Save-Screenshot 'timing-compact-history'
     Assert-Clean $base
     @{ actual_windows_desktop = $true; visible_amount_field = $true; exact_form_shift_ms = 1250;
-       undo_restores_clean_document = $true; independent_history_scroll = $true; compact_tabs = $true } |
+       undo_restores_clean_document = $true; independent_history_scroll = $true; compact_stacked_cards = $true } |
         ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'result.json')
     Write-Host 'Windows GPUI desktop smoke: PASS'
 } finally {

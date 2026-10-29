@@ -233,6 +233,8 @@ pub fn segmented(
                 .rounded(px(6.))
                 .text_sm()
                 .whitespace_nowrap()
+                .role(gpui_kit::Role::Button)
+                .aria_label(label)
                 .when(selected, |item| item.bg(p.accent).text_color(p.canvas))
                 .when(!selected && !disabled, |item| {
                     item.text_color(p.text).hover(|item| item.bg(p.raised))
