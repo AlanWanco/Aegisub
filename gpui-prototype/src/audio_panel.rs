@@ -338,13 +338,20 @@ impl AudioPanel {
                 })),
         );
         let bounds = self.bounds.clone();
+        // The rendered waveform image is drawn for a dark display, so keep the
+        // dark track once audio exists and follow the theme while it is empty.
+        let graph_bg: gpui_kit::Hsla = if state.loaded {
+            rgb(0x101519).into()
+        } else {
+            Theme::global(cx).muted
+        };
         let mut graph = div()
             .id("audio-graph")
             .relative()
             .w_full()
             .h(px(graph_height))
             .flex_shrink_0()
-            .bg(rgb(0x101519))
+            .bg(graph_bg)
             .overflow_hidden()
             .child(
                 canvas(

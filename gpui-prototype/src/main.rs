@@ -4289,6 +4289,19 @@ impl Workspace {
                         view.invoke(json!({"op":"command", "name":"video/show_overscan"}), cx)
                     })),
             );
+        // The empty stage follows the theme; a loaded video keeps a dark
+        // letterbox so frames and subtitles read against it either way.
+        let stage_dark = self.snapshot.video;
+        let stage_bg: gpui_kit::Hsla = if stage_dark {
+            rgb(0x0e1013).into()
+        } else {
+            p.inset
+        };
+        let stage_text: gpui_kit::Hsla = if stage_dark {
+            rgb(0xa1aabd).into()
+        } else {
+            p.muted
+        };
         div()
             .v_flex()
             .w_full()
@@ -4307,7 +4320,7 @@ impl Workspace {
                     .w_full()
                     .relative()
                     .overflow_hidden()
-                    .bg(rgb(0x0e1013))
+                    .bg(stage_bg)
                     .child(
                         canvas(
                             move |bounds, _window, _cx| {
@@ -4352,7 +4365,7 @@ impl Workspace {
                                 .gap_3()
                                 .items_center()
                                 .justify_center()
-                                .text_color(rgb(0xa1aabd))
+                                .text_color(stage_text)
                                 .child(Icon::new(IconName::Play).size(px(32.)))
                                 .child(div().text_sm().child(if self.snapshot.video {
                                     "正在加载视频帧"
@@ -4412,9 +4425,9 @@ impl Workspace {
                     .justify_between()
                     .px_3()
                     .py_2()
-                    .bg(rgb(0x0e1013))
+                    .bg(stage_bg)
                     .text_xs()
-                    .text_color(rgb(0xb6bcc6))
+                    .text_color(stage_text)
                     .child(status)
                     .when(f32::from(window.viewport_size().width) > 1100., |v| {
                         v.child("⌘/Ctrl 滚轮缩放 · Shift 平移")
