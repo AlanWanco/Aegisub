@@ -581,6 +581,8 @@ enum WorkspaceResizeDrag {
     VideoPreview {
         start_y: gpui_kit::Pixels,
         start_height: f32,
+        /// Keeps the properties card from being squeezed out of the column.
+        max_height: f32,
     },
 }
 
@@ -3620,7 +3622,7 @@ impl Workspace {
             )
     }
 
-    fn render_properties(&self, height: Option<f32>, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Palette::current(cx);
         let cell = |key: &'static str, label: &'static str| {
             div()
@@ -3675,8 +3677,7 @@ impl Workspace {
         div()
             .id("line-properties")
             .v_flex()
-            .when_some(height, |panel, height| panel.h(px(height)).flex_shrink_0())
-            .when(height.is_none(), |panel| panel.flex_1())
+            .flex_1()
             .min_w_0()
             .min_h_0()
             .rounded(px(crate::workspace_theme::RADIUS_MD))
@@ -3684,7 +3685,6 @@ impl Workspace {
             .border_color(p.border)
             .bg(p.surface)
             .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
-            .bg(p.surface)
             .p_2()
             .gap_0p5()
             .overflow_y_scrollbar()
@@ -4353,6 +4353,7 @@ impl Workspace {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
+            .when(side_by_side, |card| card.flex_shrink_0())
             .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
             .border_color(p.border)
@@ -5217,10 +5218,11 @@ impl Render for Workspace {
                             WorkspaceResizeDrag::VideoPreview {
                                 start_y,
                                 start_height,
+                                max_height,
                             } => {
                                 view.video_preview_height = Some(
                                     (start_height + f32::from(event.position.y - start_y))
-                                        .clamp(120., 900.),
+                                        .clamp(120., max_height),
                                 );
                             }
                         }
@@ -5338,13 +5340,16 @@ impl Render for Workspace {
                 .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(divider))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
-                    cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                    cx.listener(|view, event: &gpui_kit::MouseDownEvent, window, cx| {
                         let current = view
                             .video_preview_height
                             .unwrap_or_else(|| view.last_preview_height.get());
+                        let max_height =
+                            (f32::from(window.viewport_size().height) - 620.).max(140.);
                         view.layout_drag = Some(WorkspaceResizeDrag::VideoPreview {
                             start_y: event.position.y,
                             start_height: current,
+                            max_height,
                         });
                         cx.stop_propagation();
                         cx.notify();
@@ -5370,12 +5375,9 @@ impl Render for Workspace {
                         // The stacked layout has no spare height to trade
                         // between the preview and the properties.
                         .when(side_by_side, |column| column.child(video_handle))
-                        .child(self.render_properties(
-                            side_by_side.then(|| {
-                                (f32::from(window.viewport_size().height) - 600.).clamp(190., 320.)
-                            }),
-                            cx,
-                        )),
+                        // Filling the column (instead of a fixed height) lets
+                        // the preview divider trade space with the properties.
+                        .child(self.render_properties(cx)),
                 )
                 .when(side_by_side, |row| row.child(column_handle))
                 .child(
