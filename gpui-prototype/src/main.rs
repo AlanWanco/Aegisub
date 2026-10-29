@@ -3198,6 +3198,10 @@ impl Workspace {
                     self.open_kanji(cx);
                     return;
                 }
+                Some("subtitle/open/video") => {
+                    self.pick_file("video", cx);
+                    return;
+                }
                 Some(name @ ("edit/color/primary"
                 | "edit/color/secondary"
                 | "edit/color/outline"

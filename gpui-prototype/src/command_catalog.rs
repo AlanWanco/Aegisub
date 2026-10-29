@@ -26,7 +26,7 @@ impl CommandInfo {
     pub fn surface_label(&self) -> &'static str {
         match self.surface.as_str() {
             "native" => "GPUI 交互",
-            "dialog" => "旧版对话框",
+            "dialog" => "GPUI 面板",
             "wx-control" => "需旧版控件",
             "internal" => "内部入口",
             "automation" => "Lua Automation",
