@@ -122,6 +122,7 @@ impl SpellingPanel {
             .gap_2()
             .child(
                 Button::new("spelling-start")
+                    .icon(IconName::Check)
                     .label("从当前行检查")
                     .primary()
 
@@ -132,10 +133,11 @@ impl SpellingPanel {
             )
             .child(
                 Button::new("spelling-language")
+                    .icon(IconName::Languages)
                     .label(if selected.is_empty() {
                         "选择语言".into()
                     } else {
-                        selected.clone()
+                        format!("语言 {selected}")
                     })
 
                     .disabled(self.loading || languages.is_empty())
@@ -166,6 +168,7 @@ impl SpellingPanel {
             toolbar = toolbar.child(
                 Button::new(format!("spelling-option-{id}"))
                     .label(label)
+                    .ghost()
                     .when(value, |button| button.primary())
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -181,7 +184,10 @@ impl SpellingPanel {
         }
         toolbar = toolbar.child(
             Button::new("spelling-undo")
-                .label("撤销")
+                .icon(IconName::Undo2)
+                .accessibility_label("撤销")
+                .tooltip("撤销上一次修改")
+                .ghost()
                 .disabled(self.loading)
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
