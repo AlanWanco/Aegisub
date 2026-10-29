@@ -3708,7 +3708,9 @@ impl Workspace {
             )
     }
 
-    fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Line inspector. `rail` is the copy that lives beside the text editor:
+    /// narrower, no card chrome, and its own scroll.
+    fn render_properties(&self, rail: Option<f32>, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Palette::current(cx);
         let cell = |key: &'static str, label: &'static str| {
             div()
@@ -3758,95 +3760,178 @@ impl Workspace {
             .iter()
             .find(|line| line.id == self.selected_line)
             .is_some_and(|line| line.comment);
-        // Compact two-column inspector: label above its field, groups on one line
-        // each, so the whole panel fits without scrolling in the default window.
+        let toggle_comment = Button::new("toggle-comment")
+            .icon(IconName::Captions)
+            .rounded(gpui_kit::px(999.))
+            .small()
+            .px(gpui_kit::px(13.))
+            .py(gpui_kit::px(3.))
+            .when(rail.is_some(), |button| {
+                button.tooltip(if commented { "改为对白" } else { "改为注释" })
+            })
+            .when(rail.is_none(), |button| {
+                button.label(if commented { "改为对白" } else { "改为注释" })
+            })
+            .ghost()
+            .disabled(self.selected_line < 0)
+            .on_click(cx.listener(move |view, _, _, cx| {
+                view.invoke(json!({"op": "line_fields", "ids": view.snapshot.selected, "fields": {"comment": !commented}}), cx);
+            }));
+        let save_as = Button::new("save-as")
+            .rounded(gpui_kit::px(999.))
+            .small()
+            .px(gpui_kit::px(13.))
+            .py(gpui_kit::px(3.))
+            .child(Icon::new(IconName::Save).size(px(15.)))
+            .accessibility_label("另存为")
+            .tooltip("另存为…")
+            .ghost()
+            .on_click(cx.listener(|view, _, _, cx| {
+                view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx)
+            }));
+        let apply = Button::new("apply-line-fields")
+            .rounded(gpui_kit::px(999.))
+            .small()
+            .px(gpui_kit::px(13.))
+            .py(gpui_kit::px(3.))
+            .when(rail.is_some(), |button| {
+                // The rail is too narrow for a label, so it shows the check only.
+                button
+                    .child(Icon::new(IconName::Check).size(px(15.)))
+                    .accessibility_label("应用修改")
+                    .tooltip("应用修改")
+            })
+            .when(rail.is_none(), |button| {
+                button.icon(IconName::Check).label("应用修改")
+            })
+            .primary()
+            .disabled(self.selected_line < 0 || !self.properties_dirty)
+            .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx)));
+        let count = div()
+            .px_2()
+            .py_0p5()
+            .rounded(px(4.))
+            .bg(p.raised)
+            .text_size(px(11.))
+            .text_color(p.muted)
+            .child(format!("{} 行", self.snapshot.selected.len()));
+        let header = if rail.is_some() {
+            div()
+                .h_flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Icon::new(IconName::Settings2)
+                        .size(px(15.))
+                        .text_color(p.muted),
+                )
+                .child(div().text_sm().font_semibold().flex_1().child("行属性"))
+                .child(toggle_comment)
+                .child(apply)
+        } else {
+            div()
+                .h_flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Icon::new(IconName::Settings2)
+                        .size(px(15.))
+                        .text_color(p.muted),
+                )
+                .child(div().text_sm().font_semibold().flex_1().child("行属性"))
+                .child(count)
+                .child(toggle_comment)
+                .child(save_as)
+                .child(apply)
+        };
+        let groups = if rail.is_some() {
+            vec![
+                group(
+                    "时间",
+                    vec![vec![
+                        cell("start", "开始").into_any_element(),
+                        cell("end", "结束").into_any_element(),
+                    ]],
+                ),
+                group(
+                    "字幕",
+                    vec![
+                        vec![
+                            cell("style", "样式").into_any_element(),
+                            cell("actor", "角色").into_any_element(),
+                        ],
+                        vec![
+                            cell("layer", "图层").into_any_element(),
+                            cell("effect", "效果").into_any_element(),
+                        ],
+                    ],
+                ),
+                group(
+                    "边距",
+                    vec![vec![
+                        cell("margin_left", "左").into_any_element(),
+                        cell("margin_right", "右").into_any_element(),
+                        cell("margin_vertical", "垂直").into_any_element(),
+                    ]],
+                ),
+            ]
+        } else {
+            vec![
+                group(
+                    "时间",
+                    vec![vec![
+                        cell("start", "开始").into_any_element(),
+                        cell("end", "结束").into_any_element(),
+                    ]],
+                ),
+                group(
+                    "字幕",
+                    vec![vec![
+                        cell("style", "样式").into_any_element(),
+                        cell("actor", "角色").into_any_element(),
+                        cell("layer", "图层").into_any_element(),
+                        cell("effect", "效果").into_any_element(),
+                    ]],
+                ),
+                group(
+                    "边距",
+                    vec![vec![
+                        cell("margin_left", "左").into_any_element(),
+                        cell("margin_right", "右").into_any_element(),
+                        cell("margin_vertical", "垂直").into_any_element(),
+                    ]],
+                ),
+            ]
+        };
         div()
             .id("line-properties")
             .v_flex()
-            .flex_1()
             .min_w_0()
             .min_h_0()
-            .rounded(px(crate::workspace_theme::RADIUS_MD))
-            .border_1()
-            .border_color(p.border)
-            .bg(p.surface)
-            .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
-            .p_2()
-            .gap_0p5()
+            .when(rail.is_some(), |panel| {
+                panel
+                    .w(px(rail.unwrap_or(272.)))
+                    .flex_shrink_0()
+                    .h_full()
+                    .p_3()
+                    .gap_3()
+                    .border_l_1()
+                    .border_color(p.divider)
+            })
+            .when(rail.is_none(), |panel| {
+                panel
+                    .flex_1()
+                    .rounded(px(crate::workspace_theme::RADIUS_MD))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.surface)
+                    .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
+                    .p_2()
+                    .gap_0p5()
+            })
+            .child(header)
+            .children(groups)
             .overflow_y_scrollbar()
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Icon::new(IconName::Settings2)
-                            .size(px(15.))
-                            .text_color(p.muted),
-                    )
-                    .child(div().text_sm().font_semibold().flex_1().child("行属性"))
-                    .child(
-                        div()
-                            .px_2()
-                            .py_0p5()
-                            .rounded(px(4.))
-                            .bg(p.raised)
-                            .text_size(px(11.))
-                            .text_color(p.muted)
-                            .child(format!("{} 行", self.snapshot.selected.len())),
-                    )
-                    .child(
-                        Button::new("toggle-comment").icon(IconName::Captions).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                            .label(if commented { "改为对白" } else { "改为注释" })
-                            .ghost()
-                            .disabled(self.selected_line < 0)
-                            .on_click(cx.listener(move |view, _, _, cx| {
-                                view.invoke(json!({"op": "line_fields", "ids": view.snapshot.selected, "fields": {"comment": !commented}}), cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("save-as").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                            .child(Icon::new(IconName::Save).size(px(15.)))
-                            .accessibility_label("另存为")
-                            .tooltip("另存为…")
-                            .ghost()
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx)
-                            })),
-                    )
-                    .child(
-                        Button::new("apply-line-fields").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                            .icon(IconName::Check)
-                            .label("应用修改")
-                            .primary()
-                            .disabled(self.selected_line < 0 || !self.properties_dirty)
-                            .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))),
-                    ),
-            )
-            .child(group(
-                "时间",
-                vec![vec![
-                    cell("start", "开始").into_any_element(),
-                    cell("end", "结束").into_any_element(),
-                ]],
-            ))
-            .child(group(
-                "字幕",
-                vec![vec![
-                    cell("style", "样式").into_any_element(),
-                    cell("actor", "角色").into_any_element(),
-                    cell("layer", "图层").into_any_element(),
-                    cell("effect", "效果").into_any_element(),
-                ]],
-            ))
-            .child(group(
-                "边距",
-                vec![vec![
-                    cell("margin_left", "左").into_any_element(),
-                    cell("margin_right", "右").into_any_element(),
-                    cell("margin_vertical", "垂直").into_any_element(),
-                ]],
-            ))
     }
 
     fn activate_panel(&mut self, panel: Panel, window: &mut Window, cx: &mut Context<Self>) {
@@ -4178,6 +4263,7 @@ impl Workspace {
         &self,
         window: &Window,
         side_by_side: bool,
+        fill: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let p = Palette::current(cx);
@@ -4189,7 +4275,11 @@ impl Workspace {
         let display_size = (self.snapshot.video && !self.visual.fit_video)
             .then(|| size(px(height * aspect), px(height)));
         let available_height = f32::from(window.viewport_size().height);
-        let view_height = if self.visual.fit_video || !self.snapshot.video {
+        let view_height = if fill {
+            // The line properties moved beside the text editor, so nothing is
+            // stacked under the preview any more: it takes the whole column.
+            (available_height - 430.).max(160.)
+        } else if self.visual.fit_video || !self.snapshot.video {
             if side_by_side {
                 (available_height - 510.).clamp(130., 140.)
             } else if self.active_panel == Panel::Visual {
@@ -4208,7 +4298,11 @@ impl Workspace {
             let max_height = available_height - reserved_height;
             height.clamp(80., max_height.max(80.))
         };
-        let view_height = self.video_preview_height.unwrap_or(view_height);
+        let view_height = if fill {
+            view_height
+        } else {
+            self.video_preview_height.unwrap_or(view_height)
+        };
         self.last_preview_height.set(view_height);
         let image = self.frame_image.clone();
         let has_image = image.is_some();
@@ -4439,7 +4533,8 @@ impl Workspace {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .when(side_by_side, |card| card.flex_shrink_0())
+            .when(side_by_side && !fill, |card| card.flex_shrink_0())
+            .when(fill, |card| card.flex_1())
             .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
             .border_color(p.border)
@@ -4447,8 +4542,8 @@ impl Workspace {
             .child(
                 div()
                     .id("video-frame-surface")
-                    .h(px(view_height))
-                    .flex_shrink_0()
+                    .when(fill, |surface| surface.flex_1().min_h(px(120.)))
+                    .when(!fill, |surface| surface.h(px(view_height)).flex_shrink_0())
                     .w_full()
                     .relative()
                     .overflow_hidden()
@@ -4619,7 +4714,11 @@ impl Workspace {
         self.subtitle_columns.insert(position, column);
     }
 
-    fn render_subtitle_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_subtitle_panel(
+        &mut self,
+        rail: Option<f32>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let dark = Theme::global(cx).is_dark();
         let p = Palette::new(dark);
         let appearance = &self.snapshot.appearance;
@@ -4846,19 +4945,20 @@ impl Workspace {
             );
         }
         let row_count = visible.len();
+        let properties_rail =
+            rail.map(|width| self.render_properties(Some(width), cx).into_any_element());
         let editor_height = self.subtitle_editor_height;
-        let editor_section = div()
-                    .id("subtitle-editor-section")
-                    .v_flex()
-                    .flex_shrink_0()
-                    .px_3()
-                    .py_3()
-                    .gap_2()
-                    .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
-                    .bg(p.surface)
-                    .border_b_1()
-                    .border_color(border)
-                    .child(
+        // Header, formatting bar and the text box stay in one column so the
+        // inspector can sit beside them as a second column.
+        let editor_content = div()
+            .v_flex()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .gap_2()
+            .when(rail.is_some(), |content| content.py_3().pl_3().pr_2())
+            .when(rail.is_none(), |content| content.px_3().py_3())
+            .child(
                         div()
                             .h_flex()
                             .gap_2()
@@ -4917,9 +5017,22 @@ impl Workspace {
                             ),
                     )
                     .child(format_toolbar)
-                    .child(editor.flex_1().min_h(px(40.)).w_full());
+                    .child(editor.flex_1().min_h(px(40.)));
+        let editor_section = div()
+            .id("subtitle-editor-section")
+            .flex_shrink_0()
+            .min_w_0()
+            .when(rail.is_some(), |section| section.h_flex().items_stretch())
+            .when(rail.is_none(), |section| section.v_flex())
+            .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
+            .bg(p.surface)
+            .border_b_1()
+            .border_color(border)
+            .child(editor_content)
+            .children(properties_rail);
         let subtitle_list = div()
             .v_flex()
+            .min_w_0()
             .min_h_0()
             .overflow_hidden()
             .child(
@@ -4982,7 +5095,9 @@ impl Workspace {
                         Input::new(&self.search)
                             .id("subtitle-search")
                             .prefix(Icon::new(IconName::Search).size(px(13.)))
-                            .w(px(190.)),
+                            .w(px(190.))
+                            .min_w_0()
+                            .flex_shrink(1.),
                     ),
             )
             .child(
@@ -5596,6 +5711,15 @@ impl Render for Workspace {
                 .column_split
                 .unwrap_or((body_width - 12.) / 2.)
                 .clamp(280., (body_width - 280.).max(280.));
+            // The inspector moves beside the text editor once the right column
+            // can hold both without squeezing the editor into a sliver.
+            // The inspector only turns into a side rail while the editor still
+            // keeps a workable width next to it.
+            let right_column_width = body_width - column_width - 16.;
+            let rail_width = (right_column_width * 0.42).clamp(228., 320.);
+            let properties_rail = side_by_side
+                .then_some(rail_width)
+                .filter(|width| right_column_width - width - 12. >= 288.);
             let divider = p.divider;
             let audio_handle = div()
                 .id("audio-panel-resize-handle")
@@ -5688,13 +5812,22 @@ impl Render for Workspace {
                         .min_w_0()
                         .min_h_0()
                         .gap_1()
-                        .child(self.render_player(window, side_by_side, cx))
+                        .child(self.render_player(
+                            window,
+                            side_by_side,
+                            properties_rail.is_some(),
+                            cx,
+                        ))
                         // The stacked layout has no spare height to trade
                         // between the preview and the properties.
-                        .when(side_by_side, |column| column.child(video_handle))
+                        .when(side_by_side && properties_rail.is_none(), |column| {
+                            column.child(video_handle)
+                        })
                         // Filling the column (instead of a fixed height) lets
                         // the preview divider trade space with the properties.
-                        .child(self.render_properties(cx)),
+                        .when(properties_rail.is_none(), |column| {
+                            column.child(self.render_properties(None, cx))
+                        }),
                 )
                 .when(side_by_side, |row| row.child(column_handle))
                 .child(
@@ -5703,7 +5836,8 @@ impl Render for Workspace {
                         .flex_1()
                         .min_w_0()
                         .min_h_0()
-                        .child(self.render_subtitle_panel(cx)),
+                        .overflow_hidden()
+                        .child(self.render_subtitle_panel(properties_rail, cx)),
                 );
             if !side_by_side {
                 columns = columns.flex_col();
@@ -5731,7 +5865,7 @@ impl Render for Workspace {
             body = body.child(
                 page::page(cx, "visual-panel")
                     .child(self.visual.toolbar(cx))
-                    .child(self.render_player(window, false, cx))
+                    .child(self.render_player(window, false, false, cx))
                     .child(page::hint(
                         cx,
                         "双击十字定位；拖动控制点调整，Shift 约束，Ctrl/⌘ 多选。",
