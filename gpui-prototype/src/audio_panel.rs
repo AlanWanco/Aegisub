@@ -601,7 +601,7 @@ impl AudioPanel {
             .items_center()
             .gap_0p5()
             .p_0p5()
-            .rounded(px(8.))
+            .rounded_full()
             .bg(p.muted);
         for (id, label, rate) in [
             ("audio-rate-50", "0.5×", 50),
@@ -793,11 +793,20 @@ impl AudioPanel {
         } else {
             title_row = title_row.child(div().flex_1());
         }
+        let palette = crate::workspace_theme::Palette::new(Theme::global(cx).is_dark());
         let mut panel = div()
             .v_flex()
             .w_full()
             .min_w_0()
             .gap_3()
+            // The waveform strip is a card like every other workspace pane, so the
+            // workspace reads as one set of surfaces instead of a bare canvas.
+            .rounded(gpui_kit::px(crate::workspace_theme::RADIUS_LG))
+            .border_1()
+            .border_color(palette.border)
+            .bg(palette.surface)
+            .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
+            .p_3()
             .child(title_row.when(!full_controls && !state.loaded, |row| row.child(load_audio)))
             .child(graph);
         if full_controls {

@@ -53,6 +53,12 @@ impl AssetSource for StudioAssets {
     }
 }
 
+/// Corner radius scale. Every container and control picks from these three so
+/// the surfaces read as one family instead of a pile of one-off values.
+pub const RADIUS_SM: f32 = 8.0;
+pub const RADIUS_MD: f32 = 12.0;
+pub const RADIUS_LG: f32 = 16.0;
+
 #[derive(Clone, Copy)]
 pub struct Palette {
     pub canvas: Hsla,
@@ -75,11 +81,11 @@ impl Palette {
         let color =
             |dark_value, light_value| rgb(if dark { dark_value } else { light_value }).into();
         Self {
-            canvas: color(0x17191f, 0xedf0f5),
+            canvas: color(0x14161b, 0xe9edf4),
             surface: color(0x20232b, 0xffffff),
             raised: color(0x282c36, 0xf5f7fb),
-            inset: color(0x1b1e26, 0xf1f3f8),
-            border: color(0x353b49, 0xd7dde7),
+            inset: color(0x191c23, 0xeaeef5),
+            border: color(0x3a4150, 0xd2d9e5),
             divider: color(0x2b303c, 0xe6eaf1),
             text: color(0xe9ecf4, 0x252c3c),
             muted: color(0xa1aabd, 0x626e83),
@@ -101,8 +107,8 @@ pub fn apply(cx: &mut App) {
     let p = Palette::new(dark);
     let theme = Theme::global_mut(cx);
     theme.font_size = px(15.);
-    theme.radius = px(6.);
-    theme.radius_lg = px(10.);
+    theme.radius = px(RADIUS_MD);
+    theme.radius_lg = px(RADIUS_LG);
     theme.background = p.surface;
     theme.foreground = p.text;
     theme.border = p.border;
@@ -130,7 +136,9 @@ pub fn apply(cx: &mut App) {
     theme.button_secondary_foreground = p.text;
     theme.button_secondary_hover = theme.secondary_hover;
     theme.button_secondary_active = p.selected;
-    theme.input = p.border;
+    // Inputs sit below the card surface, so a filled field reads as recessed
+    // instead of relying on a hairline border alone.
+    theme.input = p.inset;
     theme.ring = p.accent;
     theme.caret = p.accent;
     theme.selection = p.selected;

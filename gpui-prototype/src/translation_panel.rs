@@ -235,7 +235,7 @@ impl TranslationPanel {
                     .child(
                         div()
                             .p_3()
-                            .rounded(px(8.))
+                            .rounded(px(crate::workspace_theme::RADIUS_MD))
                             .border_1()
                             .border_color(p.border)
                             .text_sm()
@@ -249,7 +249,7 @@ impl TranslationPanel {
                 crate::page::section_body().child(
                     div()
                         .p_3()
-                        .rounded(px(8.))
+                        .rounded(px(crate::workspace_theme::RADIUS_MD))
                         .bg(p.selected)
                         .text_color(p.selected_text)
                         .child(self.state.text.clone()),

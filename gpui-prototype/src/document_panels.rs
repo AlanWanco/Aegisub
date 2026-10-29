@@ -320,9 +320,11 @@ impl DocumentPanels {
             .flex_shrink_0()
             .min_h_0()
             .overflow_hidden()
-            .rounded(px(8.))
+            .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
             .border_color(p.border)
+            .bg(p.surface)
+            .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
             .child(
                 div()
                     .flex_shrink_0()
@@ -459,9 +461,11 @@ impl DocumentPanels {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .rounded(px(8.))
+            .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
             .border_color(p.border)
+            .bg(p.surface)
+            .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
             .child(
                 div()
                     .flex_shrink_0()
@@ -549,7 +553,8 @@ impl DocumentPanels {
             .child(
                 div()
                     .h_flex()
-                    .gap_1()
+                    .flex_wrap()
+                    .gap_2()
                     .child(
                         Button::new("new-style-catalog")
                             .icon(IconName::Plus)
@@ -748,9 +753,11 @@ impl DocumentPanels {
             .flex_shrink_0()
             .min_h_0()
             .overflow_hidden()
-            .rounded(px(8.))
+            .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
             .border_color(p.border)
+            .bg(p.surface)
+            .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
             .child(
                 div()
                     .flex_shrink_0()

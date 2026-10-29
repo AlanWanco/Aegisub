@@ -50,7 +50,7 @@ pub fn header(
                 .items_center()
                 .gap_2()
                 .child(Icon::new(icon).size(px(18.)).text_color(p.accent))
-                .child(div().text_lg().font_semibold().child(title.into())),
+                .child(div().text_xl().font_semibold().child(title.into())),
         )
         .child(
             div()
@@ -100,7 +100,7 @@ pub fn section_with_icon(
         .py_3()
         .border_b_1()
         .border_color(p.divider)
-        .bg(p.surface)
+        .bg(p.raised)
         .child({
             let mut row = div().h_flex().items_center().gap_2();
             if let Some(icon) = icon {
@@ -116,12 +116,23 @@ pub fn section_with_icon(
         .w_full()
         .min_w_0()
         .overflow_hidden()
-        .rounded(px(10.))
+        .rounded(px(crate::workspace_theme::RADIUS_LG))
         .border_1()
         .border_color(p.border)
-        .bg(p.raised)
+        .bg(p.surface)
+        .shadow(card_shadow(Theme::global(cx).is_dark()))
         .child(head)
         .child(body)
+}
+
+/// Soft elevation for cards: an offset plus a blur, so the card sits above the
+/// canvas instead of relying on a border alone.
+pub fn card_shadow(dark: bool) -> Vec<gpui_kit::BoxShadow> {
+    let alpha = if dark { 0.36 } else { 0.10 };
+    vec![
+        gpui_kit::base::box_shadow(0., 1., 2., 0., gpui_kit::hsla(0., 0., 0., alpha)),
+        gpui_kit::base::box_shadow(0., 8., 20., -6., gpui_kit::hsla(0., 0., 0., alpha * 0.8)),
+    ]
 }
 
 /// Body of a section: padded column with a comfortable gap.
@@ -220,6 +231,8 @@ pub fn segmented(
         .gap(px(2.5))
         .p(px(2.5))
         .rounded_full()
+        .border_1()
+        .border_color(p.border)
         .bg(p.inset);
     for (index, (id, label, selected, disabled)) in segments.into_iter().enumerate() {
         let handler = handler.clone();
@@ -235,7 +248,14 @@ pub fn segmented(
                 .whitespace_nowrap()
                 .role(gpui_kit::Role::Button)
                 .aria_label(label)
-                .when(selected, |item| item.bg(p.accent).text_color(p.canvas))
+                // The active segment lifts off the track as a surface chip with an
+                // accent label: legible on the light track and on the dark one.
+                .when(selected, |item| {
+                    item.bg(p.surface)
+                        .text_color(p.accent)
+                        .font_medium()
+                        .shadow(card_shadow(Theme::global(cx).is_dark()))
+                })
                 .when(!selected && !disabled, |item| {
                     item.text_color(p.text).hover(|item| item.bg(p.raised))
                 })
@@ -311,7 +331,7 @@ pub fn list_row(
         .gap_2()
         .items_center()
         .px_3()
-        .rounded(px(6.))
+        .rounded(px(crate::workspace_theme::RADIUS_SM))
         .border_l_2()
         .border_color(if selected {
             p.accent
@@ -350,10 +370,12 @@ pub fn toggle_chip(
         .border_1()
         .text_sm()
         .whitespace_nowrap()
+        // A selected toggle is a tint, not a second primary button: solid accent
+        // stays reserved for the one action that moves the task forward.
         .when(on, |chip| {
-            chip.bg(p.accent)
+            chip.bg(p.selected)
                 .border_color(p.accent)
-                .text_color(p.canvas)
+                .text_color(p.selected_text)
         })
         .when(!on, |chip| {
             chip.bg(p.inset).border_color(p.border).text_color(p.text)
@@ -370,7 +392,7 @@ pub fn toggle_chip(
                 IconName::Circle
             })
             .size(px(13.))
-            .when(on, |icon| icon.text_color(p.canvas))
+            .when(on, |icon| icon.text_color(p.accent))
             .when(!on, |icon| icon.text_color(p.muted)),
         )
         .child(label.into())
