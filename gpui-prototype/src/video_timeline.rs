@@ -126,6 +126,7 @@ impl VideoTimeline {
             .v_flex()
             .flex_shrink_0()
             .min_h(px(74.))
+            .rounded_b(px(crate::workspace_theme::RADIUS_LG - 1.))
             .bg(p.surface)
             .px_3()
             .py_2()
