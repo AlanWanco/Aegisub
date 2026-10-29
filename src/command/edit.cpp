@@ -40,6 +40,7 @@
 #include "../dialog_search_replace.h"
 #include "../dialogs.h"
 #include "../format.h"
+#include "../gpui_bridge.h"
 #include "../include/aegisub/context.h"
 #include "../initial_line_state.h"
 #include "../libresrc/libresrc.h"
@@ -350,56 +351,109 @@ void toggle_override_tag(const agi::Context *c, bool (AssStyle::*field), const c
 	});
 }
 
-void show_color_picker(const agi::Context *c, agi::Color (AssStyle::*field), const char *tag, const char *alt, const char *alpha) {
-	agi::Color initial_color;
-	const auto active_line = c->selectionController->GetActiveLine();
-	const int sel_start = c->textSelectionController->GetSelectionStart();
-	const int sel_end = c->textSelectionController->GetSelectionStart();
-	const int norm_sel_start = normalize_pos(active_line->Text, sel_start);
-
-	auto const& sel = c->selectionController->GetSelectedSet();
-	using line_info = std::pair<agi::Color, parsed_line>;
-	std::vector<line_info> lines;
-	for (auto line : sel) {
-		AssStyle const* const style = c->ass->GetStyle(line->Style);
-		agi::Color color = (style ? style->*field : AssStyle().*field);
-
-		parsed_line parsed(line);
-		int blockn = parsed.block_at_pos(norm_sel_start);
-
-		int a = parsed.get_value(blockn, (int)color.a, alpha, "\\alpha");
-		color = parsed.get_value(blockn, color, tag, alt);
-		color.a = a;
-
-		if (line == active_line)
-			initial_color = color;
-
-		lines.emplace_back(color, std::move(parsed));
-	}
-
+/// A colour pick that is waiting for the user to choose. The wx dialog answers
+/// inside one call, but the GPUI front end draws its own dialog and replies
+/// later, so the per-line parsed text has to outlive the request.
+struct color_pick_state {
+	agi::Context *context = nullptr;
+	std::string tag;
+	std::string alpha;
+	agi::Color initial;
+	std::vector<std::pair<agi::Color, parsed_line>> lines;
+	int sel_start = 0;
+	int sel_end = 0;
+	int norm_sel_start = 0;
+	AssDialogue *active_line = nullptr;
 	int active_shift = 0;
 	int commit_id = -1;
-	bool ok = GetColorFromUser(c->parent, initial_color, true, [&](agi::Color new_color) {
-		for (auto& line : lines) {
-			int shift = line.second.set_tag(tag, new_color.GetAssOverrideFormatted(), norm_sel_start, sel_start);
-			if (new_color.a != line.first.a) {
-				shift += line.second.set_tag(alpha, agi::format("&H%02X&", (int)new_color.a), norm_sel_start, sel_start + shift);
-				line.first.a = new_color.a;
-			}
+};
 
-			if (line.second.line == active_line)
-				active_shift = shift;
+std::unique_ptr<color_pick_state> pending_color_pick;
+
+struct color_slot {
+	agi::Color (AssStyle::*field);
+	const char *tag;
+	const char *alt;
+	const char *alpha;
+};
+
+std::optional<color_slot> find_color_slot(std::string const& kind) {
+	if (kind == "primary") return color_slot{&AssStyle::primary, "\\c", "\\1c", "\\1a"};
+	if (kind == "secondary") return color_slot{&AssStyle::secondary, "\\2c", "", "\\2a"};
+	if (kind == "outline") return color_slot{&AssStyle::outline, "\\3c", "", "\\3a"};
+	if (kind == "shadow") return color_slot{&AssStyle::shadow, "\\4c", "", "\\4a"};
+	return std::nullopt;
+}
+
+std::unique_ptr<color_pick_state> begin_color_pick(agi::Context *c, color_slot const& slot) {
+	auto state = std::make_unique<color_pick_state>();
+	state->context = c;
+	state->tag = slot.tag;
+	state->alpha = slot.alpha;
+	state->active_line = c->selectionController->GetActiveLine();
+	state->sel_start = c->textSelectionController->GetSelectionStart();
+	state->sel_end = c->textSelectionController->GetSelectionEnd();
+	state->norm_sel_start = normalize_pos(state->active_line->Text, state->sel_start);
+
+	auto const& sel = c->selectionController->GetSelectedSet();
+	for (auto line : sel) {
+		AssStyle const* const style = c->ass->GetStyle(line->Style);
+		agi::Color color = (style ? style->*slot.field : AssStyle().*slot.field);
+
+		parsed_line parsed(line);
+		int blockn = parsed.block_at_pos(state->norm_sel_start);
+
+		int a = parsed.get_value(blockn, (int)color.a, slot.alpha, "\\alpha");
+		color = parsed.get_value(blockn, color, slot.tag, slot.alt);
+		color.a = a;
+
+		if (line == state->active_line)
+			state->initial = color;
+
+		state->lines.emplace_back(color, std::move(parsed));
+	}
+	return state;
+}
+
+void finish_color_pick(color_pick_state &state, agi::Color new_color) {
+	auto *c = state.context;
+	auto const& sel = c->selectionController->GetSelectedSet();
+	for (auto& line : state.lines) {
+		int shift = line.second.set_tag(state.tag, new_color.GetAssOverrideFormatted(), state.norm_sel_start, state.sel_start);
+		if (new_color.a != line.first.a) {
+			shift += line.second.set_tag(state.alpha, agi::format("&H%02X&", (int)new_color.a), state.norm_sel_start, state.sel_start + shift);
+			line.first.a = new_color.a;
 		}
 
-		commit_id = c->ass->Commit(_("set color"), AssFile::COMMIT_DIAG_TEXT, commit_id, sel.size() == 1 ? *sel.begin() : nullptr);
-		if (active_shift)
-			c->textSelectionController->SetSelection(sel_start + active_shift, sel_start + active_shift);
-	});
-
-	if (!ok && commit_id != -1) {
-		c->subsController->Undo();
-		c->textSelectionController->SetSelection(sel_start, sel_end);
+		if (line.second.line == state.active_line)
+			state.active_shift = shift;
 	}
+
+	state.commit_id = c->ass->Commit(_("set color"), AssFile::COMMIT_DIAG_TEXT, state.commit_id, sel.size() == 1 ? *sel.begin() : nullptr);
+	if (state.active_shift)
+		c->textSelectionController->SetSelection(state.sel_start + state.active_shift, state.sel_start + state.active_shift);
+}
+
+void revert_color_pick(color_pick_state &state) {
+	if (state.commit_id == -1)
+		return;
+	state.context->subsController->Undo();
+	state.context->textSelectionController->SetSelection(state.sel_start, state.sel_end);
+}
+
+void show_color_picker(agi::Context *c, std::string const& kind) {
+	if (gpui::FrontendAttached()) {
+		gpui::PushCommand("edit/color/" + kind);
+		return;
+	}
+	auto slot = find_color_slot(kind);
+	if (!slot) return;
+	auto state = begin_color_pick(c, *slot);
+	bool ok = GetColorFromUser(c->parent, state->initial, true, [&](agi::Color new_color) {
+		finish_color_pick(*state, new_color);
+	});
+	if (!ok)
+		revert_color_pick(*state);
 }
 
 struct edit_color_primary final : public Command {
@@ -410,7 +464,7 @@ struct edit_color_primary final : public Command {
 	STR_HELP("Set the primary fill color (\\c) at the cursor position")
 
 	void operator()(agi::Context *c) override {
-		show_color_picker(c, &AssStyle::primary, "\\c", "\\1c", "\\1a");
+		show_color_picker(c, "primary");
 	}
 };
 
@@ -422,7 +476,7 @@ struct edit_color_secondary final : public Command {
 	STR_HELP("Set the secondary (karaoke) fill color (\\2c) at the cursor position")
 
 	void operator()(agi::Context *c) override {
-		show_color_picker(c, &AssStyle::secondary, "\\2c", "", "\\2a");
+		show_color_picker(c, "secondary");
 	}
 };
 
@@ -434,7 +488,7 @@ struct edit_color_outline final : public Command {
 	STR_HELP("Set the outline color (\\3c) at the cursor position")
 
 	void operator()(agi::Context *c) override {
-		show_color_picker(c, &AssStyle::outline, "\\3c", "", "\\3a");
+		show_color_picker(c, "outline");
 	}
 };
 
@@ -446,7 +500,7 @@ struct edit_color_shadow final : public Command {
 	STR_HELP("Set the shadow color (\\4c) at the cursor position")
 
 	void operator()(agi::Context *c) override {
-		show_color_picker(c, &AssStyle::shadow, "\\4c", "", "\\4a");
+		show_color_picker(c, "shadow");
 	}
 };
 
@@ -1286,6 +1340,36 @@ struct edit_insert_original final : public Command {
 }
 
 namespace cmd {
+	std::optional<agi::Color> BeginColorPick(agi::Context *context, std::string const& kind) {
+		auto slot = find_color_slot(kind);
+		if (!slot || !context)
+			return std::nullopt;
+		if (context->selectionController->GetSelectedSet().empty())
+			return std::nullopt;
+		// A pick that never came back would otherwise be committed under the
+		// next one, so drop it first.
+		if (pending_color_pick)
+			revert_color_pick(*pending_color_pick);
+		pending_color_pick = begin_color_pick(context, *slot);
+		return pending_color_pick->initial;
+	}
+
+	void ApplyColorPick(agi::Context *context, agi::Color color) {
+		(void)context;
+		if (!pending_color_pick)
+			return;
+		finish_color_pick(*pending_color_pick, color);
+		pending_color_pick.reset();
+	}
+
+	void CancelColorPick(agi::Context *context) {
+		(void)context;
+		if (!pending_color_pick)
+			return;
+		revert_color_pick(*pending_color_pick);
+		pending_color_pick.reset();
+	}
+
 	void CopySelectedLines(agi::Context *context) {
 		copy_lines(context);
 	}

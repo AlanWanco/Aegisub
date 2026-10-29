@@ -16,6 +16,10 @@ bool FrontendAttached();
 /// Queue a warning for the GPUI front end. The next document snapshot delivers
 /// it exactly once; with no front end attached the notice is dropped.
 void PushNotice(std::string title, std::string body);
+/// Runs a command on the front end instead of opening the host's own dialog.
+/// Commands the front end owns (the colour pickers today) use this so Lua and
+/// the legacy menus do not pop a wx window over the GPUI frame.
+void PushCommand(std::string name);
 }
 
 class GpuiBridge {

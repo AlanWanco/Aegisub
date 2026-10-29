@@ -403,6 +403,18 @@ struct Notice {
     body: String,
 }
 
+/// The override colour dialog. The host owns the per-line override tags; this
+/// only picks the colour and hands it back.
+struct ColorDialog {
+    title: &'static str,
+    hint: &'static str,
+    /// Values the inputs still have to receive; they can only be set while a
+    /// window is at hand, which is render time.
+    pending: Option<(String, String)>,
+    error: Option<String>,
+    loading: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct Snapshot {
     #[serde(default)]
@@ -466,6 +478,9 @@ struct Snapshot {
     lines: Vec<Line>,
     #[serde(default)]
     notices: Vec<Notice>,
+    /// Commands the host wants this front end to run, because it owns their UI.
+    #[serde(default)]
+    commands: Vec<String>,
 }
 
 /// Status bar hints per hotkey context: (context, label, [(command, text)]).
@@ -802,11 +817,17 @@ struct Workspace {
     editor_dirty_line: i64,
     pending_text_selection: Option<[usize; 2]>,
     active_panel: Panel,
+    /// Set when this window exists only to show one tool, opened from the sidebar.
+    detached: Option<Panel>,
     key_focus: KeyFocus,
     sidebar_collapsed: Option<bool>,
     selected_line: i64,
     status: String,
     notices: Vec<Notice>,
+    color_dialog: Option<ColorDialog>,
+    color_hex_input: Entity<InputState>,
+    color_alpha_input: Entity<InputState>,
+    _color_events: Vec<Subscription>,
     _editor_events: Subscription,
     _search_events: Subscription,
 }
@@ -829,6 +850,27 @@ impl Workspace {
     }
 
     fn new(bridge: Bridge, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let color_hex_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("#FFFFFF")
+                .placeholder("#RRGGBB")
+        });
+        let color_alpha_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("100")
+                .placeholder("100")
+        });
+        let mut color_events = Vec::new();
+        for input in [&color_hex_input, &color_alpha_input] {
+            color_events.push(cx.subscribe(input, |view, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    if let Some(dialog) = view.color_dialog.as_mut() {
+                        dialog.error = None;
+                    }
+                    cx.notify();
+                }
+            }));
+        }
         let editor = cx.new(|cx| TextareaState::new(window, cx));
         let editor_for_events = editor.clone();
         let search = cx.new(|cx| {
@@ -950,6 +992,7 @@ impl Workspace {
             snapshot: Snapshot {
                 file: "正在连接 Aegisub…".into(),
                 notices: Vec::new(),
+                commands: Vec::new(),
                 modified: false,
                 can_save: false,
                 dark: true,
@@ -1034,11 +1077,16 @@ impl Workspace {
             editor_dirty_line: -1,
             pending_text_selection: None,
             active_panel: Panel::Subtitles,
+            detached: None,
             key_focus: KeyFocus::Grid,
             sidebar_collapsed: None,
             selected_line: -1,
             status: "已连接当前 Aegisub 文档".into(),
             notices: Vec::new(),
+            color_dialog: None,
+            color_hex_input,
+            color_alpha_input,
+            _color_events: color_events,
             _editor_events: editor_events,
             _search_events: search_events,
         }
@@ -1048,6 +1096,7 @@ impl Workspace {
         if !snapshot.notices.is_empty() {
             self.notices.extend(snapshot.notices.iter().cloned());
         }
+        let forwarded = snapshot.commands.clone();
         if snapshot.dark != Theme::global(cx).is_dark() {
             Theme::change(
                 if snapshot.dark {
@@ -1172,6 +1221,9 @@ impl Workspace {
         if self.active_panel == Panel::Visual && self.visual.drawn != Some(visual_state) {
             self.visual.drawn = Some(visual_state);
             self.queue_visual(json!({"action":"draw"}), cx);
+        }
+        for name in forwarded {
+            self.invoke(json!({"op": "command", "name": name}), cx);
         }
         cx.notify();
     }
@@ -1356,11 +1408,330 @@ impl Workspace {
                 size: size(width, height),
             }
         });
-        if let Err(error) = open_workspace(cx, self.bridge.clone(), bounds) {
+        if let Err(error) = open_workspace(cx, self.bridge.clone(), bounds, None) {
             eprintln!("Could not open another GPUI window: {error:#}");
             self.status = format!("无法打开新窗口：{error}");
             cx.notify();
         }
+    }
+
+    /// The host can answer a colour pick with its own wx dialog; the front end
+    /// asks for the starting colour first so the picker can be ours.
+    fn request_color(&mut self, kind: &'static str, cx: &mut Context<Self>) {
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge
+                .call(json!({"op": "color", "action": "query", "kind": kind}))
+                .await;
+            let _ = weak.update(cx, |view, cx| match result {
+                Ok(value) => {
+                    let hex = value["color"].as_str().unwrap_or("#FFFFFF").to_owned();
+                    view.open_color_dialog(kind, &hex, cx);
+                }
+                Err(error) => {
+                    view.status = format!("无法读取颜色：{error}");
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn open_color_dialog(&mut self, kind: &'static str, hex: &str, cx: &mut Context<Self>) {
+        let (title, hint) = match kind {
+            "secondary" => ("次色", "设置当前位置的 \\2c 卡拉 OK 颜色"),
+            "outline" => ("描边色", "设置当前位置的 \\3c 描边颜色"),
+            "shadow" => ("阴影色", "设置当前位置的 \\4c 阴影颜色"),
+            _ => ("主色", "设置当前位置的 \\c 主填充颜色"),
+        };
+        // ASS stores alpha inverted: &H00& is opaque and &HFF& is clear.
+        let (r, g, b, a) = parse_color(hex).unwrap_or((255, 255, 255, 0));
+        let percent = ((1. - a as f32 / 255.) * 100.).round() as i64;
+        self.color_dialog = Some(ColorDialog {
+            title,
+            hint,
+            pending: Some((
+                format!("#{r:02X}{g:02X}{b:02X}"),
+                percent.to_string(),
+            )),
+            error: None,
+            loading: false,
+        });
+        cx.notify();
+    }
+
+    fn apply_color_dialog(&mut self, cx: &mut Context<Self>) {
+        let Some(dialog) = self.color_dialog.as_mut() else {
+            return;
+        };
+        let hex_text = self.color_hex_input.read(cx).value().to_string();
+        let alpha_text = self.color_alpha_input.read(cx).value().to_string();
+        let Some((r, g, b, _)) = parse_color(&hex_text) else {
+            dialog.error = Some("请输入 #RRGGBB 形式的颜色".into());
+            cx.notify();
+            return;
+        };
+        let percent = alpha_text
+            .trim()
+            .trim_end_matches('%')
+            .parse::<f32>()
+            .unwrap_or(100.)
+            .clamp(0., 100.);
+        let alpha = ((100. - percent) / 100. * 255.).round() as u8;
+        let color = format!("#{r:02X}{g:02X}{b:02X}{alpha:02X}");
+        dialog.loading = true;
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let result = bridge
+                .call(json!({"op": "color", "action": "apply", "color": color}))
+                .await;
+            let _ = weak.update(cx, |view, cx| {
+                match result {
+                    Ok(_) => {
+                        view.color_dialog = None;
+                        view.status = "已应用颜色".into();
+                        view.refresh_document(cx);
+                    }
+                    Err(error) => {
+                        if let Some(dialog) = view.color_dialog.as_mut() {
+                            dialog.loading = false;
+                            dialog.error = Some(error.to_string());
+                        }
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cancel_color_dialog(&mut self, cx: &mut Context<Self>) {
+        if self.color_dialog.is_none() {
+            return;
+        }
+        self.color_dialog = None;
+        cx.notify();
+        let bridge = self.bridge.clone();
+        cx.spawn(async move |_, _| {
+            let _ = bridge
+                .call(json!({"op": "color", "action": "cancel"}))
+                .await;
+        })
+        .detach();
+    }
+
+    fn render_color_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        let p = Palette::current(cx);
+        let Some(dialog) = self.color_dialog.as_mut() else {
+            return None;
+        };
+        if let Some((hex, alpha)) = dialog.pending.take() {
+            self.color_hex_input
+                .update(cx, |state, cx| state.set_value(hex, window, cx));
+            self.color_alpha_input
+                .update(cx, |state, cx| state.set_value(alpha, window, cx));
+        }
+        let (pr, pg, pb, pa) = parse_color(self.color_hex_input.read(cx).value().as_ref())
+            .unwrap_or((255, 255, 255, 0));
+        let base = gpui_kit::rgba(
+            u32::from(pr) << 24 | u32::from(pg) << 16 | u32::from(pb) << 8 | 0xFF,
+        );
+        let base: gpui_kit::Hsla = base.into();
+        let current = gpui_kit::hsla(base.h, base.s, base.l, 1. - f32::from(pa) / 255.);
+        let opacity = ((1. - f32::from(pa) / 255.) * 100.).round() as i32;
+        let preview_label = format!("#{pr:02X}{pg:02X}{pb:02X} · {opacity}%");
+        let title = dialog.title;
+        let hint = dialog.hint;
+        let error = dialog.error.clone();
+        let loading = dialog.loading;
+        let presets: [(&str, u32); 10] = [
+            ("白", 0xFFFFFF), ("黑", 0x000000), ("红", 0xFF3B30), ("橙", 0xFF9500),
+            ("黄", 0xFFCC00), ("绿", 0x34C759), ("青", 0x32ADE6), ("蓝", 0x0A84FF),
+            ("紫", 0xBF5AF2), ("灰", 0x8E8E93),
+        ];
+        let card = div()
+            .id("color-dialog")
+            .w(px(480.))
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|_, _, _, cx| cx.stop_propagation()),
+            )
+            .max_w_full()
+            .v_flex()
+            .rounded(px(workspace_theme::RADIUS_LG))
+            .border_1()
+            .border_color(p.border)
+            .bg(p.surface)
+            .overflow_hidden()
+            .shadow_lg()
+            .child(
+                div()
+                    .v_flex()
+                    .gap_1()
+                    .px(px(20.))
+                    .py(px(16.))
+                    .border_b_1()
+                    .border_color(p.divider)
+                    .rounded_t(px(workspace_theme::RADIUS_LG - 1.))
+                    .child(div().text_size(px(15.)).font_semibold().child(title))
+                    .child(div().text_xs().text_color(p.muted).child(hint)),
+            )
+            .child(
+                div()
+                    .v_flex()
+                    .gap_3()
+                    .p(px(20.))
+                    .child(
+                        div()
+                            .relative()
+                            .h(px(56.))
+                            .w_full()
+                            .rounded(px(workspace_theme::RADIUS_SM))
+                            .border_1()
+                            .border_color(p.border)
+                            .bg(p.inset)
+                            .overflow_hidden()
+                            .child(div().absolute().inset_0().bg(current))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .h_flex()
+                                    .items_end()
+                                    .justify_end()
+                                    .p(px(8.))
+                                    .child(
+                                        div()
+                                            .rounded(px(6.))
+                                            .bg(p.surface)
+                                            .px(px(6.))
+                                            .py(px(2.))
+                                            .text_xs()
+                                            .text_color(p.muted)
+                                            .child(preview_label),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_3()
+                            .items_end()
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .gap_1()
+                                    .flex_1()
+                                    .child(crate::page::field_label(cx, "颜色"))
+                                    .child(Input::new(&self.color_hex_input)),
+                            )
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .gap_1()
+                                    .w(px(120.))
+                                    .child(crate::page::field_label(cx, "不透明度 %"))
+                                    .child(Input::new(&self.color_alpha_input)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .flex_wrap()
+                            .children(presets.iter().map(|(name, rgb)| {
+                                let hex = format!(
+                                    "#{:02X}{:02X}{:02X}",
+                                    (rgb >> 16) & 0xFF,
+                                    (rgb >> 8) & 0xFF,
+                                    rgb & 0xFF
+                                );
+                                let input = self.color_hex_input.clone();
+                                Button::new(format!("color-preset-{name}"))
+                                    .ghost()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .child(
+                                        div()
+                                            .size(px(10.))
+                                            .rounded(px(999.))
+                                            .border_1()
+                                            .border_color(p.border)
+                                            .bg(gpui_kit::rgba((rgb << 8) | 0xFF)),
+                                    )
+                                    .child(div().text_sm().child(*name))
+                                    .on_click(cx.listener(move |_, _, window, cx| {
+                                        input.update(cx, |state, cx| {
+                                            state.set_value(hex.clone(), window, cx)
+                                        });
+                                    }))
+                            })),
+                    )
+                    .when_some(error, |v, error| {
+                        v.child(
+                            div()
+                                .text_xs()
+                                .text_color(gpui_kit::rgb(0xFF6B6B))
+                                .child(error),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .h_flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(20.))
+                    .py(px(14.))
+                    .border_t_1()
+                    .border_color(p.divider)
+                    .rounded_b(px(workspace_theme::RADIUS_LG - 1.))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(p.muted)
+                            .child("只影响当前行与所选行的 override 标签"),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("color-cancel")
+                                    .label("取消")
+                                    .ghost()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.cancel_color_dialog(cx)
+                                    })),
+                            )
+                            .child(
+                                Button::new("color-apply")
+                                    .label("应用")
+                                    .primary()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .disabled(loading)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.apply_color_dialog(cx)
+                                    })),
+                            ),
+                    ),
+            );
+        Some(card.into_any_element())
     }
 
     fn invoke(&mut self, mut payload: Value, cx: &mut Context<Self>) {
@@ -1374,6 +1745,19 @@ impl Workspace {
                 }
                 Some("app/new_window") => {
                     self.open_new_window(cx);
+                    return;
+                }
+                Some(name @ ("edit/color/primary"
+                | "edit/color/secondary"
+                | "edit/color/outline"
+                | "edit/color/shadow")) => {
+                    let kind = match name {
+                        "edit/color/secondary" => "secondary",
+                        "edit/color/outline" => "outline",
+                        "edit/color/shadow" => "shadow",
+                        _ => "primary",
+                    };
+                    self.request_color(kind, cx);
                     return;
                 }
                 Some(name @ ("audio/save/clip" | "keyframe/save" | "timecode/save")) => {
@@ -4272,7 +4656,41 @@ impl Workspace {
                     .on_click(cx.listener(move |view, _, window, cx| {
                         view.activate_panel(panel, window, cx)
                     }));
-                navigation = navigation.child(button);
+                let detachable = panel != Panel::Subtitles && !compact;
+                let row = div()
+                    .relative()
+                    .w_full()
+                    .group("sidebar-row")
+                    .child(button)
+                    .when(detachable, |v| {
+                        v.child(
+                            Button::new(format!("panel-window-{}", panel.label()))
+                                .ghost()
+                                .rounded(px(6.))
+                                .absolute()
+                                .right(px(6.))
+                                .top(px(6.))
+                                .h(px(24.))
+                                .w(px(24.))
+                                .p_0()
+                                .opacity(0.45)
+                                .accessibility_label("在单独窗口中打开")
+                                .child(
+                                    Icon::new(IconName::ExternalLink)
+                                        .size(px(12.))
+                                        .text_color(p.muted),
+                                )
+                                .on_click(cx.listener(move |view, _, _, cx| {
+                                    cx.stop_propagation();
+                                    if let Err(error) =
+                                        open_panel_window(cx, view.bridge.clone(), panel)
+                                    {
+                                        eprintln!("Could not open tool window: {error:#}");
+                                    }
+                                })),
+                        )
+                    });
+                navigation = navigation.child(row);
             }
         }
         div()
@@ -5572,6 +5990,22 @@ fn subtitle_cell(
     }
 }
 
+/// Parses `#RRGGBB`, `#RRGGBBAA` or the same without the hash.
+fn parse_color(text: &str) -> Option<(u8, u8, u8, u8)> {
+    let digits: String = text
+        .trim()
+        .trim_start_matches('#')
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .collect();
+    let byte = |index: usize| u8::from_str_radix(&digits[index..index + 2], 16).ok();
+    match digits.len() {
+        6 => Some((byte(0)?, byte(2)?, byte(4)?, 0)),
+        8 => Some((byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
+        _ => None,
+    }
+}
+
 fn format_time(ms: i64) -> String {
     let total = ms.max(0);
     format!(
@@ -6142,8 +6576,7 @@ impl Render for Workspace {
                                         div()
                                             .px(px(5.))
                                             .py(px(1.))
-                                            .rounded(px(crate::workspace_theme::RADIUS_SM
-                                                - 3.))
+                                            .rounded(px(crate::workspace_theme::RADIUS_SM - 3.))
                                             .bg(p.inset)
                                             .border_1()
                                             .border_color(border)
@@ -6180,24 +6613,46 @@ impl Render for Workspace {
                         }),
                 ),
         );
-        let workspace = root.child(self.render_menu(window, cx)).child(
-            div()
-                .v_flex()
-                .h_full()
-                .overflow_hidden()
-                .flex_1()
-                .min_w_0()
-                .min_h_0()
-                .when(!cfg!(target_os = "macos"), |bar| {
-                    bar.child(self.render_legacy_menus(cx))
-                })
-                .when(self.snapshot.show_toolbar, |v| {
-                    v.child(self.render_toolbar(cx))
-                })
-                .child(body),
-        );
+        // A detached window shows one tool and nothing else: no sidebar, no
+        // legacy menu bar, no document toolbar.
+        let detached = self.detached.is_some();
+        let workspace = root
+            .when(!detached, |v| v.child(self.render_menu(window, cx)))
+            .child(
+                div()
+                    .v_flex()
+                    .h_full()
+                    .overflow_hidden()
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .when(!cfg!(target_os = "macos") && !detached, |bar| {
+                        bar.child(self.render_legacy_menus(cx))
+                    })
+                    .when(self.snapshot.show_toolbar && !detached, |v| {
+                        v.child(self.render_toolbar(cx))
+                    })
+                    .child(body),
+            );
+        let mut layered = div().relative().size_full().child(workspace);
+        if let Some(card) = self.render_color_dialog(window, cx) {
+            layered = layered.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .h_flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(gpui_kit::hsla(0., 0., 0., 0.42))
+                    .on_mouse_down(
+                        gpui_kit::MouseButton::Left,
+                        cx.listener(|view, _, _, cx| view.cancel_color_dialog(cx)),
+                    )
+                    .child(card),
+            );
+        }
         if self.notices.is_empty() {
-            return workspace.into_any_element();
+            return layered.into_any_element();
         }
         let notice = self.notices[0].clone();
         let remaining = self.notices.len() - 1;
@@ -6259,16 +6714,11 @@ impl Render for Workspace {
                     .justify_between()
                     .px(px(20.))
                     .pb(px(16.))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(if remaining > 0 {
-                                format!("还有 {remaining} 条提示")
-                            } else {
-                                String::new()
-                            }),
-                    )
+                    .child(div().text_xs().text_color(muted).child(if remaining > 0 {
+                        format!("还有 {remaining} 条提示")
+                    } else {
+                        String::new()
+                    }))
                     .child(
                         Button::new("dismiss-host-notice")
                             .label("知道了")
@@ -6285,10 +6735,7 @@ impl Render for Workspace {
                             })),
                     ),
             );
-        div()
-            .relative()
-            .size_full()
-            .child(workspace)
+        layered
             .child(
                 div()
                     .absolute()
@@ -6309,16 +6756,24 @@ fn open_workspace(
     cx: &mut App,
     bridge: Bridge,
     bounds: Option<gpui_kit::Bounds<gpui_kit::Pixels>>,
+    detached: Option<Panel>,
 ) -> Result<gpui_kit::WindowHandle<gpui_kit::component::Root>> {
     let window_bounds = match bounds {
         Some(bounds) => WindowBounds::Windowed(bounds),
-        None => WindowBounds::centered(size(px(1420.), px(920.)), cx),
+        None => match detached {
+            Some(_) => WindowBounds::centered(size(px(760.), px(640.)), cx),
+            None => WindowBounds::centered(size(px(1420.), px(920.)), cx),
+        },
+    };
+    let title: gpui_kit::SharedString = match detached {
+        Some(panel) => format!("Aegisub · {}", panel.label()).into(),
+        None => "Aegisub".into(),
     };
     cx.open_window(
         WindowOptions {
             window_bounds: Some(window_bounds),
             titlebar: Some(gpui_kit::TitlebarOptions {
-                title: Some("Aegisub".into()),
+                title: Some(title),
                 ..Default::default()
             }),
             ..Default::default()
@@ -6326,7 +6781,14 @@ fn open_workspace(
         move |window, cx| {
             cx.activate(true);
             window.activate_window();
-            let workspace = cx.new(|cx| Workspace::new(bridge.clone(), window, cx));
+            let workspace = cx.new(|cx| {
+                let mut view = Workspace::new(bridge.clone(), window, cx);
+                if let Some(panel) = detached {
+                    view.detached = Some(panel);
+                    view.active_panel = panel;
+                }
+                view
+            });
             let menu_target = workspace.downgrade();
             cx.on_action(move |action: &RunCommand, cx| {
                 let name = action.name.clone();
@@ -6402,6 +6864,16 @@ fn open_workspace(
     )
 }
 
+/// Opens one tool in its own window. The window keeps its own bridge
+/// connection, so it stays in sync with the document in every other window.
+fn open_panel_window(
+    cx: &mut App,
+    bridge: Bridge,
+    panel: Panel,
+) -> Result<gpui_kit::WindowHandle<gpui_kit::component::Root>> {
+    open_workspace(cx, bridge, None, Some(panel))
+}
+
 fn run(endpoint: String, token: String) -> Result<()> {
     application()
         .with_assets(workspace_theme::StudioAssets)
@@ -6416,7 +6888,7 @@ fn run(endpoint: String, token: String) -> Result<()> {
             })
             .detach();
             let bridge = Bridge { endpoint, token };
-            if let Err(error) = open_workspace(cx, bridge, None) {
+            if let Err(error) = open_workspace(cx, bridge, None, None) {
                 eprintln!("Could not create GPUI window: {error:#}");
                 cx.quit();
             }

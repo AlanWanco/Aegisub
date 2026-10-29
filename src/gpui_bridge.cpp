@@ -4,6 +4,7 @@
 #include "gpui_bridge.h"
 #include "gpui_audio.h"
 #include "gpui_automation.h"
+#include "gpui_color.h"
 #include "gpui_command_catalog.h"
 #include "gpui_document.h"
 #include "gpui_translation.h"
@@ -69,6 +70,7 @@
 namespace {
 std::mutex notice_mutex;
 std::vector<std::pair<std::string, std::string>> pending_notices;
+std::vector<std::string> pending_commands;
 int attached_clients = 0;
 
 void AttachClient() {
@@ -158,6 +160,12 @@ void gpui::PushNotice(std::string title, std::string body) {
 	std::lock_guard<std::mutex> lock(notice_mutex);
 	if (attached_clients == 0) return;
 	pending_notices.emplace_back(std::move(title), std::move(body));
+}
+
+void gpui::PushCommand(std::string name) {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients == 0) return;
+	pending_commands.push_back(std::move(name));
 }
 
 struct GpuiBridge::Impl final : wxEvtHandler {
@@ -424,6 +432,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "audio_render") { BeginResponse(socket, client, audio.Render(object)); return; }
 		if (op == "audio_action") { BeginResponse(socket, client, audio.Interact(object)); return; }
 		if (op == "automation_manager") { BeginResponse(socket, client, gpui::AutomationManager(context, object)); return; }
+		if (op == "color") { BeginResponse(socket, client, gpui::ColorPanel(context, object)); return; }
 		if (op == "catalog") { BeginResponse(socket, client, gpui::CommandCatalog(context, visual)); return; }
 		if (op == "attachments") {
 			if (auto expected = object.find("revision"); expected != object.end()) {
@@ -538,6 +547,18 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 				out << "{\"title\":" << quote_json(title) << ",\"body\":" << quote_json(body) << '}';
 			}
 			pending_notices.clear();
+		}
+		out << ']';
+		out << ",\"commands\":[";
+		{
+			std::lock_guard<std::mutex> lock(notice_mutex);
+			bool first_command = true;
+			for (auto const& name : pending_commands) {
+				if (!first_command) out << ',';
+				first_command = false;
+				out << quote_json(name);
+			}
+			pending_commands.clear();
 		}
 		out << ']';
 		out << ",\"active\":";

@@ -93,6 +93,7 @@ aegisub_src = files(
     'gpui_audio.cpp',
     'gpui_automation.cpp',
     'gpui_bridge.cpp',
+    'gpui_color.cpp',
     'gpui_command_catalog.cpp',
     'gpui_document.cpp',
     'gpui_translation.cpp',
