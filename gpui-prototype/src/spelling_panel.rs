@@ -317,42 +317,59 @@ impl SpellingPanel {
             word_body = word_body.child(suggestions);
             panel = panel.child(crate::page::section(cx, "当前单词", None, word_body));
         }
-        panel.child(
-            div()
-                .h_flex()
-                .flex_wrap()
-                .gap_2()
-                .items_center()
+        panel.child(crate::page::section(
+            cx,
+            "个人词典",
+            None,
+            crate::page::section_body()
+                .child(crate::page::hint(
+                    cx,
+                    "确认当前替换词是否已收录，或把它从个人词典移除。",
+                ))
                 .child(
-                    Button::new("spelling-dictionary-check")
-                        .label("检查替换词是否在个人词典")
-                        .disabled(self.loading || candidate.is_empty())
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            let value = view.spelling.replacement.read(cx).value().to_string();
-                            view.spelling.dictionary_word = value.clone();
-                            view.spelling_request(json!({"action":"state","word":value}), cx);
-                        })),
-                )
-                .child(
-                    Button::new("spelling-dictionary-remove")
-                        .label(if self.confirm_remove {
-                            "确认从个人词典移除"
-                        } else {
-                            "从个人词典移除…"
-                        })
-                        .disabled(self.loading || !can_remove)
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            if view.spelling.confirm_remove {
-                                view.spelling_request(
+                    div()
+                        .h_flex()
+                        .flex_wrap()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("spelling-dictionary-check")
+                                .icon(IconName::BookOpen)
+                                .label("检查替换词是否在个人词典")
+                                .disabled(self.loading || candidate.is_empty())
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    let value =
+                                        view.spelling.replacement.read(cx).value().to_string();
+                                    view.spelling.dictionary_word = value.clone();
+                                    view.spelling_request(
+                                        json!({"action":"state","word":value}),
+                                        cx,
+                                    );
+                                })),
+                        )
+                        .child(
+                            Button::new("spelling-dictionary-remove")
+                                .icon(IconName::Delete)
+                                .label(if self.confirm_remove {
+                                    "确认从个人词典移除"
+                                } else {
+                                    "从个人词典移除…"
+                                })
+                                .ghost()
+                                .disabled(self.loading || !can_remove)
+                                .on_click(cx.listener(|view, _, _, cx| {
+                                    if view.spelling.confirm_remove {
+                                        view.spelling_request(
                                     json!({"action":"remove","word":view.spelling.dictionary_word}),
                                     cx,
                                 );
-                            } else {
-                                view.spelling.confirm_remove = true;
-                                cx.notify();
-                            }
-                        })),
+                                    } else {
+                                        view.spelling.confirm_remove = true;
+                                        cx.notify();
+                                    }
+                                })),
+                        ),
                 ),
-        )
+        ))
     }
 }

@@ -1,9 +1,6 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
-use gpui_kit::component::{
-    StyledExt,
-    button::{Button, ButtonVariants},
-};
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::{
     Bounds, ContentMask, Context, FillOptions, FillRule, IntoElement, Path, PathBuilder, PathStyle,
     Pixels, Point, TextRun, Window, canvas, div, point, prelude::*, px, size,
@@ -11,7 +8,7 @@ use gpui_kit::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::{Workspace, workspace_theme::Palette};
+use crate::Workspace;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DrawCommand {
@@ -50,6 +47,16 @@ pub struct VisualReply {
     pub width: i64,
     pub height: i64,
 }
+
+const VISUAL_TOOLS: [(&str, &str); 7] = [
+    ("cross", "十字"),
+    ("drag", "拖动"),
+    ("rotate/z", "Z 旋转"),
+    ("rotate/xy", "XY 旋转"),
+    ("scale", "缩放"),
+    ("clip", "矩形裁剪"),
+    ("vector_clip", "矢量裁剪"),
+];
 
 pub struct VisualPanel {
     pub tool: &'static str,
@@ -140,36 +147,29 @@ impl VisualPanel {
     }
 
     pub fn toolbar(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
-        let p = Palette::current(cx);
-        let mut bar = div()
-            .h_flex()
-            .flex_wrap()
-            .gap_1()
-            .p_2()
-            .bg(p.surface)
-            .rounded(px(8.))
-            .border_1()
-            .border_color(p.border)
-            .flex_shrink_0();
-        for (mode, label) in [
-            ("cross", "十字"),
-            ("drag", "拖动"),
-            ("rotate/z", "Z 旋转"),
-            ("rotate/xy", "XY 旋转"),
-            ("scale", "缩放"),
-            ("clip", "矩形裁剪"),
-            ("vector_clip", "矢量裁剪"),
-        ] {
-            bar = bar.child(
-                Button::new(format!("visual-mode-{mode}"))
-                    .label(label)
-                    .ghost()
-                    .when(mode == self.tool, |button| button.primary())
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.select_visual_tool(mode, None, cx);
-                    })),
-            );
-        }
+        let active = VISUAL_TOOLS
+            .iter()
+            .position(|(mode, _)| *mode == self.tool)
+            .unwrap_or(0);
+        let mut bar = crate::page::toolbar([crate::page::segmented(
+            cx,
+            VISUAL_TOOLS
+                .iter()
+                .enumerate()
+                .map(|(index, (_, label))| {
+                    (
+                        format!("visual-mode-{index}"),
+                        *label,
+                        index == active,
+                        false,
+                    )
+                })
+                .collect(),
+            |view, index, _, cx| {
+                view.select_visual_tool(VISUAL_TOOLS[index].0, None, cx);
+            },
+        )
+        .into_any_element()]);
         if self.tool == "vector_clip" {
             for (mode, label) in [
                 (0, "控制点"),
