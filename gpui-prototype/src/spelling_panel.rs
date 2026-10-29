@@ -1,5 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Icon;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt, Theme,
@@ -193,7 +194,7 @@ impl SpellingPanel {
                 .small()
                 .px(gpui_kit::px(13.))
                 .py(gpui_kit::px(3.))
-                .icon(IconName::Undo2)
+                .child(Icon::new(IconName::Undo2).size(px(15.)))
                 .accessibility_label("撤销")
                 .tooltip("撤销上一次修改")
                 .ghost()

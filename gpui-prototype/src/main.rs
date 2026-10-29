@@ -3416,7 +3416,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::Undo2)
+                    .child(Icon::new(IconName::Undo2).size(px(15.)))
                     .accessibility_label("撤销")
                     .tooltip("撤销")
                     .ghost()
@@ -3431,7 +3431,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::Redo2)
+                    .child(Icon::new(IconName::Redo2).size(px(15.)))
                     .accessibility_label("重做")
                     .tooltip("重做")
                     .ghost()
@@ -3720,7 +3720,7 @@ impl Workspace {
                     )
                     .child(
                         Button::new("save-as").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                            .icon(IconName::Save)
+                            .child(Icon::new(IconName::Save).size(px(15.)))
                             .accessibility_label("另存为")
                             .tooltip("另存为…")
                             .ghost()
@@ -3967,20 +3967,26 @@ impl Workspace {
                         )
                     })
                     .child(
+                        // Button::icon() renders nothing inside this header row,
+                        // so the icon goes in as an explicit child like the nav
+                        // rows do.
                         Button::new("toggle-sidebar")
                             .rounded(gpui_kit::px(999.))
                             .small()
-                            .px(gpui_kit::px(13.))
+                            .px(gpui_kit::px(11.))
                             .py(gpui_kit::px(3.))
-                            .icon(if compact {
-                                IconName::PanelLeftOpen
-                            } else {
-                                IconName::PanelLeftClose
-                            })
+                            .ghost()
                             .accessibility_label(toggle_label)
                             .tooltip(toggle_label)
-                            .toggled(!compact)
-                            .ghost()
+                            .child(
+                                Icon::new(if compact {
+                                    IconName::PanelLeftOpen
+                                } else {
+                                    IconName::PanelLeftClose
+                                })
+                                .size(px(16.))
+                                .text_color(p.muted),
+                            )
                             .on_click(cx.listener(move |view, _, _, cx| {
                                 view.sidebar_collapsed = Some(!compact);
                                 cx.notify();
@@ -4172,7 +4178,7 @@ impl Workspace {
                     } else {
                         format!("{}%", window_zoom * 100.)
                     })
-                    .icon(IconName::ChevronDown)
+                    .child(Icon::new(IconName::ChevronDown).size(px(15.)))
                     .ghost()
                     .tooltip("视频框倍率")
                     .dropdown_menu(move |mut menu, _, _| {
@@ -4212,7 +4218,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::Maximize)
+                    .child(Icon::new(IconName::Maximize).size(px(15.)))
                     .accessibility_label("适应窗口")
                     .tooltip("适应窗口")
                     .ghost()
@@ -4231,7 +4237,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::ZoomOut)
+                    .child(Icon::new(IconName::ZoomOut).size(px(15.)))
                     .accessibility_label("缩小画面")
                     .tooltip("缩小画面")
                     .ghost()
@@ -4254,7 +4260,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::ZoomIn)
+                    .child(Icon::new(IconName::ZoomIn).size(px(15.)))
                     .accessibility_label("放大画面")
                     .tooltip("放大画面")
                     .ghost()
@@ -4269,7 +4275,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::RotateCw)
+                    .child(Icon::new(IconName::RotateCw).size(px(15.)))
                     .accessibility_label("复位画面")
                     .tooltip("复位缩放和平移")
                     .ghost()
@@ -4283,7 +4289,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(IconName::Move)
+                    .child(Icon::new(IconName::Move).size(px(15.)))
                     .accessibility_label("平移画面")
                     .tooltip("平移画面")
                     .ghost()
@@ -4419,7 +4425,7 @@ impl Workspace {
                                             .px(gpui_kit::px(13.))
                                             .py(gpui_kit::px(3.))
                                             .label("打开视频")
-                                            .icon(IconName::FolderOpen)
+                                            .child(Icon::new(IconName::FolderOpen).size(px(15.)))
                                             .on_click(cx.listener(|view, _, _, cx| {
                                                 view.pick_file("video", cx)
                                             })),
@@ -4666,7 +4672,7 @@ impl Workspace {
                             )
                             .child(
                                 Button::new("shrink-subtitle-editor").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                                    .icon(IconName::ChevronUp)
+                                    .child(Icon::new(IconName::ChevronUp).size(px(15.)))
                                     .accessibility_label("缩小字幕编辑区")
                                     .tooltip("缩小字幕编辑区")
                                     .ghost()
@@ -4679,7 +4685,7 @@ impl Workspace {
                             )
                             .child(
                                 Button::new("grow-subtitle-editor").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                                    .icon(IconName::ChevronDown)
+                                    .child(Icon::new(IconName::ChevronDown).size(px(15.)))
                                     .accessibility_label("增大字幕编辑区")
                                     .tooltip("增大字幕编辑区")
                                     .ghost()

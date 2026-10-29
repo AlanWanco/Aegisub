@@ -2,6 +2,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::{
+    Icon,
     StyledExt,
     button::{Button, ButtonVariants},
     input::{InputEvent, Textarea, TextareaState},
@@ -191,7 +192,7 @@ impl TranslationPanel {
                     .into_any_element(),
                 div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
                 Button::new("translation-prev").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .icon(IconName::ChevronLeft)
+                    .child(Icon::new(IconName::ChevronLeft).size(px(15.)))
                     .accessibility_label("上一块")
                     .tooltip("上一块")
                     .ghost()
@@ -199,7 +200,7 @@ impl TranslationPanel {
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("prev", cx)))
                     .into_any_element(),
                 Button::new("translation-next").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .icon(IconName::ChevronRight)
+                    .child(Icon::new(IconName::ChevronRight).size(px(15.)))
                     .accessibility_label("下一块")
                     .tooltip("下一块")
                     .ghost()
@@ -218,7 +219,7 @@ impl TranslationPanel {
                     }))
                     .into_any_element(),
                 Button::new("translation-refresh").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .icon(IconName::RefreshCw)
+                    .child(Icon::new(IconName::RefreshCw).size(px(15.)))
                     .accessibility_label("从当前行刷新")
                     .tooltip("重新读取当前行与文本块")
                     .ghost()
