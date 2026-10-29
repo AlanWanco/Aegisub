@@ -465,6 +465,7 @@ impl AudioPanel {
                     {
                         return;
                     }
+                    view.key_focus = crate::KeyFocus::Audio;
                     view.focus_handle.focus(window, cx);
                     let ms = view.audio.time_at(event.position.x, &view.snapshot.audio);
                     view.begin_audio_drag(

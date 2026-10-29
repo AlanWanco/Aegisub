@@ -98,6 +98,25 @@ impl Catalog {
             .filter(|command| command.can_invoke())
     }
 
+    /// First key bound to `command` in `context`, falling back to the global
+    /// contexts the way the host resolves a keystroke.
+    pub fn keys(&self, context: &str, command: &str) -> Option<&str> {
+        self.bindings
+            .iter()
+            .find(|binding| binding.command == command && binding.context == context)
+            .or_else(|| {
+                self.bindings
+                    .iter()
+                    .find(|binding| binding.command == command && binding.context == "Always")
+            })
+            .or_else(|| {
+                self.bindings
+                    .iter()
+                    .find(|binding| binding.command == command && binding.context == "Default")
+            })
+            .map(|binding| binding.key.as_str())
+    }
+
     pub fn menu(&self, name: &str) -> Vec<MenuEntry> {
         self.menus
             .get(name)

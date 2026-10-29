@@ -276,6 +276,7 @@ impl VisualPanel {
                 view.queue_visual(json!({"action":"move", "x":x,"y":y,"shift":event.modifiers.shift,"control":event.modifiers.control || event.modifiers.platform,"alt":event.modifiers.alt}), cx);
             }))
             .on_mouse_down(gpui_kit::MouseButton::Left, cx.listener(|view, event: &gpui_kit::MouseDownEvent, window, cx| {
+                view.key_focus = crate::KeyFocus::Video;
                 view.focus_handle.focus(window, cx);
                 if !view.visual.bounds.borrow().contains(&event.position) { return; }
                 let (x,y) = view.visual.local(event.position);

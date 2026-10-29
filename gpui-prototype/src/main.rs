@@ -278,6 +278,15 @@ const MIN_TEXT_COLUMN: f32 = 140.;
 
 /// One column of the subtitle list. The text column is implicit and always
 /// last, so it keeps absorbing whatever width the fixed columns leave over.
+/// Which part of the workspace owns the keyboard, so shortcuts stay
+/// context-sensitive the way Aegisub's hotkey contexts are.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum KeyFocus {
+    Grid,
+    Audio,
+    Video,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SubtitleColumn {
     IdLayer,
@@ -457,6 +466,67 @@ struct Snapshot {
     lines: Vec<Line>,
     #[serde(default)]
     notices: Vec<Notice>,
+}
+
+/// Status bar hints per hotkey context: (context, label, [(command, text)]).
+const SHORTCUT_HINTS: &[(&str, &str, &[(&str, &str)])] = &[
+    (
+        "Subtitle Grid",
+        "字幕列表",
+        &[
+            ("video/frame/prev", "上一帧"),
+            ("video/frame/next", "下一帧"),
+            ("subtitle/select/all", "全选"),
+        ],
+    ),
+    (
+        "Subtitle Edit Box",
+        "文本编辑",
+        &[
+            ("grid/line/next/create", "提交"),
+            ("edit/color/primary", "主色"),
+            ("edit/color/secondary", "次色"),
+            ("edit/color/outline", "描边色"),
+        ],
+    ),
+    (
+        "Audio",
+        "音频",
+        &[
+            ("audio/commit", "提交"),
+            ("audio/play/selection", "播放选区"),
+            ("audio/play/selection/before", "听前文"),
+            ("audio/play/selection/after", "听后文"),
+            ("time/prev", "上一句"),
+            ("time/next", "下一句"),
+        ],
+    ),
+    (
+        "Video",
+        "视频",
+        &[
+            ("video/frame/prev", "上一帧"),
+            ("video/frame/next", "下一帧"),
+            ("video/tool/drag", "拖动"),
+            ("video/tool/clip", "裁剪"),
+        ],
+    ),
+];
+
+fn pretty_key(key: &str) -> String {
+    let mut out = key.to_owned();
+    if cfg!(target_os = "macos") {
+        out = out.replace("Ctrl-", "⌘").replace("Alt-", "⌥");
+    }
+    out = out
+        .replace("KP_Enter", "小键盘 ⏎")
+        .replace("Enter", "⏎")
+        .replace("Space", "空格")
+        .replace("Left", "←")
+        .replace("Right", "→")
+        .replace("Up", "↑")
+        .replace("Down", "↓");
+    out
 }
 
 fn hotkey_key(key: &str) -> String {
@@ -732,6 +802,7 @@ struct Workspace {
     editor_dirty_line: i64,
     pending_text_selection: Option<[usize; 2]>,
     active_panel: Panel,
+    key_focus: KeyFocus,
     sidebar_collapsed: Option<bool>,
     selected_line: i64,
     status: String,
@@ -963,6 +1034,7 @@ impl Workspace {
             editor_dirty_line: -1,
             pending_text_selection: None,
             active_panel: Panel::Subtitles,
+            key_focus: KeyFocus::Grid,
             sidebar_collapsed: None,
             selected_line: -1,
             status: "已连接当前 Aegisub 文档".into(),
@@ -3469,22 +3541,50 @@ impl Workspace {
             combo.push_str("Shift-");
         }
         combo.push_str(&hotkey_key(&key.key));
-        let context = if editor_focused {
-            "Subtitle Edit Box"
-        } else if command_search_focused {
+        let context = if command_search_focused {
             "Subtitle Grid"
-        } else if self.active_panel == Panel::Audio {
-            "Audio"
-        } else if self.active_panel == Panel::Visual {
-            "Video"
         } else {
-            "Subtitle Grid"
+            self.key_context(window, cx)
         };
         if let Some(command) = self.catalog.shortcut(context, &combo) {
             let name = command.name.clone();
             self.invoke(json!({"op":"command", "name":name}), cx);
             cx.stop_propagation();
         }
+    }
+
+    /// Resolve the Aegisub hotkey context from the widget that owns the keyboard.
+    fn key_context(&self, window: &mut Window, cx: &mut Context<Self>) -> &'static str {
+        if self.editor.read(cx).focus_handle(cx).is_focused(window) {
+            return "Subtitle Edit Box";
+        }
+        match self.key_focus {
+            KeyFocus::Audio => "Audio",
+            KeyFocus::Video => "Video",
+            KeyFocus::Grid => match self.active_panel {
+                Panel::Audio => "Audio",
+                Panel::Visual => "Video",
+                _ => "Subtitle Grid",
+            },
+        }
+    }
+
+    /// Shortcut hints for the status bar. Keys come from the host hotkey table so
+    /// remapped bindings show up here too; the labels are the short UI names.
+    fn shortcut_hints(&self, context: &str) -> Option<(&'static str, Vec<(String, &'static str)>)> {
+        let (_, label, items) = SHORTCUT_HINTS
+            .iter()
+            .find(|(name, _, _)| *name == context)?;
+        let hints: Vec<_> = items
+            .iter()
+            .filter_map(|(command, text)| {
+                self.catalog
+                    .keys(context, command)
+                    .map(|key| (pretty_key(key), *text))
+            })
+            .take(4)
+            .collect();
+        (!hints.is_empty()).then_some((*label, hints))
     }
 
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -5301,6 +5401,7 @@ impl Workspace {
                                             let id = line.id;
                                             move |event: &gpui_kit::MouseDownEvent, window, cx| {
                                                 let _ = weak.update(cx, |view, cx| {
+                                                    view.key_focus = KeyFocus::Grid;
                                                     if focus_grid {
                                                         view.focus_handle.focus(window, cx);
                                                     }
@@ -5992,12 +6093,20 @@ impl Render for Workspace {
         } else {
             body = body.child(self.document.render_project(cx));
         }
+        // Pages with their own toolbars do not own the keyboard shortcuts.
+        let hints = match self.active_panel {
+            Panel::Subtitles | Panel::Audio | Panel::Visual => {
+                self.shortcut_hints(self.key_context(window, cx))
+            }
+            _ => None,
+        };
         let body = body.child(
             div()
                 .h_flex()
                 .h(px(26.))
                 .flex_shrink_0()
                 .px_3()
+                .gap_4()
                 .items_center()
                 .justify_between()
                 .bg(p.surface)
@@ -6013,6 +6122,38 @@ impl Render for Workspace {
                         .text_color(muted)
                         .child(self.status.clone()),
                 )
+                .when_some(hints, |bar, (label, items)| {
+                    bar.child(
+                        div()
+                            .h_flex()
+                            .flex_shrink_0()
+                            .gap_3()
+                            .items_center()
+                            .text_size(px(11.))
+                            .text_color(muted)
+                            .child(div().flex_shrink_0().child(label))
+                            .children(items.into_iter().map(|(key, text)| {
+                                div()
+                                    .h_flex()
+                                    .flex_shrink_0()
+                                    .gap_1()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .px(px(5.))
+                                            .py(px(1.))
+                                            .rounded(px(crate::workspace_theme::RADIUS_SM
+                                                - 3.))
+                                            .bg(p.inset)
+                                            .border_1()
+                                            .border_color(border)
+                                            .text_size(px(10.))
+                                            .child(key),
+                                    )
+                                    .child(div().child(text))
+                            })),
+                    )
+                })
                 .child(
                     div()
                         .h_flex()
