@@ -4673,6 +4673,9 @@ impl Workspace {
                     .gap_2()
                     .items_center()
                     .flex_shrink_0()
+                    // The card clips to a rectangle, so a tinted strip needs its
+                    // own rounded corners to stay inside the card outline.
+                    .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
                     .bg(p.raised)
                     .border_b_1()
                     .border_color(p.divider)
@@ -4704,6 +4707,7 @@ impl Workspace {
                     .px_3()
                     .gap_3()
                     .items_center()
+                    .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
                     .bg(header_bg)
                     .border_b_1()
                     // Rows reserve 2px on the left for the active-line accent;

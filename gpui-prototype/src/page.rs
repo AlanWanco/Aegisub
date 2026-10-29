@@ -72,6 +72,9 @@ pub fn section_with_icon(
         .gap_3()
         .px_4()
         .py_3()
+        // overflow_hidden clips to a rectangle, so the strip needs the card's
+        // top corners rounded too or its square corners poke through them.
+        .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
         .border_b_1()
         .border_color(p.divider)
         .bg(p.raised)
