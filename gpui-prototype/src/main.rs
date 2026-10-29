@@ -835,6 +835,11 @@ enum WorkspaceResizeDrag {
         start_x: gpui_kit::Pixels,
         start_width: f32,
     },
+    /// Width of the line inspector beside the text editor.
+    PropertiesRail {
+        start_x: gpui_kit::Pixels,
+        start_width: f32,
+    },
     /// Height of the video preview above the line properties.
     VideoPreview {
         start_y: gpui_kit::Pixels,
@@ -867,6 +872,8 @@ struct Workspace {
     audio_page_height: f32,
     column_split: Option<f32>,
     video_preview_height: Option<f32>,
+    /// Width the user dragged the line inspector to; `None` keeps the default.
+    properties_rail_width: Option<f32>,
     last_preview_height: std::cell::Cell<f32>,
     editor: Entity<TextareaState>,
     search: Entity<InputState>,
@@ -1149,6 +1156,7 @@ impl Workspace {
             audio_page_height: 260.,
             column_split: None,
             video_preview_height: None,
+            properties_rail_width: None,
             last_preview_height: std::cell::Cell::new(220.),
             editor,
             search,
@@ -6978,7 +6986,7 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(icon)
+                    .child(Icon::new(icon).size(px(15.)))
                     .accessibility_label(label)
                     .tooltip(label)
                     .ghost()
@@ -6991,6 +6999,31 @@ impl Workspace {
         let row_count = visible.len();
         let properties_rail =
             rail.map(|width| self.render_properties(Some(width), cx).into_any_element());
+        let rail_handle = rail.map(|rail_width| {
+            div()
+                .id("properties-rail-resize-handle")
+                .role(gpui_kit::Role::Splitter)
+                .aria_label("调整行属性宽度")
+                .w(px(6.))
+                .h_full()
+                .flex_shrink_0()
+                .cursor_col_resize()
+                .h_flex()
+                .items_center()
+                .justify_center()
+                .child(div().w(px(1.)).h_full().bg(p.divider))
+                .hover(|v| v.bg(p.accent.opacity(0.18)))
+                .on_mouse_down(
+                    gpui_kit::MouseButton::Left,
+                    cx.listener(move |view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                        view.layout_drag = Some(WorkspaceResizeDrag::PropertiesRail {
+                            start_x: event.position.x,
+                            start_width: rail_width,
+                        });
+                        cx.notify();
+                    }),
+                )
+        });
         let editor_height = self.subtitle_editor_height;
         // Header, formatting bar and the text box stay in one column so the
         // inspector can sit beside them as a second column.
@@ -7009,14 +7042,18 @@ impl Workspace {
                             .items_center()
                             .child(
                                 div()
-                                    .flex_1()
-                                    .min_w_0()
+                                    .flex_shrink_0()
                                     .text_sm()
                                     .font_semibold()
                                     .child("文本编辑"),
                             )
+                            .child(div().flex_1())
                             .child(
                                 div()
+                                    .flex_shrink_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
                                     .text_size(px(11.))
                                     .text_color(muted)
                                     .child(format!("已选 {} 行", self.snapshot.selected.len())),
@@ -7073,6 +7110,7 @@ impl Workspace {
             .border_b_1()
             .border_color(border)
             .child(editor_content)
+            .children(rail_handle)
             .children(properties_rail);
         let subtitle_list = div()
             .v_flex()
@@ -7722,6 +7760,17 @@ impl Render for Workspace {
                                         .clamp(300., 1400.),
                                 );
                             }
+                            WorkspaceResizeDrag::PropertiesRail {
+                                start_x,
+                                start_width,
+                            } => {
+                                // The inspector sits on the right, so dragging
+                                // the handle left makes it wider.
+                                view.properties_rail_width = Some(
+                                    (start_width - f32::from(event.position.x - start_x))
+                                        .clamp(200., 520.),
+                                );
+                            }
                             WorkspaceResizeDrag::SubtitleColumn {
                                 column,
                                 start_x,
@@ -7801,10 +7850,18 @@ impl Render for Workspace {
             // The inspector only turns into a side rail while the editor still
             // keeps a workable width next to it.
             let right_column_width = body_width - column_width - 16.;
-            let rail_width = (right_column_width * 0.42).clamp(228., 320.);
+            let default_rail = (right_column_width * 0.42).clamp(228., 320.);
+            // Dragging the handle widens the rail at the editor's expense, so
+            // the editor keeps a floor of 260 and the rail can grow past its
+            // default share of the column.
+            let rail_limit = (right_column_width - 260.).max(200.);
+            let rail_width = self
+                .properties_rail_width
+                .unwrap_or(default_rail)
+                .clamp(200., rail_limit);
             let properties_rail = side_by_side
                 .then_some(rail_width)
-                .filter(|width| right_column_width - width - 12. >= 288.);
+                .filter(|_| right_column_width >= 420.);
             let divider = p.divider;
             let audio_handle = div()
                 .id("audio-panel-resize-handle")
