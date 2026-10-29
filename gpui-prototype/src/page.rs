@@ -67,7 +67,7 @@ pub fn toolbar(children: impl IntoIterator<Item = gpui_kit::AnyElement>) -> gpui
         .h_flex()
         .flex_wrap()
         .items_center()
-        .gap_2()
+        .gap(px(10.5))
         .children(children)
 }
 
@@ -217,9 +217,9 @@ pub fn segmented(
     let mut row = div()
         .h_flex()
         .items_center()
-        .gap_0p5()
-        .p_0p5()
-        .rounded(px(8.))
+        .gap(px(2.5))
+        .p(px(2.5))
+        .rounded_full()
         .bg(p.inset);
     for (index, (id, label, selected, disabled)) in segments.into_iter().enumerate() {
         let handler = handler.clone();
@@ -230,7 +230,7 @@ pub fn segmented(
                 .px_3()
                 .h_flex()
                 .items_center()
-                .rounded(px(6.))
+                .rounded_full()
                 .text_sm()
                 .whitespace_nowrap()
                 .role(gpui_kit::Role::Button)
@@ -277,6 +277,7 @@ pub fn tabs(
         let mut tab = div().v_flex().items_center().gap_1();
         tab = tab.child(
             Button::new(id)
+                .rounded(gpui_kit::px(999.))
                 .label(label)
                 .ghost()
                 .text_color(if active { p.text } else { p.muted })
@@ -362,6 +363,16 @@ pub fn toggle_chip(
         })
         .when(disabled, |chip| chip.opacity(0.45))
         .when(!disabled, |chip| chip.cursor_pointer())
+        .child(
+            Icon::new(if on {
+                IconName::Check
+            } else {
+                IconName::Circle
+            })
+            .size(px(13.))
+            .when(on, |icon| icon.text_color(p.canvas))
+            .when(!on, |icon| icon.text_color(p.muted)),
+        )
         .child(label.into())
 }
 
@@ -376,6 +387,7 @@ pub fn select_trigger(
 ) -> Button {
     let p = Palette::current(cx);
     Button::new(id)
+        .rounded(gpui_kit::px(999.))
         .w_full()
         .disabled(disabled)
         .child(

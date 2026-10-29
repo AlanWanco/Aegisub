@@ -347,13 +347,13 @@ impl DocumentPanels {
                     .border_t_1()
                     .border_color(p.divider)
                     .child(
-                        Button::new("new-document-style")
+                        Button::new("new-document-style").icon(IconName::Plus).rounded(gpui_kit::px(999.))
                             .label("新建样式")
                             .w_full()
                             .on_click(cx.listener(|view, _, _, cx| view.new_style(cx))),
                     )
                     .child(
-                        Button::new("style-copy-to-catalog")
+                        Button::new("style-copy-to-catalog").rounded(gpui_kit::px(999.))
                             .ghost()
                             .w_full()
                             .justify_start()
@@ -373,24 +373,24 @@ impl DocumentPanels {
         };
         let mut editor = div().id("document-style-form").v_flex().flex_1().min_w_0().min_h_0().gap_3().p_3().overflow_y_scrollbar()
             .child(div().h_flex().flex_wrap().gap_2()
-                .child(Button::new("apply-style-fields").label("应用样式修改").primary()
+                .child(Button::new("apply-style-fields").icon(IconName::Check).rounded(gpui_kit::px(999.)).label("应用样式修改").primary()
                     .on_click(cx.listener(|view, _, _, cx| view.commit_style(cx))))
-                .child(Button::new("discard-style-fields").label("放弃修改")
+                .child(Button::new("discard-style-fields").icon(IconName::Undo2).rounded(gpui_kit::px(999.)).label("放弃修改")
                     .on_click(cx.listener(|view, _, _, cx| { view.document.style_form.dirty.clear(); cx.notify(); })))
-                .child(Button::new("duplicate-document-style").label("复制为新样式")
+                .child(Button::new("duplicate-document-style").icon(IconName::Copy).rounded(gpui_kit::px(999.)).label("复制为新样式")
                     .on_click(cx.listener(|view, _, _, cx| view.duplicate_style(cx))))
-                .child(Button::new("delete-document-style").label("删除…").danger()
+                .child(Button::new("delete-document-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).label("删除…").danger()
                     .on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = true; cx.notify(); }))))
             .child(div().text_xs().text_color(muted).child("颜色格式 #RRGGBBAA，AA 沿用 ASS 透明度（00 不透明）。重命名同步更新行样式及 \\r 引用。"));
         if self.confirm_delete && self.editing_library {
             let source = self.library_style.clone();
             editor = editor.child(div().h_flex().gap_2()
-                .child(Button::new("confirm-delete-library-style").label("确认从样式库删除")
+                .child(Button::new("confirm-delete-library-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).label("确认从样式库删除")
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.library_request(json!({"action":"delete", "catalog":view.document.library.catalog, "source":source, "confirmed":true}), cx);
                         view.document.confirm_delete = false;
                     })))
-                .child(Button::new("cancel-delete-library-style").label("取消")
+                .child(Button::new("cancel-delete-library-style").icon(IconName::Close).rounded(gpui_kit::px(999.)).label("取消")
                     .on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
         }
         if self.confirm_delete && !self.editing_library {
@@ -407,14 +407,14 @@ impl DocumentPanels {
                 .map(|name| format!("确认删除，并将引用改为 {name}"))
                 .unwrap_or_else(|| "至少保留一个样式".into());
             editor = editor.child(div().h_flex().gap_2()
-                .child(Button::new("confirm-delete-style").label(label).disabled(fallback.is_none())
+                .child(Button::new("confirm-delete-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).label(label).disabled(fallback.is_none())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         if let Some(replacement) = &fallback {
                             view.invoke(json!({"op":"style", "action":"delete", "source":style, "replacement":replacement}), cx);
                             view.document.confirm_delete = false;
                         }
                     })))
-                .child(Button::new("cancel-delete-style").label("取消").on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
+                .child(Button::new("cancel-delete-style").icon(IconName::Close).rounded(gpui_kit::px(999.)).label("取消").on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
         }
         editor = editor
             .child(style_section(
@@ -529,56 +529,63 @@ impl DocumentPanels {
         let muted = p.muted;
         // Same header band and body padding as the other two cards so the three
         // titles sit on one line.
-        let mut body =
-            div()
-                .v_flex()
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .min_w_0()
-                .gap_2()
-                .p_3()
-                .overflow_y_scrollbar()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(muted)
-                        .child("读取旧版 .sty 库。库内修改即时保存；复制到脚本后可撤销。"),
-                )
-                .child(crate::page::field_label(cx, "样式库名称"))
-                .child(Input::new(&self.catalog_name).w_full())
-                .child(
-                    div()
-                        .h_flex()
-                        .gap_1()
-                        .child(Button::new("new-style-catalog").label("新建库").on_click(
-                            cx.listener(|view, _, _, cx| {
+        let mut body = div()
+            .v_flex()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .min_w_0()
+            .gap_2()
+            .p_3()
+            .overflow_y_scrollbar()
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("读取旧版 .sty 库。库内修改即时保存；复制到脚本后可撤销。"),
+            )
+            .child(crate::page::field_label(cx, "样式库名称"))
+            .child(Input::new(&self.catalog_name).w_full())
+            .child(
+                div()
+                    .h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("new-style-catalog")
+                            .icon(IconName::Plus)
+                            .rounded(gpui_kit::px(999.))
+                            .label("新建库")
+                            .on_click(cx.listener(|view, _, _, cx| {
                                 let catalog =
                                     view.document.catalog_name.read(cx).value().to_string();
                                 view.library_request(
                                     json!({"action":"create_catalog", "catalog":catalog}),
                                     cx,
                                 );
-                            }),
-                        ))
-                        .child(
-                            Button::new("refresh-style-catalog")
-                                .label("刷新")
-                                .ghost()
-                                .on_click(cx.listener(|view, _, _, cx| view.refresh_library(cx))),
-                        )
-                        .child(
-                            Button::new("delete-style-catalog")
-                                .label("删除库…")
-                                .ghost()
-                                .danger()
-                                .disabled(self.library.catalogs.len() <= 1)
-                                .on_click(cx.listener(|view, _, _, cx| {
-                                    view.document.confirm_delete_catalog = true;
-                                    cx.notify();
-                                })),
-                        ),
-                );
+                            })),
+                    )
+                    .child(
+                        Button::new("refresh-style-catalog")
+                            .icon(IconName::RefreshCw)
+                            .rounded(gpui_kit::px(999.))
+                            .label("刷新")
+                            .ghost()
+                            .on_click(cx.listener(|view, _, _, cx| view.refresh_library(cx))),
+                    )
+                    .child(
+                        Button::new("delete-style-catalog")
+                            .icon(IconName::Delete)
+                            .rounded(gpui_kit::px(999.))
+                            .label("删除库…")
+                            .ghost()
+                            .danger()
+                            .disabled(self.library.catalogs.len() <= 1)
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.document.confirm_delete_catalog = true;
+                                cx.notify();
+                            })),
+                    ),
+            );
         for catalog in &self.library.catalogs {
             let name = catalog.clone();
             let selected = name == self.library.catalog;
@@ -596,7 +603,7 @@ impl DocumentPanels {
                     .h_flex()
                     .gap_2()
                     .child(
-                        Button::new("confirm-delete-style-catalog")
+                        Button::new("confirm-delete-style-catalog").icon(IconName::Copy).rounded(gpui_kit::px(999.))
                             .label(format!("确认删除库 {catalog}"))
                             .on_click(cx.listener(move |view, _, _, cx| {
                                 view.library_request(
@@ -607,7 +614,7 @@ impl DocumentPanels {
                             })),
                     )
                     .child(
-                        Button::new("cancel-delete-style-catalog")
+                        Button::new("cancel-delete-style-catalog").icon(IconName::Close).rounded(gpui_kit::px(999.))
                             .label("取消")
                             .ghost()
                             .on_click(cx.listener(|view, _, _, cx| {
@@ -669,7 +676,7 @@ impl DocumentPanels {
             );
         }
         body = body.child(
-            Button::new("catalog-copy-to-script")
+            Button::new("catalog-copy-to-script").icon(IconName::Copy).rounded(gpui_kit::px(999.))
                 .label("← 复制选中样式到脚本")
                 .w_full()
                 .disabled(self.selected_library.is_empty())
@@ -682,6 +689,7 @@ impl DocumentPanels {
         );
         body = body.child(
             Button::new("import-styles-from-file")
+                .rounded(gpui_kit::px(999.))
                 .ghost()
                 .w_full()
                 .justify_start()
@@ -706,6 +714,8 @@ impl DocumentPanels {
             let name = name.clone();
             body = body.child(
                 Button::new(format!("import-style-{name}"))
+                    .icon(IconName::Delete)
+                    .rounded(gpui_kit::px(999.))
                     .label(format!("导入 · {name}"))
                     .ghost()
                     .w_full()
@@ -722,7 +732,7 @@ impl DocumentPanels {
         }
         if !self.import_path.is_empty() {
             body = body.child(
-                Button::new("commit-style-file-import")
+                Button::new("commit-style-file-import").icon(IconName::FileInput).rounded(gpui_kit::px(999.))
                     .label("导入勾选的样式")
                     .primary()
                     .w_full()
@@ -841,7 +851,7 @@ impl DocumentPanels {
                 "脚本信息、布局分辨率与关联媒体文件；修改后点应用写入当前字幕。",
             ))
             .child(crate::page::toolbar([
-                Button::new("apply-script-info")
+                Button::new("apply-script-info").icon(IconName::Check).rounded(gpui_kit::px(999.))
                     .label("应用脚本属性")
                     .primary()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -851,7 +861,7 @@ impl DocumentPanels {
                         );
                     }))
                     .into_any_element(),
-                Button::new("discard-script-info")
+                Button::new("discard-script-info").icon(IconName::Undo2).rounded(gpui_kit::px(999.))
                     .label("放弃修改")
                     .ghost()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -859,7 +869,7 @@ impl DocumentPanels {
                         cx.notify();
                     }))
                     .into_any_element(),
-                Button::new("video-script-dimensions")
+                Button::new("video-script-dimensions").icon(IconName::Video).rounded(gpui_kit::px(999.))
                     .label("使用视频分辨率")
                     .disabled(media.width == 0)
                     .on_click(cx.listener(|view, _, window, cx| {
@@ -1048,6 +1058,7 @@ fn style_flag_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
         let weak = form.inputs[key].clone();
         row = row.child(
             Button::new(format!("style-flag-{key}"))
+                .rounded(gpui_kit::px(999.))
                 .label(label)
                 .ghost()
                 .when(on, |button| button.primary())
@@ -1080,6 +1091,8 @@ fn style_border_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
         let input = form.inputs["borderstyle"].clone();
         row = row.child(
             Button::new(format!("style-border-{value}"))
+                .icon(IconName::Frame)
+                .rounded(gpui_kit::px(999.))
                 .label(label)
                 .ghost()
                 .when(on, |button| button.primary())
@@ -1130,6 +1143,7 @@ fn style_alignment_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
             let key = value.clone();
             row = row.child(
                 Button::new(format!("style-align-{value}"))
+                    .rounded(gpui_kit::px(999.))
                     .label(value.clone())
                     .w(px(34.))
                     .h(px(28.))

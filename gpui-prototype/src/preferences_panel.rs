@@ -333,6 +333,8 @@ impl PreferencesPanel {
                 if option.directory {
                     control = control.child(
                         Button::new(format!("preference-browse-{key}"))
+                            .icon(IconName::FolderOpen)
+                            .rounded(gpui_kit::px(999.))
                             .label("选择…")
                             .disabled(self.loading)
                             .on_click(cx.listener(move |view, _, _, cx| {
@@ -371,6 +373,8 @@ impl PreferencesPanel {
             .items_center()
             .child(
                 Button::new("preferences-apply")
+                    .icon(IconName::Check)
+                    .rounded(gpui_kit::px(999.))
                     .label(if self.drafts.is_empty() {
                         "应用修改".to_owned()
                     } else {
@@ -387,6 +391,8 @@ impl PreferencesPanel {
             )
             .child(
                 Button::new("preferences-discard")
+                    .icon(IconName::Undo2)
+                    .rounded(gpui_kit::px(999.))
                     .label("放弃未应用修改")
                     .disabled(self.loading || self.drafts.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -398,6 +404,8 @@ impl PreferencesPanel {
             )
             .child(
                 Button::new("preferences-reset-visible")
+                    .icon(IconName::RotateCw)
+                    .rounded(gpui_kit::px(999.))
                     .label(if self.confirm_reset {
                         "确认恢复当前列表默认值"
                     } else {
@@ -418,6 +426,8 @@ impl PreferencesPanel {
             )
             .child(
                 Button::new("preferences-hotkeys")
+                    .icon(IconName::Settings2)
+                    .rounded(gpui_kit::px(999.))
                     .label("快捷键…")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.active_panel = crate::Panel::Hotkeys;
@@ -428,6 +438,8 @@ impl PreferencesPanel {
         if self.confirm_reset {
             toolbar = toolbar.child(
                 Button::new("preferences-reset-cancel")
+                    .icon(IconName::Close)
+                    .rounded(gpui_kit::px(999.))
                     .label("取消恢复")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.preferences.confirm_reset = false;

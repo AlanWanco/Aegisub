@@ -127,12 +127,16 @@ impl StylingPanel {
             ))
             .child(crate::page::toolbar([
                 Button::new("styling-commit")
+                    .icon(IconName::Check)
+                    .rounded(gpui_kit::px(999.))
                     .label("应用并前进")
                     .primary()
                     .disabled(active.is_none())
                     .on_click(cx.listener(|view, _, _, cx| view.styling_action("commit", None, cx)))
                     .into_any_element(),
                 Button::new("styling-preview")
+                    .icon(IconName::Eye)
+                    .rounded(gpui_kit::px(999.))
                     .label("应用并预览")
                     .disabled(active.is_none())
                     .on_click(
@@ -140,12 +144,16 @@ impl StylingPanel {
                     )
                     .into_any_element(),
                 Button::new("styling-prev")
+                    .icon(IconName::ChevronLeft)
+                    .rounded(gpui_kit::px(999.))
                     .label("上一行")
                     .ghost()
                     .disabled(active.is_none())
                     .on_click(cx.listener(|view, _, _, cx| view.styling_action("prev", None, cx)))
                     .into_any_element(),
                 Button::new("styling-next")
+                    .icon(IconName::ChevronRight)
+                    .rounded(gpui_kit::px(999.))
                     .label("下一行")
                     .ghost()
                     .disabled(active.is_none())

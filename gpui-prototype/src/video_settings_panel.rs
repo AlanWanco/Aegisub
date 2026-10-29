@@ -195,6 +195,8 @@ impl VideoSettingsPanel {
             let action = match self.page {
                 VideoPage::Dummy => Some(
                     Button::new("dummy-video-create")
+                        .icon(IconName::Video)
+                        .rounded(gpui_kit::px(999.))
                         .label("载入空白视频")
                         .primary()
                         .disabled(disabled)
@@ -209,6 +211,8 @@ impl VideoSettingsPanel {
                         .gap_2()
                         .child(
                             Button::new("jump-frame-apply")
+                                .icon(IconName::Frame)
+                                .rounded(gpui_kit::px(999.))
                                 .label("按帧跳转")
                                 .primary()
                                 .disabled(disabled || !self.state.loaded)
@@ -218,6 +222,8 @@ impl VideoSettingsPanel {
                         )
                         .child(
                             Button::new("jump-time-apply")
+                                .icon(IconName::Clock3)
+                                .rounded(gpui_kit::px(999.))
                                 .label("按时间跳转")
                                 .disabled(disabled || !self.state.loaded)
                                 .on_click(cx.listener(|view, _, _, cx| {
@@ -228,6 +234,8 @@ impl VideoSettingsPanel {
                 ),
                 VideoPage::Aspect => Some(
                     Button::new("custom-aspect-apply")
+                        .icon(IconName::Check)
+                        .rounded(gpui_kit::px(999.))
                         .label("应用显示比例")
                         .primary()
                         .disabled(disabled || !self.state.loaded)
@@ -256,6 +264,8 @@ impl VideoSettingsPanel {
                 ] {
                     resolutions = resolutions.child(
                         Button::new(format!("dummy-resolution-{width}-{height}"))
+                            .icon(IconName::Frame)
+                            .rounded(gpui_kit::px(999.))
                             .label(format!("{width} × {height}"))
                             .disabled(disabled)
                             .on_click(cx.listener(move |view, _, window, cx| {
@@ -359,6 +369,8 @@ impl VideoSettingsPanel {
                 },
                 Some(
                     Button::new("refresh-video-details")
+                        .icon(IconName::RefreshCw)
+                        .rounded(gpui_kit::px(999.))
                         .label("刷新详情")
                         .disabled(self.loading)
                         .on_click(

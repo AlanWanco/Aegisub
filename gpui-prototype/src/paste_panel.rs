@@ -37,6 +37,8 @@ impl PastePanel {
         ] {
             presets = presets.child(
                 Button::new(format!("paste-over-preset-{preset}"))
+                    .icon(IconName::ClipboardPaste)
+                    .rounded(gpui_kit::px(999.))
                     .label(label)
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -104,6 +106,8 @@ impl PastePanel {
         actions = actions
             .child(
                 Button::new("paste-over-apply")
+                    .icon(IconName::Check)
+                    .rounded(gpui_kit::px(999.))
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -119,6 +123,8 @@ impl PastePanel {
             )
             .child(
                 Button::new("paste-over-back")
+                    .icon(IconName::ArrowLeft)
+                    .rounded(gpui_kit::px(999.))
                     .label("返回字幕")
                     .ghost()
                     .on_click(cx.listener(|view, _, window, cx| {

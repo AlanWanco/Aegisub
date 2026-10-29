@@ -235,6 +235,8 @@ impl ResamplePanel {
             ))
             .child(crate::page::toolbar([
                 Button::new("resample-apply")
+                    .icon(IconName::Check)
+                    .rounded(gpui_kit::px(999.))
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -245,6 +247,7 @@ impl ResamplePanel {
                     .on_click(cx.listener(|view, _, _, cx| view.resample_request("apply", cx)))
                     .into_any_element(),
                 Button::new("resample-reset")
+                    .rounded(gpui_kit::px(999.))
                     .icon(IconName::RefreshCw)
                     .label("从当前脚本重新读取")
                     .disabled(self.loading)
@@ -254,6 +257,7 @@ impl ResamplePanel {
                     }))
                     .into_any_element(),
                 Button::new("resample-from-video")
+                    .rounded(gpui_kit::px(999.))
                     .icon(IconName::Video)
                     .label("目标使用视频分辨率")
                     .disabled(disabled || self.state.video_x == 0)
@@ -271,6 +275,7 @@ impl ResamplePanel {
                     }))
                     .into_any_element(),
                 Button::new("resample-undo")
+                    .rounded(gpui_kit::px(999.))
                     .icon(IconName::Undo2)
                     .label("撤销")
                     .ghost()

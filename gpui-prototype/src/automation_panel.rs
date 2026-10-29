@@ -72,12 +72,16 @@ impl AutomationPanel {
             .join("、");
         let toolbar = crate::page::toolbar([
             Button::new("automation-add")
+                .icon(IconName::Plus)
+                .rounded(gpui_kit::px(999.))
                 .label("添加项目脚本…")
                 .primary()
                 .disabled(self.loading)
                 .on_click(cx.listener(|view, _, _, cx| view.pick_automation_script(cx)))
                 .into_any_element(),
             Button::new("automation-reload-all")
+                .icon(IconName::RefreshCw)
+                .rounded(gpui_kit::px(999.))
                 .label("重新加载全部")
                 .disabled(self.loading)
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -85,6 +89,8 @@ impl AutomationPanel {
                 }))
                 .into_any_element(),
             Button::new("automation-rescan")
+                .icon(IconName::Search)
+                .rounded(gpui_kit::px(999.))
                 .label("重新扫描目录")
                 .ghost()
                 .disabled(self.loading)
@@ -133,6 +139,8 @@ impl AutomationPanel {
             let confirming = self.confirm_remove.as_ref() == Some(&(scope.clone(), path.clone()));
             let mut actions = div().h_flex().gap_2().child(
                 Button::new(format!("automation-reload-{index}"))
+                    .icon(IconName::RefreshCw)
+                    .rounded(gpui_kit::px(999.))
                     .label("重新加载")
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -144,7 +152,7 @@ impl AutomationPanel {
             );
             if script.scope == "local" {
                 actions = actions.child(
-                    Button::new(format!("automation-remove-{index}"))
+                    Button::new(format!("automation-remove-{index}")).icon(IconName::Delete).rounded(gpui_kit::px(999.))
                         .label(if confirming { "确认卸载项目脚本" } else { "卸载…" })
 
                         .disabled(self.loading)
@@ -162,6 +170,8 @@ impl AutomationPanel {
             if confirming {
                 actions = actions.child(
                     Button::new(format!("automation-cancel-remove-{index}"))
+                        .icon(IconName::Close)
+                        .rounded(gpui_kit::px(999.))
                         .label("取消")
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.automation.confirm_remove = None;
@@ -220,6 +230,8 @@ impl AutomationPanel {
                         .items_center()
                         .child(
                             Button::new(format!("automation-macro-{}-{index}", feature.name))
+                                .icon(IconName::Play)
+                                .rounded(gpui_kit::px(999.))
                                 .label(format!("执行 {}", feature.label))
                                 .disabled(self.loading || !enabled)
                                 .on_click(cx.listener(move |view, _, _, cx| {

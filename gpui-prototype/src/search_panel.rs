@@ -347,6 +347,8 @@ impl SearchPanel {
             let primary = index == 0;
             toolbar = toolbar.child(
                 Button::new(format!("search-{action}"))
+                    .icon(IconName::Search)
+                    .rounded(gpui_kit::px(999.))
                     .label(label)
                     .when(primary, |button| button.primary())
                     .when(action == "replace_all", |button| button.ghost())
@@ -366,6 +368,8 @@ impl SearchPanel {
             )
             .child(
                 Button::new("search-back-to-grid")
+                    .icon(IconName::ArrowLeft)
+                    .rounded(gpui_kit::px(999.))
                     .label("回到字幕")
                     .ghost()
                     .disabled(self.loading)
@@ -396,6 +400,8 @@ impl SearchPanel {
                 let value = text.clone();
                 history = history.child(
                     Button::new(format!("search-history-{index}"))
+                        .icon(IconName::Replace)
+                        .rounded(gpui_kit::px(999.))
                         .label(text.clone())
                         .ghost()
                         .disabled(disabled)

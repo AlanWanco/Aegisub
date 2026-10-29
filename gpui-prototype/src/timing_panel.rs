@@ -294,6 +294,8 @@ impl TimingPanel {
             .bg(p.surface)
             .child(
                 Button::new("shift-apply")
+                    .icon(IconName::Check)
+                    .rounded(gpui_kit::px(999.))
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -305,6 +307,8 @@ impl TimingPanel {
             )
             .child(
                 Button::new("shift-undo")
+                    .icon(IconName::Undo2)
+                    .rounded(gpui_kit::px(999.))
                     .label("撤销")
                     .disabled(self.loading)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -380,6 +384,8 @@ impl TimingPanel {
             let description = format!("{filename} · {details}");
             history = history.child(
                 Button::new(format!("shift-history-{index}"))
+                    .icon(IconName::Clock3)
+                    .rounded(gpui_kit::px(999.))
                     .ghost()
                     .w_full()
                     .h(px(60.))
@@ -449,6 +455,8 @@ impl TimingPanel {
                     )
                     .child(
                         Button::new("shift-clear-history")
+                            .icon(IconName::Delete)
+                            .rounded(gpui_kit::px(999.))
                             .label(if self.confirm_clear {
                                 "确认清空"
                             } else {

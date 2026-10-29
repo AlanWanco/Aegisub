@@ -65,7 +65,7 @@ impl AttachmentPanel {
             .items_center()
             .gap_2()
             .child(
-                Button::new("attachment-add")
+                Button::new("attachment-add").icon(IconName::Plus).rounded(gpui_kit::px(999.))
                     .label("添加附件…")
                     .primary()
                     .disabled(self.loading)
@@ -90,14 +90,14 @@ impl AttachmentPanel {
                     .into_any_element(),
             )
             .child(
-                Button::new("attachment-extract")
+                Button::new("attachment-extract").icon(IconName::ExternalLink).rounded(gpui_kit::px(999.))
                     .label("导出所选…")
                     .disabled(self.loading || self.selected.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| view.extract_attachments(cx)))
                     .into_any_element(),
             )
             .child(
-                Button::new("attachment-delete")
+                Button::new("attachment-delete").icon(IconName::Delete).rounded(gpui_kit::px(999.))
                     .label(if self.confirm_delete {
                         "确认删除"
                     } else {
@@ -122,6 +122,8 @@ impl AttachmentPanel {
         if self.confirm_delete {
             toolbar = toolbar.child(
                 Button::new("attachment-cancel-delete")
+                    .icon(IconName::Close)
+                    .rounded(gpui_kit::px(999.))
                     .label("取消删除")
                     .ghost()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -139,6 +141,8 @@ impl AttachmentPanel {
                 .gap_2()
                 .child(
                     Button::new("attachment-undo")
+                        .icon(IconName::Undo2)
+                        .rounded(gpui_kit::px(999.))
                         .label("撤销")
                         .ghost()
                         .disabled(self.loading)
@@ -148,6 +152,8 @@ impl AttachmentPanel {
                 )
                 .child(
                     Button::new("attachment-refresh")
+                        .icon(IconName::RefreshCw)
+                        .rounded(gpui_kit::px(999.))
                         .label("刷新")
                         .ghost()
                         .disabled(self.loading)
