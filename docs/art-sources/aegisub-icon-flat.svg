@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Flat Aegisub mark: rounded square plate with the eye glyph. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#9BD1FF"/>
+  <path d="M206 512 Q512 238 818 512 Q512 786 206 512 Z" fill="#FFFFFF"/>
+  <circle cx="512" cy="512" r="126" fill="#1F5C99"/>
+  <circle cx="512" cy="512" r="62" fill="#0C1A2B"/>
+  <circle cx="470" cy="468" r="31" fill="#FFFFFF"/>
+</svg>
