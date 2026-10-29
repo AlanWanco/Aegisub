@@ -133,6 +133,7 @@ impl ResamplePanel {
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
+        let p = crate::workspace_theme::Palette::current(cx);
         let mut form = crate::page::page(cx, "resample-panel")
             .child(crate::page::header(
                 cx,
@@ -144,10 +145,39 @@ impl ResamplePanel {
                 div()
                     .h_flex()
                     .flex_wrap()
+                    .items_center()
                     .gap_2()
                     .child(
+                        Button::new("resample-apply")
+                            .icon(IconName::Check)
+                            .label(if self.loading {
+                                "处理中…"
+                            } else {
+                                "应用重采样"
+                            })
+                            .primary()
+                            .disabled(disabled)
+                            .on_click(
+                                cx.listener(|view, _, _, cx| view.resample_request("apply", cx)),
+                            ),
+                    )
+                    .child(
+                        Button::new("resample-undo")
+                            .icon(IconName::Undo2)
+                            .accessibility_label("撤销")
+                            .tooltip("撤销上一次重采样")
+                            .ghost()
+                            .disabled(self.loading)
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
+                            })),
+                    )
+                    .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.divider))
+                    .child(
                         Button::new("resample-reset")
+                            .icon(IconName::RefreshCw)
                             .label("从当前脚本重新读取")
+                            .ghost()
                             .disabled(self.loading)
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.resample.initialized = false;
@@ -156,7 +186,9 @@ impl ResamplePanel {
                     )
                     .child(
                         Button::new("resample-from-video")
+                            .icon(IconName::Video)
                             .label("目标使用视频分辨率")
+                            .ghost()
                             .disabled(disabled || self.state.video_x == 0)
                             .on_click(cx.listener(|view, _, window, cx| {
                                 let state = &view.resample.state;
@@ -192,19 +224,39 @@ impl ResamplePanel {
             "当前脚本：{} × {} · 视频：{} × {}",
             self.state.source_x, self.state.source_y, self.state.video_x, self.state.video_y
         )));
-        let mut aspect = div().h_flex().flex_wrap().gap_2();
-        for (mode, label) in [(0, "拉伸"), (1, "补边"), (2, "裁边"), (3, "手动边缘")] {
-            aspect = aspect.child(
-                Button::new(format!("resample-aspect-{mode}"))
-                    .label(label)
-                    .when(self.ar_mode == mode, |button| button.primary())
-                    .disabled(disabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.resample.ar_mode = mode;
-                        cx.notify();
-                    })),
-            );
-        }
+        let aspect = crate::page::segmented(
+            cx,
+            vec![
+                (
+                    "resample-aspect-0".into(),
+                    "拉伸",
+                    self.ar_mode == 0,
+                    disabled,
+                ),
+                (
+                    "resample-aspect-1".into(),
+                    "补边",
+                    self.ar_mode == 1,
+                    disabled,
+                ),
+                (
+                    "resample-aspect-2".into(),
+                    "裁边",
+                    self.ar_mode == 2,
+                    disabled,
+                ),
+                (
+                    "resample-aspect-3".into(),
+                    "手动边缘",
+                    self.ar_mode == 3,
+                    disabled,
+                ),
+            ],
+            |view, index, _, cx| {
+                view.resample.ar_mode = index as i64;
+                cx.notify();
+            },
+        );
         form = form.child(div().v_flex().gap_2().child("宽高比处理").child(aspect));
         if self.ar_mode == 3 {
             let mut margins = div().h_flex().items_start().gap_3();
@@ -284,29 +336,6 @@ impl ResamplePanel {
                     .child(error.clone()),
             );
         }
-        form.child(
-            div()
-                .h_flex()
-                .gap_2()
-                .child(
-                    Button::new("resample-apply")
-                        .label(if self.loading {
-                            "处理中…"
-                        } else {
-                            "应用重采样"
-                        })
-                        .primary()
-                        .disabled(disabled)
-                        .on_click(cx.listener(|view, _, _, cx| view.resample_request("apply", cx))),
-                )
-                .child(
-                    Button::new("resample-undo")
-                        .label("撤销")
-                        .disabled(self.loading)
-                        .on_click(cx.listener(|view, _, _, cx| {
-                            view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
-                        })),
-                ),
-        )
+        form
     }
 }
