@@ -156,12 +156,6 @@ impl VideoSettingsPanel {
             },
         );
         let mut panel = crate::page::page(cx, "video-settings-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Play,
-                "视频设置",
-                "查看视频详情、按时间或帧跳转，或创建空白视频用于排版。",
-            ))
             .child(tabs);
         let fields: Vec<_> = match self.page {
             VideoPage::Dummy => vec![

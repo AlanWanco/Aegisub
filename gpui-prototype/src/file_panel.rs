@@ -129,12 +129,6 @@ impl FilePanel {
             },
         );
         let mut panel = crate::page::page(cx, "file-tools-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::FolderOpen,
-                "文件与恢复",
-                "按指定编码重新打开字幕，或从自动保存副本中恢复。",
-            ))
             .child(tabs);
         if self.loading {
             panel = panel.child("正在读取文件信息…");

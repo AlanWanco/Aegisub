@@ -448,12 +448,6 @@ impl PreferencesPanel {
             );
         }
         let mut panel = crate::page::page(cx, "preferences-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Settings,
-                "偏好设置",
-                "修改后点应用才会写入配置；搜索可快速定位选项。",
-            ))
             .child(
                 div()
                     .h_flex()

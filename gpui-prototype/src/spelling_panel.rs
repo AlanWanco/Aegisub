@@ -208,12 +208,6 @@ impl SpellingPanel {
             "找到一处需要确认的拼写。"
         };
         let mut page = crate::page::page(cx, "spelling-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::SpellCheck,
-                "拼写检查",
-                "逐行检查字幕文本，替换、忽略或加入个人词典；每次修改都可撤销。",
-            ))
             .child(toolbar)
             .child(crate::page::section(
                 cx,

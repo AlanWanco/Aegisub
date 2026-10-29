@@ -165,12 +165,6 @@ impl TranslationPanel {
         };
         let divider = p.divider;
         crate::page::page(cx, "translation-assistant")
-            .child(crate::page::header(
-                cx,
-                IconName::Languages,
-                "翻译助手",
-                "按块翻译：上一块 / 下一块切换，提交后自动前进；整行原文的标签与绘图保持不变。",
-            ))
             .child(crate::page::toolbar([
                 Button::new("translation-commit").rounded(gpui_kit::px(999.))
                     .icon(IconName::Check)

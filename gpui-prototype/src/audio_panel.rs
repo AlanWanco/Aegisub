@@ -847,12 +847,6 @@ impl AudioPanel {
                 )
 ;
             crate::page::page(cx, "audio-panel")
-                .child(crate::page::header(
-                    cx,
-                    IconName::AudioLines,
-                    "音频调时",
-                    "载入音频或视频音轨后拖动波形设置时间；时间修改遵循自动提交与吸附设置。",
-                ))
                 .child(toolbar)
                 .child(panel)
                 .into_any_element()

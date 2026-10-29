@@ -264,12 +264,6 @@ impl HotkeyPanel {
             );
         }
         let mut panel = crate::page::page(cx, "hotkeys-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Asterisk,
-                "快捷键",
-                "为命令绑定组合键；上下文决定何时生效，空白命令名可屏蔽默认绑定。",
-            ))
             .child(crate::page::toolbar([
                 Button::new("hotkeys-back").rounded(gpui_kit::px(999.))
                     .icon(IconName::ArrowLeft)

@@ -509,12 +509,6 @@ impl DocumentPanels {
             .min_h_0()
             .p_4()
             .gap_4()
-            .child(crate::page::header(
-                cx,
-                IconName::Palette,
-                "样式管理",
-                "编辑当前脚本样式或从样式库复制；字段修改需点应用，重命名会同步更新行样式引用。",
-            ))
             .child(
                 div()
                     .h_flex()
@@ -851,12 +845,6 @@ impl DocumentPanels {
         let media_body = crate::page::section_body().child(media_rows);
 
         crate::page::page(cx, "project-properties")
-            .child(crate::page::header(
-                cx,
-                IconName::FileText,
-                "脚本属性",
-                "脚本信息、布局分辨率与关联媒体文件；修改后点应用写入当前字幕。",
-            ))
             .child(crate::page::toolbar([
                 Button::new("apply-script-info").icon(IconName::Check).rounded(gpui_kit::px(999.))
                     .label("应用脚本属性")

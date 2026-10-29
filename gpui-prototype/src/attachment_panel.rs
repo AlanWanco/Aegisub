@@ -271,12 +271,6 @@ impl AttachmentPanel {
             );
         }
         let mut panel = crate::page::page(cx, "attachment-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Paperclip,
-                "附件管理",
-                "附件嵌入 ASS 文件，添加和删除可撤销；列表大小为 ASS 编码后的数据量。",
-            ))
             .child(toolbar)
             .child(crate::page::section(
                 cx,

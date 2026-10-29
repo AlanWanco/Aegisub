@@ -238,16 +238,6 @@ impl SearchPanel {
             );
         }
         let mut panel = crate::page::page(cx, "search-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Search,
-                if self.selection_mode {
-                    "条件选行"
-                } else {
-                    "查找替换"
-                },
-                "在字幕文本、样式、角色或效果中检索；可预览匹配后一次性替换，整次操作可撤销。",
-            ))
             .child(modes)
             .child(crate::page::section_with_icon(
                 cx,

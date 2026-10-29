@@ -135,12 +135,6 @@ impl PastePanel {
             )
             .child(div().text_sm().text_color(p.muted).child(scope));
         let mut panel = crate::page::page(cx, "paste-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::ClipboardPaste,
-                "覆盖粘贴",
-                "从剪贴板读取字幕行，覆盖勾选的字段；其余字段保持当前值，整次操作可撤销。",
-            ))
             .child(actions)
             .child(crate::page::section(
                 cx,

@@ -136,9 +136,9 @@ pub fn apply(cx: &mut App) {
     theme.button_secondary_foreground = p.text;
     theme.button_secondary_hover = theme.secondary_hover;
     theme.button_secondary_active = p.selected;
-    // Inputs sit below the card surface, so a filled field reads as recessed
-    // instead of relying on a hairline border alone.
-    theme.input = p.inset;
+    // `input` is the field's outline colour, not its fill: keeping it on the
+    // border tone is what makes a field readable on a card of the same hue.
+    theme.input = p.border;
     theme.ring = p.accent;
     theme.caret = p.accent;
     theme.selection = p.selected;

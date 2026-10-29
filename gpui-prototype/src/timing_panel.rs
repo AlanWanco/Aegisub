@@ -499,12 +499,6 @@ impl TimingPanel {
             .p_3()
             .v_flex()
             .gap_3()
-            .child(crate::page::header(
-                cx,
-                IconName::Clock3,
-                "时间平移",
-                "按时间或帧整体平移字幕时间；影响范围与字段可选，整次操作可撤销。",
-            ))
             .child(parameters.flex_none())
             .child(history.flex_1())
     }

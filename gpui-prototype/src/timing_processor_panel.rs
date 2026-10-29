@@ -195,12 +195,6 @@ impl TimingProcessorPanel {
             .iter()
             .any(|key| self.options[key]);
         let mut page = crate::page::page(cx, "timing-processor-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Clock3,
-                "时间后处理",
-                "按开始时间处理所选样式，跳过注释；提前/延后会避开原本不重叠的字幕，整次操作可撤销。",
-            ))
             .child(crate::page::toolbar([
                 Button::new("processor-apply").icon(IconName::Check).rounded(gpui_kit::px(999.))
                     .label(if self.loading {

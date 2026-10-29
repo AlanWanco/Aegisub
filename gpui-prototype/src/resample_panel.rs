@@ -227,12 +227,6 @@ impl ResamplePanel {
             );
         }
         let mut page = crate::page::page(cx, "resample-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Maximize,
-                "分辨率重采样",
-                "同步缩放样式、坐标、边距、绘图和裁剪；整次处理可撤销。",
-            ))
             .child(crate::page::toolbar([
                 Button::new("resample-apply")
                     .icon(IconName::Check)

@@ -119,12 +119,6 @@ impl StylingPanel {
             })
             .unwrap_or_default();
         crate::page::page(cx, "styling-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::CaseSensitive,
-                "配样式",
-                "按前缀筛选样式并应用到当前行；应用后自动前进，整次操作可撤销。",
-            ))
             .child(crate::page::toolbar([
                 Button::new("styling-commit")
                     .icon(IconName::Check)

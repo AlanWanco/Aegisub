@@ -27,37 +27,10 @@ pub fn page(cx: &gpui_kit::App, id: &'static str) -> Scrollable<gpui_kit::Statef
         .flex_1()
         .min_h_0()
         .min_w_0()
-        .gap_4()
-        .p_5()
+        .gap_3()
+        .p_4()
         .overflow_y_scrollbar()
         .bg(Palette::current(cx).canvas)
-}
-
-/// Title plus a muted one-line description of what the page does.
-pub fn header(
-    cx: &gpui_kit::App,
-    icon: IconName,
-    title: impl Into<gpui_kit::SharedString>,
-    description: impl Into<gpui_kit::SharedString>,
-) -> gpui_kit::Div {
-    let p = Palette::current(cx);
-    div()
-        .v_flex()
-        .gap_1()
-        .child(
-            div()
-                .h_flex()
-                .items_center()
-                .gap_2()
-                .child(Icon::new(icon).size(px(18.)).text_color(p.accent))
-                .child(div().text_xl().font_semibold().child(title.into())),
-        )
-        .child(
-            div()
-                .text_sm()
-                .text_color(p.muted)
-                .child(description.into()),
-        )
 }
 
 /// A row of page actions. Pass one primary action first; the rest should be

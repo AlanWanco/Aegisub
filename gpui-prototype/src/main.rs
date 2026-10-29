@@ -3550,12 +3550,6 @@ impl Workspace {
         let count = commands.len();
         let weak = cx.weak_entity();
         page::page(cx, "commands-panel")
-            .child(page::header(
-                cx,
-                IconName::Menu,
-                "全部命令",
-                "标有旧版对话框的项目会打开原界面；需旧版控件的项目仍在原窗口使用。命令搜索：Ctrl/⌘+Shift+P。",
-            ))
             .child(page::toolbar([
                 Input::new(&self.command_search)
                     .id("command-search")
@@ -5331,12 +5325,6 @@ impl Render for Workspace {
         } else if self.active_panel == Panel::Visual {
             body = body.child(
                 page::page(cx, "visual-panel")
-                    .child(page::header(
-                        cx,
-                        IconName::Frame,
-                        "视觉排版",
-                        "在画面上直接调整位置、缩放与裁剪；操作写入当前字幕并可撤销。",
-                    ))
                     .child(self.visual.toolbar(cx))
                     .child(self.render_player(window, false, cx))
                     .child(page::hint(

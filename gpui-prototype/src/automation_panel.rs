@@ -110,12 +110,6 @@ impl AutomationPanel {
         .child(crate::page::badge(cx, format!("引擎 {engines}")));
 
         let mut panel = crate::page::page(cx, "automation-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::SquareTerminal,
-                "自动化脚本",
-                "脚本随字幕项目关联；移除会卸载脚本，执行脚本会写入当前字幕并可撤销。",
-            ))
             .child(toolbar);
         if self.loading {
             panel = panel.child(div().text_sm().child("正在同步脚本…"));
