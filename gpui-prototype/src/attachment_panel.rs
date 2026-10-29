@@ -203,7 +203,7 @@ impl AttachmentPanel {
                     .gap_3()
                     .items_center()
                     .px_3()
-                    .rounded(px(6.))
+                    .rounded(px(crate::workspace_theme::RADIUS_SM))
                     .border_l_2()
                     .border_color(if selected {
                         p.accent

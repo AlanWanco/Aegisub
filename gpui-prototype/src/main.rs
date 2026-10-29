@@ -3568,7 +3568,18 @@ impl Workspace {
                     .into_any_element(),
                 page::badge(cx, format!("{count} 项命令")).into_any_element(),
             ]))
-            .child(uniform_list("legacy-command-list", count, cx.processor(move |_, range: Range<usize>, _, cx| {
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .overflow_hidden()
+                    .rounded(px(crate::workspace_theme::RADIUS_LG))
+                    .border_1()
+                    .border_color(crate::workspace_theme::Palette::current(cx).border)
+                    .bg(crate::workspace_theme::Palette::current(cx).surface)
+                    .shadow(page::card_shadow(Theme::global(cx).is_dark()))
+                    .child(uniform_list("legacy-command-list", count, cx.processor(move |_, range: Range<usize>, _, cx| {
                 range.map(|index| {
                     let command = commands[index].clone();
                     let name = command.name.clone();
@@ -3583,7 +3594,8 @@ impl Workspace {
                             let _ = weak.update(cx, |view, cx| view.invoke(json!({"op":"command", "name":name}), cx));
                         }))
                 }).collect()
-            })).flex_1().min_h(px(100.)))
+            })).size_full()),
+            )
     }
 
     fn render_properties(&self, height: Option<f32>, cx: &mut Context<Self>) -> impl IntoElement {

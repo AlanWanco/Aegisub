@@ -1,7 +1,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
@@ -256,11 +256,41 @@ impl FilePanel {
                                         .child(crate::page::field_label(cx, "读取编码"))
                                         .child(
                                             Button::new("encoded-open-charset")
-                                                .icon(IconName::FileText)
                                                 .rounded(gpui_kit::px(999.))
-                                                .label(self.encoding.clone())
                                                 .w(px(300.))
                                                 .disabled(self.loading)
+                                                .child(
+                                                    div()
+                                                        .h_flex()
+                                                        .w_full()
+                                                        .items_center()
+                                                        .justify_between()
+                                                        .gap_2()
+                                                        .child(
+                                                            div()
+                                                                .h_flex()
+                                                                .items_center()
+                                                                .gap_2()
+                                                                .min_w_0()
+                                                                .child(
+                                                                    Icon::new(IconName::FileText)
+                                                                        .size(px(14.))
+                                                                        .text_color(crate::workspace_theme::Palette::current(cx).muted),
+                                                                )
+                                                                .child(
+                                                                    div()
+                                                                        .min_w_0()
+                                                                        .overflow_hidden()
+                                                                        .text_ellipsis()
+                                                                        .child(self.encoding.clone()),
+                                                                ),
+                                                        )
+                                                        .child(
+                                                            Icon::new(IconName::ChevronDown)
+                                                                .size(px(14.))
+                                                                .text_color(crate::workspace_theme::Palette::current(cx).muted),
+                                                        ),
+                                                )
                                                 .dropdown_menu(move |mut menu, _, _| {
                                                     for encoding in &choices {
                                                         let weak = weak.clone();
@@ -332,7 +362,7 @@ impl FilePanel {
                         .gap_0p5()
                         .w_full()
                         .min_w_0()
-                        .rounded(px(6.))
+                        .rounded(px(crate::workspace_theme::RADIUS_SM))
                         .border_l_2()
                         .border_color(if selected {
                             p.accent
@@ -407,7 +437,7 @@ impl FilePanel {
                             .gap_1()
                             .w_full()
                             .min_w_0()
-                            .rounded(px(6.))
+                            .rounded(px(crate::workspace_theme::RADIUS_SM))
                             .border_l_2()
                             .border_color(if selected {
                                 p.accent
