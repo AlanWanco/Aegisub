@@ -126,26 +126,42 @@ impl PreferencesPanel {
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let query = self.search.read(cx).value().to_lowercase();
-        let mut groups = div().h_flex().flex_wrap().gap_1();
         let mut names = vec!["全部".to_owned()];
         for option in &self.options {
             if !names.contains(&option.group) {
                 names.push(option.group.clone());
             }
         }
-        for (index, group) in names.into_iter().enumerate() {
-            let value = group.clone();
-            groups = groups.child(
-                Button::new(format!("preference-group-{index}"))
-                    .label(group.clone())
-                    .when(self.group == group, |button| button.primary())
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.preferences.group = value.clone();
-                        view.preferences.confirm_reset = false;
-                        cx.notify();
-                    })),
-            );
-        }
+        let groups = crate::page::tabs(
+            cx,
+            names
+                .iter()
+                .enumerate()
+                .map(|(index, group)| {
+                    (
+                        format!("preference-group-{index}"),
+                        group.clone(),
+                        *group == self.group,
+                    )
+                })
+                .collect(),
+            |view, index, _, cx| {
+                let names = {
+                    let mut names = vec!["全部".to_owned()];
+                    for option in &view.preferences.options {
+                        if !names.contains(&option.group) {
+                            names.push(option.group.clone());
+                        }
+                    }
+                    names
+                };
+                if let Some(group) = names.get(index) {
+                    view.preferences.group = group.clone();
+                }
+                view.preferences.confirm_reset = false;
+                cx.notify();
+            },
+        );
         let mut options = div()
             .id("preference-option-list")
             .v_flex()
@@ -354,7 +370,11 @@ impl PreferencesPanel {
             .items_center()
             .child(
                 Button::new("preferences-apply")
-                    .label("应用修改")
+                    .label(if self.drafts.is_empty() {
+                        "应用修改".to_owned()
+                    } else {
+                        format!("应用 {} 项修改", self.drafts.len())
+                    })
                     .primary()
                     .disabled(self.loading || self.drafts.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -403,7 +423,7 @@ impl PreferencesPanel {
                         view.hotkey_request(json!({"action":"state"}), cx);
                     })),
             )
-            .child(Input::new(&self.search).w(px(280.)));
+            .child(div().ml_auto().child(Input::new(&self.search).w(px(280.))));
         if self.confirm_reset {
             toolbar = toolbar.child(
                 Button::new("preferences-reset-cancel")
@@ -421,18 +441,15 @@ impl PreferencesPanel {
                 "偏好设置",
                 "修改后点应用才会写入配置；搜索可快速定位选项。",
             ))
-            .child(groups)
-            .child(toolbar)
             .child(
                 div()
-                    .text_xs()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child(format!(
-                        "当前显示 {} 项 · {} 项未应用 · 修改后点击“应用修改”保存",
-                        visible.len(),
-                        self.drafts.len()
-                    )),
-            );
+                    .h_flex()
+                    .items_end()
+                    .gap_3()
+                    .child(div().flex_1().min_w_0().child(groups))
+                    .child(crate::page::badge(cx, format!("{} 项", visible.len()))),
+            )
+            .child(toolbar);
         if self.loading {
             panel = panel.child("正在同步设置…");
         }

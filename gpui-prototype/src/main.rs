@@ -4267,7 +4267,7 @@ impl Workspace {
                     .bg(rgb(0x0e1013))
                     .child(
                         canvas(
-                            move |bounds, window, cx| {
+                            move |bounds, _window, _cx| {
                                 *viewport.borrow_mut() = bounds;
                                 let base = video_base_bounds(bounds, aspect, display_size);
                                 let target = zoomed_video_bounds(base, zoom, pan);

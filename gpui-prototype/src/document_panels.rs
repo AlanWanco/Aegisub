@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     scroll::ScrollableElement,
@@ -292,34 +292,25 @@ impl DocumentPanels {
                 continue;
             };
             let name = name.clone();
+            let selected = name == self.style && !self.editing_library;
             list = list.child(
-                Button::new(format!("document-style-{name}"))
-                    .accessibility_label(name.clone())
-                    .ghost()
-                    .h(px(30.))
-                    .w_full()
-                    .when(name == self.style && !self.editing_library, |button| {
-                        button.primary()
-                    })
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .text_left()
-                            .child(name.clone()),
-                    )
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        if view.document.style_form.dirty.is_empty() {
-                            view.document.style = name.clone();
-                            view.document.editing_library = false;
-                            view.document.confirm_delete = false;
-                        } else {
-                            view.status = "请先应用或放弃当前样式的修改".into();
-                        }
-                        cx.notify();
-                    })),
+                crate::page::list_row(
+                    cx,
+                    format!("document-style-{name}"),
+                    name.clone(),
+                    selected,
+                    false,
+                )
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    if view.document.style_form.dirty.is_empty() {
+                        view.document.style = name.clone();
+                        view.document.editing_library = false;
+                        view.document.confirm_delete = false;
+                    } else {
+                        view.status = "请先应用或放弃当前样式的修改".into();
+                    }
+                    cx.notify();
+                })),
             );
         }
         let style_count = self.details.styles.len();
@@ -358,15 +349,16 @@ impl DocumentPanels {
                     .child(
                         Button::new("new-document-style")
                             .label("新建样式")
-
                             .w_full()
                             .on_click(cx.listener(|view, _, _, cx| view.new_style(cx))),
                     )
                     .child(
                         Button::new("style-copy-to-catalog")
-                            .label("复制到样式库 →")
-
+                            .ghost()
                             .w_full()
+                            .justify_start()
+                            .child(Icon::new(IconName::ArrowRight).size(px(14.)).text_color(p.muted))
+                            .child(div().flex_1().min_w_0().text_left().child("复制到样式库"))
                             .disabled(self.library.catalog.is_empty())
                             .on_click(cx.listener(|view, _, _, cx| {
                                 let request = json!({"action":"to_catalog", "catalog":view.document.library.catalog, "names":[view.document.style], "overwrite":view.document.overwrite_styles});
@@ -387,7 +379,7 @@ impl DocumentPanels {
                     .on_click(cx.listener(|view, _, _, cx| { view.document.style_form.dirty.clear(); cx.notify(); })))
                 .child(Button::new("duplicate-document-style").label("复制为新样式")
                     .on_click(cx.listener(|view, _, _, cx| view.duplicate_style(cx))))
-                .child(Button::new("delete-document-style").label("删除…")
+                .child(Button::new("delete-document-style").label("删除…").danger()
                     .on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = true; cx.notify(); }))))
             .child(div().text_xs().text_color(muted).child("颜色格式 #RRGGBBAA，AA 沿用 ASS 透明度（00 不透明）。重命名同步更新行样式及 \\r 引用。"));
         if self.confirm_delete && self.editing_library {
@@ -553,6 +545,7 @@ impl DocumentPanels {
                         .text_color(muted)
                         .child("读取旧版 .sty 库。库内修改即时保存；复制到脚本后可撤销。"),
                 )
+                .child(crate::page::field_label(cx, "样式库名称"))
                 .child(Input::new(&self.catalog_name).w_full())
                 .child(
                     div()
@@ -578,6 +571,7 @@ impl DocumentPanels {
                             Button::new("delete-style-catalog")
                                 .label("删除库…")
                                 .ghost()
+                                .danger()
                                 .disabled(self.library.catalogs.len() <= 1)
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.document.confirm_delete_catalog = true;
@@ -587,12 +581,9 @@ impl DocumentPanels {
                 );
         for catalog in &self.library.catalogs {
             let name = catalog.clone();
+            let selected = name == self.library.catalog;
             body = body.child(
-                Button::new(format!("catalog-{name}"))
-                    .label(name.clone())
-                    .ghost()
-                    .w_full()
-                    .when(name == self.library.catalog, |button| button.primary())
+                crate::page::list_row(cx, format!("catalog-{name}"), name.clone(), selected, false)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.library_request(json!({"action":"list", "catalog":name}), cx);
                     })),
@@ -627,51 +618,54 @@ impl DocumentPanels {
             );
         }
         body = body.child(
-            Button::new("replace-same-name-style")
-                .label("允许替换同名样式")
-                .ghost()
-                .w_full()
-                .when(self.overwrite_styles, |button| button.primary())
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.document.overwrite_styles = !view.document.overwrite_styles;
-                    cx.notify();
-                })),
+            crate::page::check_row(
+                cx,
+                "replace-same-name-style",
+                "允许替换同名样式",
+                self.overwrite_styles,
+                false,
+            )
+            .on_click(cx.listener(|view, _, _, cx| {
+                view.document.overwrite_styles = !view.document.overwrite_styles;
+                cx.notify();
+            })),
         );
         for style in &self.library.styles {
             let Some(name) = style.get("name") else {
                 continue;
             };
             let name = name.clone();
+            let selected = self.selected_library.contains(&name);
             body = body.child(
-                Button::new(format!("library-style-{name}"))
-                    .label(name.clone())
-                    .ghost()
-                    .w_full()
-                    .when(self.selected_library.contains(&name), |button| {
-                        button.primary()
-                    })
-                    .on_click(
-                        cx.listener(move |view, event: &gpui_kit::ClickEvent, _, cx| {
-                            if !view.document.style_form.dirty.is_empty() {
-                                view.status = "请先应用或放弃当前样式的修改".into();
-                                cx.notify();
-                                return;
-                            }
-                            let modifiers = event.modifiers();
-                            if modifiers.control || modifiers.platform {
-                                if !view.document.selected_library.remove(&name) {
-                                    view.document.selected_library.insert(name.clone());
-                                }
-                            } else {
-                                view.document.selected_library.clear();
+                crate::page::list_row(
+                    cx,
+                    format!("library-style-{name}"),
+                    name.clone(),
+                    selected,
+                    false,
+                )
+                .on_click(cx.listener(
+                    move |view, event: &gpui_kit::ClickEvent, _, cx| {
+                        if !view.document.style_form.dirty.is_empty() {
+                            view.status = "请先应用或放弃当前样式的修改".into();
+                            cx.notify();
+                            return;
+                        }
+                        let modifiers = event.modifiers();
+                        if modifiers.control || modifiers.platform {
+                            if !view.document.selected_library.remove(&name) {
                                 view.document.selected_library.insert(name.clone());
                             }
-                            view.document.library_style = name.clone();
-                            view.document.editing_library = true;
-                            view.document.confirm_delete = false;
-                            cx.notify();
-                        }),
-                    ),
+                        } else {
+                            view.document.selected_library.clear();
+                            view.document.selected_library.insert(name.clone());
+                        }
+                        view.document.library_style = name.clone();
+                        view.document.editing_library = true;
+                        view.document.confirm_delete = false;
+                        cx.notify();
+                    },
+                )),
             );
         }
         body = body.child(
@@ -688,9 +682,21 @@ impl DocumentPanels {
         );
         body = body.child(
             Button::new("import-styles-from-file")
-                .label("从字幕文件导入…")
                 .ghost()
                 .w_full()
+                .justify_start()
+                .child(
+                    Icon::new(IconName::FileInput)
+                        .size(px(14.))
+                        .text_color(p.muted),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_left()
+                        .child("从字幕文件导入…"),
+                )
                 .on_click(cx.listener(|view, _, _, cx| view.pick_style_import(cx))),
         );
         for style in &self.import_styles {
@@ -912,7 +918,7 @@ fn parse_ass_color(value: &str) -> Option<gpui_kit::Hsla> {
     let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
     let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
     let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(gpui_kit::rgb(((r as u32) << 16 | (g as u32) << 8 | b as u32)).into())
+    Some(gpui_kit::rgb((r as u32) << 16 | (g as u32) << 8 | b as u32).into())
 }
 
 /// Bold/italic/underline/strikeout are switches, not free-text numbers.

@@ -3,10 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
-    scroll::ScrollableElement,
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
@@ -127,19 +126,21 @@ impl TimingProcessorPanel {
         let mut styles = div().h_flex().flex_wrap().gap_2();
         for (index, style) in self.styles.iter().enumerate() {
             let name = style.clone();
+            let on = self.selected_styles.contains(style);
             styles = styles.child(
-                Button::new(format!("processor-style-{index}"))
-                    .label(style.clone())
-                    .when(self.selected_styles.contains(style), |button| {
-                        button.primary()
-                    })
-                    .disabled(disabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        if !view.processor.selected_styles.remove(&name) {
-                            view.processor.selected_styles.insert(name.clone());
-                        }
-                        cx.notify();
-                    })),
+                crate::page::toggle_chip(
+                    cx,
+                    format!("processor-style-{index}"),
+                    style.clone(),
+                    on,
+                    disabled,
+                )
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    if !view.processor.selected_styles.remove(&name) {
+                        view.processor.selected_styles.insert(name.clone());
+                    }
+                    cx.notify();
+                })),
             );
         }
         let mut toggles = div().h_flex().flex_wrap().gap_2();
@@ -150,12 +151,10 @@ impl TimingProcessorPanel {
             ("adjacent", "衔接相邻字幕"),
             ("keyframes", "吸附关键帧"),
         ] {
+            let on = self.options[key];
+            let off_limits = disabled || (key == "keyframes" && !self.can_keyframes);
             toggles = toggles.child(
-                Button::new(format!("processor-{key}"))
-                    .label(label)
-                    .ghost()
-                    .when(self.options[key], |button| button.primary())
-                    .disabled(disabled || (key == "keyframes" && !self.can_keyframes))
+                crate::page::toggle_chip(cx, format!("processor-{key}"), label, on, off_limits)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         let value = view.processor.options[key];
                         view.processor.options.insert(key, !value);
@@ -220,6 +219,13 @@ impl TimingProcessorPanel {
                         view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
                     }))
                     .into_any_element(),
+                Button::new("processor-open-keyframes")
+                    .label("关键帧…")
+                    .disabled(self.can_keyframes)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"keyframe/open"}), cx)
+                    }))
+                    .into_any_element(),
             ]))
             // Two columns: which styles to process beside the thresholds,
             // so the page is not one long stack of full-width cards.
@@ -236,50 +242,54 @@ impl TimingProcessorPanel {
                             .flex_shrink_0()
                             .min_w_0()
                             .child(crate::page::section_with_icon(
-                cx,
-                Some(IconName::Palette),
-                "处理哪些样式",
-                None,
-                crate::page::section_body()
-                    .child(
-                        div()
-                            .h_flex()
-                            .flex_wrap()
-                            .gap_2()
-                            .child(
-                                Button::new("processor-all-styles")
-                                    .label("全部样式")
-                                    .ghost()
-                                    .disabled(disabled)
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.processor.selected_styles =
-                                            view.processor.styles.iter().cloned().collect();
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                Button::new("processor-no-styles")
-                                    .label("清除样式选择")
-                                    .ghost()
-                                    .disabled(disabled)
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.processor.selected_styles.clear();
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                Button::new("processor-refresh")
-                                    .label("刷新参数")
-                                    .ghost()
-                                    .disabled(self.loading)
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.processor.initialized = false;
-                                        view.processor_request("state", cx);
-                                    })),
-                            ),
-                    )
-                    .child(styles),
-            )),
+                                cx,
+                                Some(IconName::Palette),
+                                "处理哪些样式",
+                                Some(
+                                    Button::new("processor-refresh")
+                                        .label("刷新参数")
+                                        .ghost()
+                                        .disabled(self.loading)
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.processor.initialized = false;
+                                            view.processor_request("state", cx);
+                                        }))
+                                        .into_any_element(),
+                                ),
+                                crate::page::section_body()
+                                    .child(crate::page::field_label(cx, "已选样式"))
+                                    .child(styles)
+                                    .child(
+                                        div()
+                                            .h_flex()
+                                            .gap_2()
+                                            .child(
+                                                Button::new("processor-all-styles")
+                                                    .label("全选")
+                                                    .ghost()
+                                                    .disabled(disabled)
+                                                    .on_click(cx.listener(|view, _, _, cx| {
+                                                        view.processor.selected_styles = view
+                                                            .processor
+                                                            .styles
+                                                            .iter()
+                                                            .cloned()
+                                                            .collect();
+                                                        cx.notify();
+                                                    })),
+                                            )
+                                            .child(
+                                                Button::new("processor-no-styles")
+                                                    .label("清空")
+                                                    .ghost()
+                                                    .disabled(disabled)
+                                                    .on_click(cx.listener(|view, _, _, cx| {
+                                                        view.processor.selected_styles.clear();
+                                                        cx.notify();
+                                                    })),
+                                            ),
+                                    ),
+                            )),
                     )
                     .child(div().flex_1().min_w_0().child(crate::page::section_with_icon(
                 cx,
@@ -288,6 +298,12 @@ impl TimingProcessorPanel {
                 None,
                 crate::page::section_body()
                     .child(toggles)
+                    .when(!self.can_keyframes, |body| {
+                        body.child(crate::page::hint(
+                            cx,
+                            "载入视频、时间码和关键帧后才能吸附关键帧。",
+                        ))
+                    })
                     .child(numbers)
                     .child(crate::page::hint(
                         cx,
@@ -295,26 +311,6 @@ impl TimingProcessorPanel {
                     )),
             ))),
             );
-        if !self.can_keyframes {
-            page = page.child(
-                div()
-                    .h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(crate::page::hint(
-                        cx,
-                        "载入视频/时间码和关键帧后可吸附关键帧。",
-                    ))
-                    .child(
-                        Button::new("processor-open-keyframes")
-                            .label("打开关键帧…")
-                            .ghost()
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.invoke(json!({"op":"command", "name":"keyframe/open"}), cx)
-                            })),
-                    ),
-            );
-        }
         if let Some(error) = &self.error {
             page = page.child(crate::page::error(cx, error.clone()));
         }

@@ -5,7 +5,6 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
-    scroll::ScrollableElement,
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, Subscription, Window, div, prelude::*, px,

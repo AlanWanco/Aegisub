@@ -3,7 +3,6 @@ use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
-    scroll::ScrollableElement,
 };
 use gpui_kit::{Context, IntoElement, div, prelude::*, px};
 use serde::Deserialize;

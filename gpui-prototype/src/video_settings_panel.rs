@@ -6,7 +6,6 @@ use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
-    scroll::ScrollableElement,
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
@@ -126,25 +125,36 @@ impl VideoSettingsPanel {
     }
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
+        let p = crate::workspace_theme::Palette::current(cx);
         let disabled = self.loading || !self.initialized;
-        let mut pages = div().h_flex().flex_wrap().gap_2();
-        for (page, id, label) in [
-            (VideoPage::Details, "details", "视频详情"),
-            (VideoPage::Jump, "jump", "精确跳转"),
-            (VideoPage::Aspect, "aspect", "显示比例"),
-            (VideoPage::Dummy, "dummy", "空白视频"),
-        ] {
-            pages = pages.child(
-                Button::new(format!("video-page-{id}"))
-                    .label(label)
-                    .when(self.page == page, |button| button.primary())
-                    .disabled(self.loading)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.video_settings.page = page;
-                        cx.notify();
-                    })),
-            );
-        }
+        let tabs = crate::page::tabs(
+            cx,
+            [
+                (VideoPage::Details, "视频详情"),
+                (VideoPage::Jump, "精确跳转"),
+                (VideoPage::Aspect, "显示比例"),
+                (VideoPage::Dummy, "空白视频"),
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, (page, label))| {
+                (
+                    format!("video-page-{index}"),
+                    label.to_owned(),
+                    self.page == page,
+                )
+            })
+            .collect(),
+            |view, index, _, cx| {
+                view.video_settings.page = match index {
+                    0 => VideoPage::Details,
+                    1 => VideoPage::Jump,
+                    2 => VideoPage::Aspect,
+                    _ => VideoPage::Dummy,
+                };
+                cx.notify();
+            },
+        );
         let mut panel = crate::page::page(cx, "video-settings-panel")
             .child(crate::page::header(
                 cx,
@@ -152,7 +162,7 @@ impl VideoSettingsPanel {
                 "视频设置",
                 "查看视频详情、按时间或帧跳转，或创建空白视频用于排版。",
             ))
-            .child(pages);
+            .child(tabs);
         let fields: Vec<_> = match self.page {
             VideoPage::Dummy => vec![
                 ("width", "宽度 · 像素"),
@@ -168,72 +178,32 @@ impl VideoSettingsPanel {
             VideoPage::Aspect => vec![("aspect", "比例 · 小数、16:9 或 853x480")],
             _ => vec![],
         };
-        if self.page == VideoPage::Dummy {
-            let mut resolutions = div().h_flex().flex_wrap().gap_2();
-            for (width, height) in [
-                (640, 480),
-                (1280, 720),
-                (1920, 1080),
-                (2560, 1440),
-                (3840, 2160),
-                (1080, 1920),
-            ] {
-                resolutions = resolutions.child(
-                    Button::new(format!("dummy-resolution-{width}-{height}"))
-                        .label(format!("{width} × {height}"))
-                        .disabled(disabled)
-                        .on_click(cx.listener(move |view, _, window, cx| {
-                            for (key, value) in [("width", width), ("height", height)] {
-                                view.video_settings.inputs[key].update(cx, |state, cx| {
-                                    state.set_value(value.to_string(), window, cx)
-                                });
-                            }
-                        })),
+        if !fields.is_empty() {
+            let mut inputs = div().h_flex().flex_wrap().items_start().gap_3();
+            for (key, label) in fields {
+                inputs = inputs.child(
+                    div()
+                        .v_flex()
+                        .gap_1()
+                        .w(px(280.))
+                        .child(crate::page::field_label(cx, label))
+                        .child(Input::new(&self.inputs[key]).disabled(
+                            disabled || (self.page != VideoPage::Dummy && !self.state.loaded),
+                        )),
                 );
             }
-            panel = panel
-                .child(div().text_lg().font_semibold().child("创建空白视频"))
-                .child(resolutions);
-        }
-        let mut inputs = div().h_flex().flex_wrap().gap_3();
-        for (key, label) in fields {
-            inputs = inputs.child(
-                div()
-                    .v_flex()
-                    .gap_1()
-                    .w(px(290.))
-                    .child(div().text_sm().child(label))
-                    .child(Input::new(&self.inputs[key]).disabled(
-                        disabled || (self.page != VideoPage::Dummy && !self.state.loaded),
-                    )),
-            );
-        }
-        panel = panel.child(inputs);
-        match self.page {
-            VideoPage::Dummy => {
-                panel = panel
-                    .child(
-                        Button::new("dummy-pattern")
-                            .label("棋盘格图案")
-                            .when(self.pattern, |button| button.primary())
-                            .disabled(disabled)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.video_settings.pattern = !view.video_settings.pattern;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("dummy-video-create")
-                            .label("载入空白视频")
-                            .primary()
-                            .disabled(disabled)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.video_settings_request("dummy", cx)
-                            })),
-                    );
-            }
-            VideoPage::Jump => {
-                panel = panel.child(
+            let action = match self.page {
+                VideoPage::Dummy => Some(
+                    Button::new("dummy-video-create")
+                        .label("载入空白视频")
+                        .primary()
+                        .disabled(disabled)
+                        .on_click(
+                            cx.listener(|view, _, _, cx| view.video_settings_request("dummy", cx)),
+                        )
+                        .into_any_element(),
+                ),
+                VideoPage::Jump => Some(
                     div()
                         .h_flex()
                         .gap_2()
@@ -253,67 +223,151 @@ impl VideoSettingsPanel {
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.video_settings_request("jump_time", cx)
                                 })),
-                        ),
-                );
-            }
-            VideoPage::Aspect => {
-                panel = panel
-                    .child(
-                        Button::new("custom-aspect-apply")
-                            .label("应用显示比例")
-                            .primary()
-                            .disabled(disabled || !self.state.loaded)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.video_settings_request("aspect", cx)
+                        )
+                        .into_any_element(),
+                ),
+                VideoPage::Aspect => Some(
+                    Button::new("custom-aspect-apply")
+                        .label("应用显示比例")
+                        .primary()
+                        .disabled(disabled || !self.state.loaded)
+                        .on_click(
+                            cx.listener(|view, _, _, cx| view.video_settings_request("aspect", cx)),
+                        )
+                        .into_any_element(),
+                ),
+                _ => None,
+            };
+            let (title, icon) = match self.page {
+                VideoPage::Dummy => ("创建空白视频", IconName::Video),
+                VideoPage::Jump => ("跳转到时间点", IconName::Locate),
+                _ => ("设置显示比例", IconName::ZoomIn),
+            };
+            let mut body = crate::page::section_body().child(inputs);
+            if self.page == VideoPage::Dummy {
+                let mut resolutions = div().h_flex().flex_wrap().gap_2();
+                for (width, height) in [
+                    (640, 480),
+                    (1280, 720),
+                    (1920, 1080),
+                    (2560, 1440),
+                    (3840, 2160),
+                    (1080, 1920),
+                ] {
+                    resolutions = resolutions.child(
+                        Button::new(format!("dummy-resolution-{width}-{height}"))
+                            .label(format!("{width} × {height}"))
+                            .disabled(disabled)
+                            .on_click(cx.listener(move |view, _, window, cx| {
+                                for (key, value) in [("width", width), ("height", height)] {
+                                    view.video_settings.inputs[key].update(cx, |state, cx| {
+                                        state.set_value(value.to_string(), window, cx)
+                                    });
+                                }
                             })),
-                    )
+                    );
+                }
+                body = body
+                    .child(crate::page::field_label(cx, "常用分辨率"))
+                    .child(resolutions)
                     .child(
                         div()
-                            .text_sm()
-                            .text_color(Theme::global(cx).muted_foreground)
-                            .child("有效范围 0.5–5.0，调整视频预览的显示比例。"),
+                            .h_flex()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                gpui_kit::component::switch::Switch::new("dummy-pattern")
+                                    .checked(self.pattern)
+                                    .disabled(disabled)
+                                    .on_change(cx.listener(|view, checked: &bool, _, cx| {
+                                        view.video_settings.pattern = *checked;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(crate::page::field_label(cx, "棋盘格图案")),
                     );
             }
-            VideoPage::Details => {
-                let state = &self.state;
-                if state.loaded {
-                    for (label, value) in [
-                        ("文件", state.path.clone()),
-                        ("分辨率", format!("{} × {}", state.width, state.height)),
-                        ("帧率", format!("{:.6}", state.fps)),
-                        (
-                            "长度",
-                            format!("{} 帧 · {}", state.frames, format_time(state.duration)),
-                        ),
-                        (
-                            "当前帧",
-                            format!("{} · {}", state.frame, format_time(state.time)),
-                        ),
-                        ("显示比例", format!("{:.6}", state.aspect)),
-                        ("实际色彩矩阵", state.actual_matrix.clone()),
-                        ("强制色彩矩阵", state.forced_matrix.clone()),
-                        ("实际范围", state.actual_range.clone()),
-                        ("强制范围", state.forced_range.clone()),
-                        ("解码器", state.decoder.clone()),
-                    ] {
-                        panel = panel.child(div().text_sm().child(format!("{label}：{value}")));
-                    }
-                } else {
-                    panel = panel.child("尚未载入视频。可打开视频文件或创建空白视频。");
-                }
-                // A button directly inside a column stretches to the full
-                // width; keep it in a left-aligned row instead.
-                panel = panel.child(
-                    div().h_flex().child(
-                        Button::new("refresh-video-details")
-                            .label("刷新详情")
-                            .disabled(self.loading)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.video_settings_request("state", cx)
-                            })),
-                    ),
-                );
+            if self.page == VideoPage::Aspect {
+                body = body.child(crate::page::hint(
+                    cx,
+                    "有效范围 0.5–5.0，调整视频预览的显示比例。",
+                ));
             }
+            if let Some(action) = action {
+                body = body.child(div().h_flex().items_center().gap_3().child(action));
+            }
+            panel = panel.child(crate::page::section_with_icon(
+                cx,
+                Some(icon),
+                title,
+                None,
+                body,
+            ));
+        }
+        if self.page == VideoPage::Details {
+            let state = &self.state;
+            let mut body = crate::page::section_body();
+            if state.loaded {
+                for (label, value) in [
+                    ("文件", state.path.clone()),
+                    ("分辨率", format!("{} × {}", state.width, state.height)),
+                    ("帧率", format!("{:.6}", state.fps)),
+                    (
+                        "长度",
+                        format!("{} 帧 · {}", state.frames, format_time(state.duration)),
+                    ),
+                    (
+                        "当前帧",
+                        format!("{} · {}", state.frame, format_time(state.time)),
+                    ),
+                    ("显示比例", format!("{:.6}", state.aspect)),
+                    ("实际色彩矩阵", state.actual_matrix.clone()),
+                    ("强制色彩矩阵", state.forced_matrix.clone()),
+                    ("实际范围", state.actual_range.clone()),
+                    ("强制范围", state.forced_range.clone()),
+                    ("解码器", state.decoder.clone()),
+                ] {
+                    body = body.child(
+                        div()
+                            .h_flex()
+                            .items_start()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .w(px(110.))
+                                    .flex_shrink_0()
+                                    .text_sm()
+                                    .text_color(p.muted)
+                                    .child(label),
+                            )
+                            .child(div().flex_1().min_w_0().text_sm().child(value)),
+                    );
+                }
+            } else {
+                body = body.child(crate::page::hint(
+                    cx,
+                    "尚未载入视频。打开视频文件即可查看详情，或切到“空白视频”生成占位画面。",
+                ));
+            }
+            panel = panel.child(crate::page::section_with_icon(
+                cx,
+                Some(IconName::Video),
+                if state.loaded {
+                    "视频详情"
+                } else {
+                    "尚未载入视频"
+                },
+                Some(
+                    Button::new("refresh-video-details")
+                        .label("刷新详情")
+                        .disabled(self.loading)
+                        .on_click(
+                            cx.listener(|view, _, _, cx| view.video_settings_request("state", cx)),
+                        )
+                        .into_any_element(),
+                ),
+                body,
+            ));
         }
         if let Some(error) = &self.error {
             panel = panel.child(
@@ -323,16 +377,6 @@ impl VideoSettingsPanel {
                     .child(error.clone()),
             );
         }
-        panel.child(
-            div().h_flex().child(
-                Button::new("video-settings-back")
-                    .label("回到字幕预览")
-                    .on_click(cx.listener(|view, _, window, cx| {
-                        view.active_panel = crate::Panel::Subtitles;
-                        view.focus_handle.focus(window, cx);
-                        cx.notify();
-                    })),
-            ),
-        )
+        panel
     }
 }

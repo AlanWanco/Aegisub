@@ -5,7 +5,7 @@ use gpui_kit::base::Disableable;
 use gpui_kit::component::{
     Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
-    scroll::ScrollableElement,
+    menu::{DropdownMenu, PopupMenuItem},
 };
 use gpui_kit::{Context, IntoElement, div, prelude::*, px};
 use serde::Deserialize;
@@ -57,38 +57,105 @@ impl AttachmentPanel {
     }
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
-        let mut toolbar = div().h_flex().flex_wrap().gap_2();
-        for (id, label, kind) in [
-            ("font", "添加字体…", "font"),
-            ("graphic", "添加图像…", "graphic"),
-        ] {
-            toolbar = toolbar.child(
-                Button::new(format!("attachment-add-{id}"))
-                    .label(label)
+        // One add action, then the selection actions, then the quiet utilities:
+        // six identical pills made the destructive one look like the others.
+        let mut toolbar = div()
+            .h_flex()
+            .flex_wrap()
+            .items_center()
+            .gap_2()
+            .child(
+                Button::new("attachment-add")
+                    .label("添加附件…")
+                    .primary()
                     .disabled(self.loading)
-                    .on_click(cx.listener(move |view, _, _, cx| view.pick_attachments(kind, cx))),
+                    .dropdown_menu({
+                        let weak = cx.weak_entity();
+                        move |mut menu, _, _| {
+                            for (label, kind) in
+                                [("添加字体…", "font"), ("添加图像…", "graphic")]
+                            {
+                                let weak = weak.clone();
+                                menu = menu.item(PopupMenuItem::new(label).on_click(
+                                    move |_, _, cx| {
+                                        let _ = weak.update(cx, |view, cx| {
+                                            view.pick_attachments(kind, cx)
+                                        });
+                                    },
+                                ));
+                            }
+                            menu
+                        }
+                    })
+                    .into_any_element(),
+            )
+            .child(
+                Button::new("attachment-extract")
+                    .label("导出所选…")
+                    .disabled(self.loading || self.selected.is_empty())
+                    .on_click(cx.listener(|view, _, _, cx| view.extract_attachments(cx)))
+                    .into_any_element(),
+            )
+            .child(
+                Button::new("attachment-delete")
+                    .label(if self.confirm_delete {
+                        "确认删除"
+                    } else {
+                        "删除所选…"
+                    })
+                    .when(self.confirm_delete, |button| button.danger())
+                    .disabled(self.loading || self.selected.is_empty())
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        if view.attachments.confirm_delete {
+                            let items = view.attachments.selected_items();
+                            view.attachment_request(
+                                json!({"action":"delete","items":items,"revision":view.attachments.state.revision}),
+                                cx,
+                            );
+                        } else {
+                            view.attachments.confirm_delete = true;
+                            cx.notify();
+                        }
+                    }))
+                    .into_any_element(),
             );
-        }
-        toolbar = toolbar
-            .child(Button::new("attachment-extract").label("导出所选附件…").disabled(self.loading || self.selected.is_empty()).on_click(cx.listener(|view, _, _, cx| view.extract_attachments(cx))))
-            .child(Button::new("attachment-delete").label(if self.confirm_delete { "确认删除所选附件" } else { "删除所选…" }).disabled(self.loading || self.selected.is_empty()).on_click(cx.listener(|view, _, _, cx| {
-                if view.attachments.confirm_delete {
-                    let items = view.attachments.selected_items();
-                    view.attachment_request(json!({"action":"delete","items":items,"revision":view.attachments.state.revision}), cx);
-                } else { view.attachments.confirm_delete = true; cx.notify(); }
-            })))
-            .child(Button::new("attachment-refresh").label("刷新").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.attachment_request(json!({"action":"state"}), cx))))
-            .child(Button::new("attachment-undo").label("撤销").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"command","name":"edit/undo"}), cx))));
         if self.confirm_delete {
             toolbar = toolbar.child(
                 Button::new("attachment-cancel-delete")
                     .label("取消删除")
+                    .ghost()
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.attachments.confirm_delete = false;
                         cx.notify();
-                    })),
+                    }))
+                    .into_any_element(),
             );
         }
+        toolbar = toolbar.child(
+            div()
+                .ml_auto()
+                .h_flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    Button::new("attachment-undo")
+                        .label("撤销")
+                        .ghost()
+                        .disabled(self.loading)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.invoke(json!({"op":"command","name":"edit/undo"}), cx)
+                        })),
+                )
+                .child(
+                    Button::new("attachment-refresh")
+                        .label("刷新")
+                        .ghost()
+                        .disabled(self.loading)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.attachment_request(json!({"action":"state"}), cx)
+                        })),
+                ),
+        );
         let mut list = div().v_flex().w_full().min_w_0().gap_1();
         if self.state.items.is_empty() && !self.loading {
             list = list.child(
@@ -119,14 +186,30 @@ impl AttachmentPanel {
         for attachment in &self.state.items {
             let index = attachment.index;
             let selected = self.selected.contains(&index);
+            let p = crate::workspace_theme::Palette::current(cx);
             list = list.child(
-                Button::new(format!("attachment-row-{index}"))
-                    .ghost()
-                    .h(px(34.))
+                div()
+                    .id(format!("attachment-row-{index}"))
+                    .h_flex()
                     .w_full()
-                    .accessibility_label(attachment.name.clone())
-                    .when(selected, |button| button.primary())
-                    .disabled(self.loading)
+                    .min_w_0()
+                    .h(px(38.))
+                    .gap_3()
+                    .items_center()
+                    .px_3()
+                    .rounded(px(6.))
+                    .border_l_2()
+                    .border_color(if selected {
+                        p.accent
+                    } else {
+                        gpui_kit::rgba(0x00000000).into()
+                    })
+                    .when(selected, |row| row.bg(p.selected))
+                    .when(!selected && !self.loading, |row| {
+                        row.hover(|row| row.bg(p.raised))
+                    })
+                    .when(self.loading, |row| row.opacity(0.5))
+                    .cursor_pointer()
                     .on_click(cx.listener(move |view, _, _, cx| {
                         if !view.attachments.selected.remove(&index) {
                             view.attachments.selected.insert(index);
@@ -135,45 +218,41 @@ impl AttachmentPanel {
                         cx.notify();
                     }))
                     .child(
+                        Icon::new(if attachment.group == "font" {
+                            IconName::CaseSensitive
+                        } else {
+                            IconName::Frame
+                        })
+                        .size(px(14.))
+                        .text_color(if selected {
+                            p.accent
+                        } else {
+                            p.muted
+                        }),
+                    )
+                    .child(
                         div()
-                            .h_flex()
-                            .w_full()
+                            .flex_1()
                             .min_w_0()
-                            .gap_3()
-                            .items_center()
-                            .child(
-                                Icon::new(if attachment.group == "font" {
-                                    IconName::CaseSensitive
+                            .truncate()
+                            .text_sm()
+                            .text_color(if selected { p.selected_text } else { p.text })
+                            .child(attachment.name.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_xs()
+                            .text_color(if selected { p.selected_text } else { p.muted })
+                            .child(format!(
+                                "{} · {} 字节",
+                                if attachment.group == "font" {
+                                    "字体"
                                 } else {
-                                    IconName::Frame
-                                })
-                                .size(px(14.))
-                                .text_color(Theme::global(cx).muted_foreground),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .text_left()
-                                    .child(attachment.name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_xs()
-                                    .text_color(Theme::global(cx).muted_foreground)
-                                    .child(format!(
-                                        "{} · {} 字节",
-                                        if attachment.group == "font" {
-                                            "字体"
-                                        } else {
-                                            "图像"
-                                        },
-                                        attachment.encoded_size
-                                    )),
-                            ),
+                                    "图像"
+                                },
+                                attachment.encoded_size
+                            )),
                     ),
             );
         }
@@ -195,12 +274,18 @@ impl AttachmentPanel {
             .child(toolbar)
             .child(crate::page::section(
                 cx,
-                format!(
-                    "附件 · {} 个，已选 {} 个",
-                    self.state.items.len(),
-                    self.selected.len()
+                "附件列表",
+                Some(
+                    crate::page::badge(
+                        cx,
+                        format!(
+                            "{} 个 · 已选 {}",
+                            self.state.items.len(),
+                            self.selected.len()
+                        ),
+                    )
+                    .into_any_element(),
                 ),
-                None,
                 crate::page::section_body().child(list),
             ));
         if let Some(error) = &self.error {

@@ -1,7 +1,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    StyledExt,
     button::{Button, ButtonVariants},
 };
 use gpui_kit::{Context, IntoElement, div, prelude::*};
@@ -77,18 +77,17 @@ impl PastePanel {
             for &(index, label) in entries {
                 let on = self.fields[index];
                 row = row.child(
-                    Button::new(format!("paste-over-field-{index}"))
-                        .label(if on {
-                            format!("✓ {label}")
-                        } else {
-                            label.to_owned()
-                        })
-                        .when(on, |button| button.primary())
-                        .disabled(disabled)
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.paste.fields[index] = !view.paste.fields[index];
-                            cx.notify();
-                        })),
+                    crate::page::toggle_chip(
+                        cx,
+                        format!("paste-over-field-{index}"),
+                        label,
+                        on,
+                        disabled,
+                    )
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.paste.fields[index] = !view.paste.fields[index];
+                        cx.notify();
+                    })),
                 );
             }
             field_groups = field_groups
@@ -139,15 +138,19 @@ impl PastePanel {
             .child(actions)
             .child(crate::page::section(
                 cx,
-                "预设",
-                None,
-                crate::page::section_body().child(presets),
-            ))
-            .child(crate::page::section(
-                cx,
                 "覆盖哪些字段",
                 None,
-                crate::page::section_body().child(field_groups),
+                crate::page::section_body()
+                    .child(
+                        div()
+                            .h_flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_2()
+                            .child(crate::page::field_label(cx, "快捷选择"))
+                            .child(presets),
+                    )
+                    .child(field_groups),
             ));
         if let Some(error) = &self.error {
             panel = panel.child(crate::page::error(cx, error.clone()));

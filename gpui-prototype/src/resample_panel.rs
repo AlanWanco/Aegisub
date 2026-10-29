@@ -3,11 +3,10 @@ use std::collections::BTreeMap;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
-    scroll::ScrollableElement,
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
@@ -133,97 +132,6 @@ impl ResamplePanel {
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
-        let p = crate::workspace_theme::Palette::current(cx);
-        let mut form = crate::page::page(cx, "resample-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Maximize,
-                "分辨率重采样",
-                "同步缩放样式、坐标、边距、绘图和裁剪；整次处理可撤销。",
-            ))
-            .child(
-                div()
-                    .h_flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Button::new("resample-apply")
-                            .icon(IconName::Check)
-                            .label(if self.loading {
-                                "处理中…"
-                            } else {
-                                "应用重采样"
-                            })
-                            .primary()
-                            .disabled(disabled)
-                            .on_click(
-                                cx.listener(|view, _, _, cx| view.resample_request("apply", cx)),
-                            ),
-                    )
-                    .child(
-                        Button::new("resample-undo")
-                            .icon(IconName::Undo2)
-                            .accessibility_label("撤销")
-                            .tooltip("撤销上一次重采样")
-                            .ghost()
-                            .disabled(self.loading)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
-                            })),
-                    )
-                    .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.divider))
-                    .child(
-                        Button::new("resample-reset")
-                            .icon(IconName::RefreshCw)
-                            .label("从当前脚本重新读取")
-                            .ghost()
-                            .disabled(self.loading)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.resample.initialized = false;
-                                view.resample_request("state", cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("resample-from-video")
-                            .icon(IconName::Video)
-                            .label("目标使用视频分辨率")
-                            .ghost()
-                            .disabled(disabled || self.state.video_x == 0)
-                            .on_click(cx.listener(|view, _, window, cx| {
-                                let state = &view.resample.state;
-                                for (key, value) in
-                                    [("dest_x", state.video_x), ("dest_y", state.video_y)]
-                                {
-                                    view.resample.inputs[key].update(cx, |input, cx| {
-                                        input.set_value(value.to_string(), window, cx)
-                                    });
-                                }
-                                if MATRICES.contains(&state.video_matrix.as_str()) {
-                                    view.resample.dest_matrix = state.video_matrix.clone();
-                                }
-                                cx.notify();
-                            })),
-                    ),
-            );
-        // Four equal columns that fill the row instead of fixed-width boxes
-        // huddled on the left.
-        let mut dimensions = div().h_flex().items_start().gap_3();
-        for &(key, label) in &FIELDS[..4] {
-            dimensions = dimensions.child(
-                div()
-                    .v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_1()
-                    .child(label)
-                    .child(Input::new(&self.inputs[key]).disabled(disabled)),
-            );
-        }
-        form = form.child(dimensions).child(div().text_sm().child(format!(
-            "当前脚本：{} × {} · 视频：{} × {}",
-            self.state.source_x, self.state.source_y, self.state.video_x, self.state.video_y
-        )));
         let aspect = crate::page::segmented(
             cx,
             vec![
@@ -257,27 +165,7 @@ impl ResamplePanel {
                 cx.notify();
             },
         );
-        form = form.child(div().v_flex().gap_2().child("宽高比处理").child(aspect));
-        if self.ar_mode == 3 {
-            let mut margins = div().h_flex().items_start().gap_3();
-            for &(key, label) in &FIELDS[4..] {
-                margins = margins.child(
-                    div()
-                        .v_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .gap_1()
-                        .child(label)
-                        .child(Input::new(&self.inputs[key]).disabled(disabled)),
-                );
-            }
-            form = form.child(margins).child(
-                div()
-                    .text_sm()
-                    .child("正值添加边缘，负值裁去边缘；单位为原脚本像素。"),
-            );
-        }
-        let mut color = div().h_flex().flex_wrap().gap_3();
+        let mut color = div().h_flex().flex_wrap().items_start().gap_4();
         for (source, label, value) in [
             (true, "原色彩矩阵", &self.source_matrix),
             (false, "目标色彩矩阵", &self.dest_matrix),
@@ -285,57 +173,169 @@ impl ResamplePanel {
             let weak = cx.weak_entity();
             let selected = value.clone();
             color = color.child(
-                div().v_flex().gap_1().child(label).child(
-                    Button::new(if source {
-                        "resample-source-matrix"
-                    } else {
-                        "resample-dest-matrix"
-                    })
-                    .label(if value.is_empty() {
-                        "不转换颜色".to_owned()
-                    } else {
-                        value.clone()
-                    })
-                    .disabled(disabled)
-                    .dropdown_menu(move |mut menu, _, _| {
-                        for &matrix in MATRICES {
-                            let weak = weak.clone();
-                            menu = menu.item(
-                                PopupMenuItem::new(if matrix.is_empty() {
-                                    "不转换颜色"
-                                } else {
-                                    matrix
-                                })
-                                .checked(selected == matrix)
-                                .on_click(move |_, _, cx| {
-                                    let _ = weak.update(cx, |view, cx| {
-                                        if matrix.is_empty() {
-                                            view.resample.source_matrix.clear();
-                                            view.resample.dest_matrix.clear();
-                                        } else if source {
-                                            view.resample.source_matrix = matrix.into();
-                                        } else {
-                                            view.resample.dest_matrix = matrix.into();
-                                        }
-                                        cx.notify();
-                                    });
-                                }),
-                            );
-                        }
-                        menu
-                    }),
-                ),
-            );
-        }
-        form = form.child(color);
-        if let Some(error) = &self.error {
-            form = form.child(
                 div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).danger)
-                    .child(error.clone()),
+                    .v_flex()
+                    .w(px(240.))
+                    .min_w_0()
+                    .gap_1()
+                    .child(crate::page::field_label(cx, label))
+                    .child(
+                        crate::page::select_trigger(
+                            cx,
+                            if source {
+                                "resample-source-matrix"
+                            } else {
+                                "resample-dest-matrix"
+                            },
+                            if value.is_empty() {
+                                "不转换颜色".to_owned()
+                            } else {
+                                value.clone()
+                            },
+                            disabled,
+                        )
+                        .dropdown_menu(move |mut menu, _, _| {
+                            for &matrix in MATRICES {
+                                let weak = weak.clone();
+                                menu = menu.item(
+                                    PopupMenuItem::new(if matrix.is_empty() {
+                                        "不转换颜色"
+                                    } else {
+                                        matrix
+                                    })
+                                    .checked(selected == matrix)
+                                    .on_click(
+                                        move |_, _, cx| {
+                                            let _ = weak.update(cx, |view, cx| {
+                                                if matrix.is_empty() {
+                                                    view.resample.source_matrix.clear();
+                                                    view.resample.dest_matrix.clear();
+                                                } else if source {
+                                                    view.resample.source_matrix = matrix.into();
+                                                } else {
+                                                    view.resample.dest_matrix = matrix.into();
+                                                }
+                                                cx.notify();
+                                            });
+                                        },
+                                    ),
+                                );
+                            }
+                            menu
+                        }),
+                    ),
             );
         }
-        form
+        let mut page = crate::page::page(cx, "resample-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Maximize,
+                "分辨率重采样",
+                "同步缩放样式、坐标、边距、绘图和裁剪；整次处理可撤销。",
+            ))
+            .child(crate::page::toolbar([
+                Button::new("resample-apply")
+                    .label(if self.loading {
+                        "处理中…"
+                    } else {
+                        "应用重采样"
+                    })
+                    .primary()
+                    .disabled(disabled)
+                    .on_click(cx.listener(|view, _, _, cx| view.resample_request("apply", cx)))
+                    .into_any_element(),
+                Button::new("resample-reset")
+                    .icon(IconName::RefreshCw)
+                    .label("从当前脚本重新读取")
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.resample.initialized = false;
+                        view.resample_request("state", cx);
+                    }))
+                    .into_any_element(),
+                Button::new("resample-from-video")
+                    .icon(IconName::Video)
+                    .label("目标使用视频分辨率")
+                    .disabled(disabled || self.state.video_x == 0)
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        let state = &view.resample.state;
+                        for (key, value) in [("dest_x", state.video_x), ("dest_y", state.video_y)] {
+                            view.resample.inputs[key].update(cx, |input, cx| {
+                                input.set_value(value.to_string(), window, cx)
+                            });
+                        }
+                        if MATRICES.contains(&state.video_matrix.as_str()) {
+                            view.resample.dest_matrix = state.video_matrix.clone();
+                        }
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+                Button::new("resample-undo")
+                    .icon(IconName::Undo2)
+                    .label("撤销")
+                    .ghost()
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
+                    }))
+                    .into_any_element(),
+            ]))
+            .child(crate::page::section(
+                cx,
+                "尺寸",
+                None,
+                crate::page::section_body()
+                    .child(crate::page::field_row(FIELDS[..4].iter().map(
+                        |&(key, label)| {
+                            crate::page::field_cell(crate::page::field(
+                                cx,
+                                label,
+                                Input::new(&self.inputs[key]).disabled(disabled),
+                            ))
+                        },
+                    )))
+                    .child(crate::page::hint(
+                        cx,
+                        format!(
+                            "当前脚本：{} × {} · 视频：{} × {}",
+                            self.state.source_x,
+                            self.state.source_y,
+                            self.state.video_x,
+                            self.state.video_y
+                        ),
+                    )),
+            ))
+            .child(crate::page::section(
+                cx,
+                "宽高比",
+                None,
+                crate::page::section_body()
+                    .child(aspect)
+                    .when(self.ar_mode == 3, |body| {
+                        body.child(crate::page::field_row(FIELDS[4..].iter().map(
+                            |&(key, label)| {
+                                crate::page::field_cell(crate::page::field(
+                                    cx,
+                                    label,
+                                    Input::new(&self.inputs[key]).disabled(disabled),
+                                ))
+                            },
+                        )))
+                        .child(crate::page::hint(
+                            cx,
+                            "正值添加边缘，负值裁去边缘；单位为原脚本像素。",
+                        ))
+                    }),
+            ))
+            .child(crate::page::section(
+                cx,
+                "色彩矩阵",
+                None,
+                crate::page::section_body().child(color),
+            ));
+        if let Some(error) = &self.error {
+            page = page.child(crate::page::error(cx, error.clone()));
+        }
+        page
     }
 }

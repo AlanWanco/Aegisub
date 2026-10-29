@@ -104,21 +104,30 @@ impl FilePanel {
     }
 
     pub fn render(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
-        let mut tabs = div().h_flex().gap_2();
-        for (i, page, label) in [
-            (0, FilePage::Encoding, "指定编码打开"),
-            (1, FilePage::Recovery, "自动保存与恢复"),
-        ] {
-            tabs = tabs.child(
-                Button::new(format!("file-tools-page-{i}"))
-                    .label(label)
-                    .when(self.page == page, |button| button.primary())
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.files.page = page;
-                        view.file_tools_request(json!({"action":"state"}), cx);
-                    })),
-            );
-        }
+        let tabs = crate::page::tabs(
+            cx,
+            [
+                (0, FilePage::Encoding, "指定编码打开"),
+                (1, FilePage::Recovery, "自动保存与恢复"),
+            ]
+            .into_iter()
+            .map(|(index, page, label)| {
+                (
+                    format!("file-tools-page-{index}"),
+                    label.to_owned(),
+                    self.page == page,
+                )
+            })
+            .collect(),
+            |view, index, _, cx| {
+                view.files.page = if index == 0 {
+                    FilePage::Encoding
+                } else {
+                    FilePage::Recovery
+                };
+                view.file_tools_request(json!({"action":"state"}), cx);
+            },
+        );
         let mut panel = crate::page::page(cx, "file-tools-panel")
             .child(crate::page::header(
                 cx,
@@ -142,12 +151,7 @@ impl FilePanel {
             let choices = self.state.encodings.clone();
             let selected = self.encoding.clone();
             let weak = cx.weak_entity();
-            let mut common = div()
-                .h_flex()
-                .flex_wrap()
-                .gap_2()
-                .items_center()
-                .child(div().text_sm().child("常用编码"));
+            let mut presets: Vec<(String, &'static str, bool, bool)> = Vec::new();
             for (index, code) in [
                 "UTF-8",
                 "GB18030",
@@ -167,95 +171,139 @@ impl FilePanel {
                     .iter()
                     .find(|name| name.to_uppercase().contains(&format!("({code})")))
                 {
-                    let value = value.clone();
-                    common = common.child(
-                        Button::new(format!("encoding-preset-{index}"))
-                            .label(code)
-                            .when(value == self.encoding, |button| button.primary())
-                            .disabled(self.loading)
-                            .on_click(cx.listener(move |view, _, _, cx| {
-                                view.files.encoding = value.clone();
-                                cx.notify();
-                            })),
-                    );
+                    presets.push((
+                        format!("encoding-preset-{index}"),
+                        code,
+                        *value == self.encoding,
+                        self.loading,
+                    ));
                 }
             }
-            panel = panel
-                .child(div().text_lg().font_semibold().child("指定编码打开字幕"))
-                .child(
-                    div()
-                        .h_flex()
-                        .gap_3()
-                        .items_center()
+            let preset_control = crate::page::segmented(cx, presets, |view, index, _, cx| {
+                let presets: Vec<String> = [
+                    "UTF-8",
+                    "GB18030",
+                    "GBK",
+                    "BIG5",
+                    "SHIFT_JIS",
+                    "UTF-16",
+                    "UTF-32",
+                ]
+                .iter()
+                .filter_map(|code| {
+                    view.files
+                        .state
+                        .encodings
+                        .iter()
+                        .find(|name| name.to_uppercase().contains(&format!("({code})")))
+                        .cloned()
+                })
+                .collect();
+                if let Some(value) = presets.get(index) {
+                    view.files.encoding = value.clone();
+                }
+                cx.notify();
+            });
+            let detected = if self.path.is_empty() {
+                "选择文件后显示编码检测结果".to_owned()
+            } else if self.state.detected.is_empty() {
+                "未能自动检测编码，请手动选择编码".to_owned()
+            } else {
+                format!("检测结果：{}", self.state.detected)
+            };
+            panel =
+                panel.child(crate::page::section_with_icon(
+                    cx,
+                    Some(IconName::FileInput),
+                    "按编码重新打开",
+                    None,
+                    crate::page::section_body()
                         .child(
-                            Button::new("encoded-open-pick")
-                                .label("选择字幕文件…")
-                                .disabled(self.loading)
-                                .on_click(
-                                    cx.listener(|view, _, _, cx| view.pick_encoded_subtitle(cx)),
+                            div()
+                                .h_flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap_3()
+                                .child(
+                                    Button::new("encoded-open-pick")
+                                        .label("选择字幕文件…")
+                                        .disabled(self.loading)
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.pick_encoded_subtitle(cx)
+                                        })),
+                                )
+                                .child(div().text_sm().min_w_0().truncate().child(
+                                    if self.path.is_empty() {
+                                        "尚未选择文件".to_owned()
+                                    } else {
+                                        self.path.clone()
+                                    },
+                                )),
+                        )
+                        .child(
+                            div()
+                                .h_flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap_5()
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(crate::page::field_label(cx, "读取编码"))
+                                        .child(
+                                            Button::new("encoded-open-charset")
+                                                .label(self.encoding.clone())
+                                                .w(px(300.))
+                                                .disabled(self.loading)
+                                                .dropdown_menu(move |mut menu, _, _| {
+                                                    for encoding in &choices {
+                                                        let weak = weak.clone();
+                                                        let value = encoding.clone();
+                                                        menu = menu.item(
+                                                            PopupMenuItem::new(value.clone())
+                                                                .checked(value == selected)
+                                                                .on_click(move |_, _, cx| {
+                                                                    let _ = weak.update(
+                                                                        cx,
+                                                                        |view, cx| {
+                                                                            view.files.encoding =
+                                                                                value.clone();
+                                                                            cx.notify();
+                                                                        },
+                                                                    );
+                                                                }),
+                                                        );
+                                                    }
+                                                    menu
+                                                }),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(crate::page::field_label(cx, "常用"))
+                                        .child(preset_control),
                                 ),
                         )
-                        .child(div().text_sm().child(if self.path.is_empty() {
-                            "尚未选择文件".into()
-                        } else {
-                            self.path.clone()
-                        })),
-                )
-                .child(
-                    div()
-                        .h_flex()
-                        .gap_3()
-                        .items_center()
-                        .child("读取编码")
+                        .child(crate::page::hint(cx, detected))
                         .child(
-                            Button::new("encoded-open-charset")
-                                .label(self.encoding.clone())
-                                .w(px(330.))
-                                .disabled(self.loading)
-                                .dropdown_menu(move |mut menu, _, _| {
-                                    for encoding in &choices {
-                                        let weak = weak.clone();
-                                        let value = encoding.clone();
-                                        menu = menu.item(
-                                            PopupMenuItem::new(value.clone())
-                                                .checked(value == selected)
-                                                .on_click(move |_, _, cx| {
-                                                    let _ = weak.update(cx, |view, cx| {
-                                                        view.files.encoding = value.clone();
-                                                        cx.notify();
-                                                    });
-                                                }),
-                                        );
-                                    }
-                                    menu
-                                }),
-                        ),
-                )
-                .child(common)
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(Theme::global(cx).muted_foreground)
-                        .child(if self.path.is_empty() {
-                            "选择文件后显示编码检测结果".into()
-                        } else if self.state.detected.is_empty() {
-                            "未能自动检测编码，请手动选择编码".into()
-                        } else {
-                            format!("检测结果：{}", self.state.detected)
-                        }),
-                )
-                .child(
-                    div().h_flex().child(
-                        Button::new("encoded-open-submit")
-                            .label("按所选编码打开")
-                            .primary()
-                            .disabled(self.loading || self.path.is_empty())
-                            .on_click(
-                                cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx)),
+                            div().h_flex().items_center().gap_3().child(
+                                Button::new("encoded-open-submit")
+                                    .label("按所选编码打开")
+                                    .primary()
+                                    .disabled(self.loading || self.path.is_empty())
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.open_file_tools_selection(cx)
+                                    })),
                             ),
-                    ),
-                );
+                        ),
+                ));
         } else {
+            let p = crate::workspace_theme::Palette::current(cx);
             let query = self.query.read(cx).value().to_lowercase();
             let mut files = div()
                 .id("recovery-file-list")
@@ -269,24 +317,63 @@ impl FilePanel {
                     continue;
                 }
                 let name = file.name.clone();
+                let selected = self.group == file.name;
+                let count = file.versions.len();
                 files = files.child(
-                    Button::new(format!("recovery-file-{index}"))
-                        .label(format!("{} · {} 个版本", file.name, file.versions.len()))
-                        .when(self.group == file.name, |button| button.primary())
-                        .disabled(self.loading)
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.files.group = name.clone();
-                            view.files.version = view
-                                .files
-                                .state
-                                .files
-                                .iter()
-                                .find(|file| file.name == name)
-                                .and_then(|file| file.versions.first())
-                                .map(|version| version.path.clone())
-                                .unwrap_or_default();
-                            cx.notify();
-                        })),
+                    div()
+                        .id(format!("recovery-file-{index}"))
+                        .v_flex()
+                        .gap_0p5()
+                        .w_full()
+                        .min_w_0()
+                        .rounded(px(6.))
+                        .border_l_2()
+                        .border_color(if selected {
+                            p.accent
+                        } else {
+                            gpui_kit::rgba(0x00000000).into()
+                        })
+                        .px_3()
+                        .py_2()
+                        .cursor_pointer()
+                        .when(selected, |row| row.bg(p.selected))
+                        .when(!selected && !self.loading, |row| {
+                            row.hover(|row| row.bg(p.raised))
+                        })
+                        .when(self.loading, |row| row.opacity(0.5))
+                        .on_mouse_down(
+                            gpui_kit::MouseButton::Left,
+                            cx.listener(move |view, _, _, cx| {
+                                if view.files.loading {
+                                    return;
+                                }
+                                view.files.group = name.clone();
+                                view.files.version = view
+                                    .files
+                                    .state
+                                    .files
+                                    .iter()
+                                    .find(|file| file.name == name)
+                                    .and_then(|file| file.versions.first())
+                                    .map(|version| version.path.clone())
+                                    .unwrap_or_default();
+                                cx.notify();
+                            }),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_medium()
+                                .text_color(if selected { p.selected_text } else { p.text })
+                                .truncate()
+                                .child(file.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(if selected { p.selected_text } else { p.muted })
+                                .child(format!("{count} 个版本")),
+                        ),
                 );
             }
             let mut versions = div()
@@ -304,43 +391,115 @@ impl FilePanel {
                         "recovered" => "异常恢复",
                         _ => "自动保存",
                     };
+                    let selected = self.version == version.path;
+                    let display = version.display.clone();
+                    let full_path = version.path.clone();
                     versions = versions.child(
                         div()
+                            .id(format!("recovery-version-{index}"))
                             .v_flex()
                             .gap_1()
-                            .px_2()
+                            .w_full()
+                            .min_w_0()
+                            .rounded(px(6.))
+                            .border_l_2()
+                            .border_color(if selected {
+                                p.accent
+                            } else {
+                                gpui_kit::rgba(0x00000000).into()
+                            })
+                            .px_3()
                             .py_2()
-                            .border_b_1()
-                            .border_color(Theme::global(cx).border)
+                            .cursor_pointer()
+                            .when(selected, |row| row.bg(p.selected))
+                            .when(!selected && !self.loading, |row| {
+                                row.hover(|row| row.bg(p.raised))
+                            })
+                            .when(self.loading, |row| row.opacity(0.5))
+                            .on_mouse_down(
+                                gpui_kit::MouseButton::Left,
+                                cx.listener(move |view, _, _, cx| {
+                                    if view.files.loading {
+                                        return;
+                                    }
+                                    view.files.version = path.clone();
+                                    cx.notify();
+                                }),
+                            )
                             .child(
-                                Button::new(format!("recovery-version-{index}"))
-                                    .label(format!("{kind} · {}", version.display))
-                                    .when(self.version == version.path, |button| button.primary())
-                                    .disabled(self.loading)
-                                    .on_click(cx.listener(move |view, _, _, cx| {
-                                        view.files.version = path.clone();
-                                        cx.notify();
-                                    })),
+                                div()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(if selected { p.selected_text } else { p.text })
+                                    .truncate()
+                                    .child(format!("{kind} · {display}")),
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(Theme::global(cx).muted_foreground)
-                                    .child(version.path.clone()),
+                                    .truncate()
+                                    .text_color(if selected { p.selected_text } else { p.muted })
+                                    .child(full_path),
                             ),
                     );
                 }
             }
-            panel = panel.child(div().h_flex().flex_wrap().gap_2().items_center()
-                .child(div().text_lg().font_semibold().child("自动保存与恢复"))
-                .child(Button::new("recovery-refresh").label("刷新版本").disabled(self.loading).on_click(cx.listener(|view, _, _, cx| view.file_tools_request(json!({"action":"state"}), cx))))
-                .child(Button::new("recovery-open").label("打开所选版本").primary().disabled(self.loading || self.version.is_empty()).on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx))))
-                .child(Input::new(&self.query).w(px(300.))))
-                .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("版本来自已配置的自动保存、原始备份和异常恢复目录；打开后可用“另存为”保存新的副本。"))
-                .when(self.state.files.is_empty(), |panel| panel.child("没有找到可恢复的字幕版本。"))
-                .child(div().h_flex().items_stretch().flex_1().min_h_0().overflow_hidden().gap_4()
-                    .child(div().v_flex().w(px(340.)).flex_shrink_0().min_h_0().gap_2().child("文件").child(files))
-                    .child(div().v_flex().flex_1().min_w_0().min_h_0().gap_2().child("版本 · 按时间从新到旧排列").child(versions)));
+            panel = panel
+                .child(crate::page::toolbar([
+                    Button::new("recovery-open")
+                        .label("打开所选版本")
+                        .primary()
+                        .disabled(self.loading || self.version.is_empty())
+                        .on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx)))
+                        .into_any_element(),
+                    Button::new("recovery-refresh")
+                        .label("刷新版本")
+                        .disabled(self.loading)
+                        .on_click(cx.listener(|view, _, _, cx| {
+                            view.file_tools_request(json!({"action":"state"}), cx)
+                        }))
+                        .into_any_element(),
+                    div()
+                        .ml_auto()
+                        .child(Input::new(&self.query).w(px(280.)))
+                        .into_any_element(),
+                ]))
+                .child(crate::page::hint(
+                    cx,
+                    "版本来自已配置的自动保存、原始备份和异常恢复目录；打开后可用“另存为”保存新的副本。",
+                ))
+                .when(self.state.files.is_empty(), |panel| {
+                    panel.child(crate::page::hint(cx, "没有找到可恢复的字幕版本。"))
+                })
+                .child(
+                    div()
+                        .h_flex()
+                        .items_stretch()
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_hidden()
+                        .gap_4()
+                        .child(
+                            div()
+                                .v_flex()
+                                .w(px(320.))
+                                .flex_shrink_0()
+                                .min_h_0()
+                                .gap_2()
+                                .child(crate::page::field_label(cx, "文件"))
+                                .child(files),
+                        )
+                        .child(
+                            div()
+                                .v_flex()
+                                .flex_1()
+                                .min_w_0()
+                                .min_h_0()
+                                .gap_2()
+                                .child(crate::page::field_label(cx, "版本 · 按时间从新到旧排列"))
+                                .child(versions),
+                        ),
+                );
         }
         panel
     }

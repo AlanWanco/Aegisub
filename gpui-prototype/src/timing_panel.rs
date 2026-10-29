@@ -121,7 +121,6 @@ impl TimingPanel {
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
-        let wide = f32::from(window.viewport_size().width) >= 900.;
         let p = crate::workspace_theme::Palette::current(cx);
         let units = crate::page::segmented(
             cx,

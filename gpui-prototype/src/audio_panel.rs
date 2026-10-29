@@ -421,7 +421,7 @@ impl AudioPanel {
                 .ghost()
                 .disabled(!state.loaded)
         };
-        let mut viewport = div()
+        let viewport = div()
             .h_flex()
             .flex_wrap()
             .gap_1()
@@ -550,7 +550,7 @@ impl AudioPanel {
                     })),
             );
         }
-        let mut sound = div()
+        let sound = div()
             .h_flex()
             .flex_wrap()
             .gap_2()
