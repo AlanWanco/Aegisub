@@ -765,39 +765,158 @@ impl DocumentPanels {
 
     pub fn render_project(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
         let media = &self.details.media;
-        let mut panel = crate::page::page(cx, "project-properties")
+        let info = &SCRIPT_FIELDS[..8];
+        let layout = &SCRIPT_FIELDS[8..12];
+        let rest = &SCRIPT_FIELDS[12..];
+        let mut media_rows = div().v_flex().w_full().min_w_0();
+        for (index, (name, value)) in [
+            ("视频", media.video.clone()),
+            ("音频", media.audio.clone()),
+            ("关键帧", media.keyframes.to_string()),
+            ("时间码已加载", media.timecodes.to_string()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let value = if value.is_empty() {
+                "未载入".to_owned()
+            } else {
+                value
+            };
+            media_rows = media_rows.child(
+                div()
+                    .h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .items_center()
+                    .gap_4()
+                    .py_2()
+                    .when(index > 0, |row| {
+                        row.border_t_1()
+                            .border_color(crate::workspace_theme::Palette::current(cx).border)
+                    })
+                    .child(
+                        div()
+                            .w(px(96.))
+                            .flex_shrink_0()
+                            .child(crate::page::field_label(cx, name)),
+                    )
+                    .child(div().flex_1().min_w_0().truncate().text_sm().child(value)),
+            );
+        }
+
+        let info_body = crate::page::section_body().child(field_grid(
+            cx,
+            "script-info",
+            info,
+            4,
+            &self.script_form,
+        ));
+        let layout_body = crate::page::section_body()
+            .child(field_grid(
+                cx,
+                "script-layout",
+                layout,
+                4,
+                &self.script_form,
+            ))
+            .child(field_grid(
+                cx,
+                "script-layout-flags",
+                rest,
+                3,
+                &self.script_form,
+            ))
+            .child(crate::page::hint(
+                cx,
+                "色彩矩阵可选 空 / None / TV.601 / PC.601 / TV.709 / PC.709 / TV.FCC / PC.FCC / TV.240M / PC.240M。更改分辨率只更新属性；缩放已有排版请使用重采样工具。",
+            ));
+        let media_body = crate::page::section_body().child(media_rows);
+
+        crate::page::page(cx, "project-properties")
             .child(crate::page::header(
                 cx,
                 IconName::FileText,
                 "脚本属性",
                 "脚本信息、布局分辨率与关联媒体文件；修改后点应用写入当前字幕。",
             ))
-            .child(div().h_flex().gap_2()
-                .child(Button::new("apply-script-info").label("应用脚本属性").primary().on_click(cx.listener(|view, _, _, cx| {
-                    view.invoke(json!({"op":"script_info", "fields":view.document.script_form.patch(cx)}), cx);
-                })))
-                .child(Button::new("discard-script-info").label("放弃修改").on_click(cx.listener(|view, _, _, cx| { view.document.script_form.dirty.clear(); cx.notify(); })))
-                .child(Button::new("video-script-dimensions").label("使用视频分辨率和色彩矩阵").disabled(media.width == 0)
+            .child(crate::page::toolbar([
+                Button::new("apply-script-info")
+                    .label("应用脚本属性")
+                    .primary()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.invoke(
+                            json!({"op":"script_info", "fields":view.document.script_form.patch(cx)}),
+                            cx,
+                        );
+                    }))
+                    .into_any_element(),
+                Button::new("discard-script-info")
+                    .label("放弃修改")
+                    .ghost()
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.document.script_form.dirty.clear();
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+                Button::new("video-script-dimensions")
+                    .label("使用视频分辨率")
+                    .disabled(media.width == 0)
                     .on_click(cx.listener(|view, _, window, cx| {
                         let media = &view.document.details.media;
-                        for (key, value) in [("PlayResX", media.width.to_string()), ("PlayResY", media.height.to_string()), ("LayoutResX", media.width.to_string()), ("LayoutResY", media.height.to_string()), ("YCbCr Matrix", media.matrix.clone())] {
-                            view.document.script_form.inputs[key].update(cx, |state, cx| state.set_value(value, window, cx));
+                        for (key, value) in [
+                            ("PlayResX", media.width.to_string()),
+                            ("PlayResY", media.height.to_string()),
+                            ("LayoutResX", media.width.to_string()),
+                            ("LayoutResY", media.height.to_string()),
+                            ("YCbCr Matrix", media.matrix.clone()),
+                        ] {
+                            view.document.script_form.inputs[key]
+                                .update(cx, |state, cx| state.set_value(value, window, cx));
                             view.document.script_form.dirty.insert(key);
                         }
                         cx.notify();
-                    }))))
-            .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child("色彩矩阵：空、None、TV.601、PC.601、TV.709、PC.709、TV.FCC、PC.FCC、TV.240M、PC.240M。更改分辨率只更新属性；缩放排版请使用重采样工具。"))
-            .child(render_fields("script-fields", SCRIPT_FIELDS, &self.script_form));
-        for (name, value) in [
-            ("视频", media.video.clone()),
-            ("音频", media.audio.clone()),
-            ("关键帧", media.keyframes.to_string()),
-            ("时间码已加载", media.timecodes.to_string()),
-        ] {
-            panel = panel.child(div().text_sm().child(format!("{name}：{value}")));
-        }
-        panel
+                    }))
+                    .into_any_element(),
+            ]))
+            .child(crate::page::section(cx, "脚本信息", None, info_body))
+            .child(crate::page::section(cx, "分辨率与布局", None, layout_body))
+            .child(crate::page::section(cx, "关联媒体", None, media_body))
     }
+}
+
+/// Equal-width grid of labelled inputs, `cols` per row.
+fn field_grid(
+    cx: &mut Context<Workspace>,
+    id: &'static str,
+    fields: &'static [(&'static str, &'static str)],
+    cols: usize,
+    form: &Form,
+) -> Div {
+    let mut rows = div().v_flex().w_full().min_w_0().gap_3();
+    for chunk in fields.chunks(cols) {
+        let mut row = div().h_flex().items_start().w_full().min_w_0().gap_3();
+        for &(key, label) in chunk {
+            row = row.child(
+                div()
+                    .v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_1()
+                    .child(crate::page::field_label(cx, label))
+                    .child(
+                        Input::new(&form.inputs[key])
+                            .id(format!("{id}-{key}"))
+                            .w_full(),
+                    ),
+            );
+        }
+        for _ in chunk.len()..cols {
+            row = row.child(div().flex_1().min_w_0());
+        }
+        rows = rows.child(row);
+    }
+    rows
 }
 
 fn style_label(cx: &App, text: &str) -> Div {
@@ -1046,27 +1165,4 @@ fn style_alignment_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
                     ),
             ),
         )
-}
-
-fn render_fields(
-    id: &'static str,
-    fields: &'static [(&'static str, &'static str)],
-    form: &Form,
-) -> impl IntoElement {
-    let mut container = div().id(id).flex().flex_wrap().gap_3();
-    for &(key, label) in fields {
-        container = container.child(
-            div()
-                .v_flex()
-                .w(px(260.))
-                .gap_1()
-                .child(div().text_sm().child(label))
-                .child(
-                    Input::new(&form.inputs[key])
-                        .id(format!("{id}-{key}"))
-                        .w_full(),
-                ),
-        );
-    }
-    container
 }

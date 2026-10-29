@@ -137,12 +137,39 @@ impl HotkeyPanel {
             );
         }
         let query = self.search.read(cx).value().to_lowercase();
+        let column_header = div()
+            .h_flex()
+            .w_full()
+            .gap_3()
+            .px_2()
+            .pb_2()
+            .border_b_1()
+            .border_color(crate::workspace_theme::Palette::current(cx).border)
+            .child(
+                div()
+                    .w(px(150.))
+                    .flex_shrink_0()
+                    .child(crate::page::field_label(cx, "上下文")),
+            )
+            .child(
+                div()
+                    .w(px(150.))
+                    .flex_shrink_0()
+                    .child(crate::page::field_label(cx, "快捷键")),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(crate::page::field_label(cx, "命令")),
+            );
         let mut list = div()
             .id("hotkey-binding-list")
             .v_flex()
-            .flex_1()
-            .min_h_0()
-            .gap_1()
+            .w_full()
+            .min_w_0()
+            .gap_0()
+            .max_h(px(420.))
             .overflow_y_scrollbar();
         for (index, binding) in self.bindings.iter().enumerate() {
             if !query.is_empty()
@@ -175,6 +202,8 @@ impl HotkeyPanel {
                     .ghost()
                     .w_full()
                     .h(px(34.))
+                    .border_b_1()
+                    .border_color(p.border)
                     .accessibility_label(format!(
                         "{} · {} · {}",
                         binding.context, binding.key, binding.command
@@ -240,6 +269,7 @@ impl HotkeyPanel {
             ))
             .child(crate::page::toolbar([
                 Button::new("hotkeys-back")
+                    .icon(IconName::ArrowLeft)
                     .label("返回设置")
                     .ghost()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -271,8 +301,15 @@ impl HotkeyPanel {
                     .child(error.clone()),
             );
         }
-        panel
+        let list_body = crate::page::section_body()
             .child(Input::new(&self.search).w(px(450.)))
-            .child(list)
+            .child(column_header)
+            .child(list);
+        panel.child(crate::page::section(
+            cx,
+            "全部绑定",
+            Some(crate::page::badge(cx, format!("{} 条", self.bindings.len())).into_any_element()),
+            list_body,
+        ))
     }
 }

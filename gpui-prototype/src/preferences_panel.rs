@@ -268,52 +268,53 @@ impl PreferencesPanel {
                 };
                 let weak = cx.weak_entity();
                 control = control.child(
-                    Button::new(format!("preference-choice-{key}"))
-                        .label(if display.is_empty() {
-                            "自动".into()
+                    crate::page::select_trigger(
+                        cx,
+                        format!("preference-choice-{key}"),
+                        if display.is_empty() {
+                            "自动".to_owned()
                         } else {
                             display
-                        })
-                        .w(px(280.))
-                        .disabled(loading)
-                        .dropdown_menu(move |mut menu, _, _| {
-                            for (index, label) in choices.iter().enumerate() {
-                                let proposed = if integer {
-                                    index.to_string()
+                        },
+                        loading,
+                    )
+                    .w(px(280.))
+                    .dropdown_menu(move |mut menu, _, _| {
+                        for (index, label) in choices.iter().enumerate() {
+                            let proposed = if integer {
+                                index.to_string()
+                            } else {
+                                label.clone()
+                            };
+                            let weak = weak.clone();
+                            let key = key.clone();
+                            menu = menu.item(
+                                PopupMenuItem::new(if label.is_empty() {
+                                    "自动".into()
                                 } else {
                                     label.clone()
-                                };
-                                let weak = weak.clone();
-                                let key = key.clone();
-                                menu = menu.item(
-                                    PopupMenuItem::new(if label.is_empty() {
-                                        "自动".into()
-                                    } else {
-                                        label.clone()
-                                    })
-                                    .checked(value == proposed)
-                                    .disabled(loading)
-                                    .on_click(
-                                        move |_, _, cx| {
-                                            let _ = weak.update(cx, |view, cx| {
-                                                if view.preferences.options.iter().any(|option| {
-                                                    option.name == key && option.value == proposed
-                                                }) {
-                                                    view.preferences.drafts.remove(&key);
-                                                } else {
-                                                    view.preferences
-                                                        .drafts
-                                                        .insert(key.clone(), proposed.clone());
-                                                }
-                                                view.preferences.confirm_reset = false;
-                                                cx.notify();
-                                            });
-                                        },
-                                    ),
-                                );
-                            }
-                            menu
-                        }),
+                                })
+                                .checked(value == proposed)
+                                .disabled(loading)
+                                .on_click(move |_, _, cx| {
+                                    let _ = weak.update(cx, |view, cx| {
+                                        if view.preferences.options.iter().any(|option| {
+                                            option.name == key && option.value == proposed
+                                        }) {
+                                            view.preferences.drafts.remove(&key);
+                                        } else {
+                                            view.preferences
+                                                .drafts
+                                                .insert(key.clone(), proposed.clone());
+                                        }
+                                        view.preferences.confirm_reset = false;
+                                        cx.notify();
+                                    });
+                                }),
+                            );
+                        }
+                        menu
+                    }),
                 );
             } else if let Some(input) = self.inputs.get(&key) {
                 let hint = if option.kind == "int" || option.kind == "double" {

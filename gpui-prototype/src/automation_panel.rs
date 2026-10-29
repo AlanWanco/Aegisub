@@ -57,27 +57,6 @@ pub struct AutomationPanel {
 
 impl AutomationPanel {
     pub fn render(&self, catalog: &Catalog, cx: &mut Context<Workspace>) -> impl IntoElement {
-        let mut toolbar = div().h_flex().flex_wrap().gap_2().items_center().child(
-            Button::new("automation-add")
-                .label("添加项目脚本…")
-                .primary()
-                .disabled(self.loading)
-                .on_click(cx.listener(|view, _, _, cx| view.pick_automation_script(cx))),
-        );
-        for (id, label, action) in [
-            ("automation-refresh", "刷新列表", "state"),
-            ("automation-rescan", "重新扫描自动加载目录", "rescan"),
-            ("automation-reload-all", "重新加载全部", "reload_all"),
-        ] {
-            toolbar = toolbar.child(
-                Button::new(id)
-                    .label(label)
-                    .disabled(self.loading)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.automation_request(json!({"action":action}), cx)
-                    })),
-            );
-        }
         let local = self
             .state
             .scripts
@@ -91,6 +70,39 @@ impl AutomationPanel {
             .map(|engine| format!("{} ({})", engine.name, engine.pattern))
             .collect::<Vec<_>>()
             .join("、");
+        let toolbar = crate::page::toolbar([
+            Button::new("automation-add")
+                .label("添加项目脚本…")
+                .primary()
+                .disabled(self.loading)
+                .on_click(cx.listener(|view, _, _, cx| view.pick_automation_script(cx)))
+                .into_any_element(),
+            Button::new("automation-reload-all")
+                .label("重新加载全部")
+                .disabled(self.loading)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.automation_request(json!({"action":"reload_all"}), cx)
+                }))
+                .into_any_element(),
+            Button::new("automation-rescan")
+                .label("重新扫描目录")
+                .ghost()
+                .disabled(self.loading)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.automation_request(json!({"action":"rescan"}), cx)
+                }))
+                .into_any_element(),
+        ])
+        .child(div().flex_1())
+        .child(crate::page::badge(
+            cx,
+            format!(
+                "项目脚本 {local} · 自动加载 {}",
+                self.state.scripts.len() - local
+            ),
+        ))
+        .child(crate::page::badge(cx, format!("引擎 {engines}")));
+
         let mut panel = crate::page::page(cx, "automation-panel")
             .child(crate::page::header(
                 cx,
@@ -98,20 +110,7 @@ impl AutomationPanel {
                 "自动化脚本",
                 "脚本随字幕项目关联；移除会卸载脚本，执行脚本会写入当前字幕并可撤销。",
             ))
-            .child(toolbar)
-            .child(format!(
-                "项目脚本 {local} · 自动加载脚本 {}",
-                self.state.scripts.len() - local
-            ))
-            .child(div().text_sm().child(format!("已安装引擎：{engines}")))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).muted_foreground)
-                    .child(
-                        "项目脚本随字幕项目关联；移除会卸载脚本。宏使用当前字幕、选择和撤销记录。",
-                    ),
-            );
+            .child(toolbar);
         if self.loading {
             panel = panel.child(div().text_sm().child("正在同步脚本…"));
         }
@@ -177,42 +176,35 @@ impl AutomationPanel {
             } else {
                 "已加载"
             };
-            let mut details = div()
-                .v_flex()
+            let scope_badge = if script.scope == "local" {
+                "项目"
+            } else {
+                "自动加载"
+            };
+            let header_actions = div()
+                .h_flex()
+                .items_center()
                 .gap_2()
-                .border_1()
-                .border_color(Theme::global(cx).border)
-                .rounded_md()
-                .p_3()
+                .child(crate::page::badge(cx, scope_badge))
+                .child(crate::page::badge(cx, state))
+                .child(actions);
+            let mut details = crate::page::section_body()
+                .when(!script.description.is_empty(), |body| {
+                    body.child(div().text_sm().child(script.description.clone()))
+                })
                 .child(
                     div()
-                        .h_flex()
-                        .flex_wrap()
-                        .gap_3()
-                        .items_center()
-                        .justify_between()
-                        .child(div().font_semibold().child(format!(
-                            "{} · {} · {state}",
-                            script.name,
-                            if script.scope == "local" {
-                                "项目"
-                            } else {
-                                "自动加载"
-                            }
-                        )))
-                        .child(actions),
-                )
-                .child(div().text_sm().child(script.description.clone()))
-                .child(
-                    div()
-                        .text_sm()
+                        .text_xs()
                         .text_color(Theme::global(cx).muted_foreground)
-                        .child(format!(
-                            "作者：{} · 版本：{}",
-                            script.author, script.version
-                        )),
+                        .child(format!("作者 {} · 版本 {}", script.author, script.version)),
                 )
-                .child(div().text_xs().child(script.path.clone()));
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(Theme::global(cx).muted_foreground)
+                        .truncate()
+                        .child(script.path.clone()),
+                );
             for warning in &script.warnings {
                 details = details.child(div().text_sm().child(format!("警告：{warning}")));
             }
@@ -244,12 +236,22 @@ impl AutomationPanel {
                 );
             }
             for filter in &script.filters {
-                details = details.child(div().text_sm().child(format!(
-                    "导出过滤器：{} · {}",
-                    filter.name, filter.description
-                )));
+                details = details.child(
+                    div()
+                        .text_sm()
+                        .text_color(Theme::global(cx).muted_foreground)
+                        .child(format!(
+                            "导出过滤器 · {} — {}",
+                            filter.name, filter.description
+                        )),
+                );
             }
-            panel = panel.child(details);
+            panel = panel.child(crate::page::section(
+                cx,
+                script.name.clone(),
+                Some(header_actions.into_any_element()),
+                details,
+            ));
         }
         panel
     }
