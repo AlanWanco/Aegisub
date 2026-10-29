@@ -50,7 +50,7 @@ impl VideoTimeline {
         let p = Palette::current(cx);
         let mut controls = div().h_flex().flex_wrap().gap_1().items_center()
             .child(
-                Button::new("play-video").rounded(gpui_kit::px(999.)).small()
+                Button::new("play-video").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(if snapshot.playing { IconName::Pause } else { IconName::Play })
                     .label(if snapshot.playing { "暂停" } else { "播放" })
                     .primary()
@@ -104,6 +104,8 @@ impl VideoTimeline {
                 Button::new(id)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(icon)
                     .accessibility_label(label)
                     .tooltip(label)

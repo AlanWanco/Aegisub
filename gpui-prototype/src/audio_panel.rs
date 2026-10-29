@@ -167,6 +167,8 @@ impl AudioPanel {
                 .icon(IconName::FolderOpen)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("打开音频")
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
@@ -176,6 +178,8 @@ impl AudioPanel {
                 .icon(IconName::Video)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("从视频载入")
                 .disabled(!video)
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -192,6 +196,8 @@ impl AudioPanel {
                 .icon(IconName::Play)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("播放选区")
                 .disabled(!state.loaded)
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -202,6 +208,8 @@ impl AudioPanel {
                 .icon(IconName::Pause)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("停止")
                 .disabled(!state.loaded)
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -212,6 +220,8 @@ impl AudioPanel {
                 .icon(IconName::ExternalLink)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("导出音频剪辑…")
                 .ghost()
                 .disabled(!state.loaded)
@@ -229,6 +239,8 @@ impl AudioPanel {
                 .icon(IconName::Check)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("提交并前进")
                 .primary()
                 .disabled(!state.loaded)
@@ -240,6 +252,8 @@ impl AudioPanel {
                 .icon(IconName::Check)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("提交")
                 .disabled(!state.loaded)
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -250,6 +264,8 @@ impl AudioPanel {
                 .icon(IconName::Undo2)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("还原时间")
                 .ghost()
                 .disabled(!state.loaded)
@@ -262,6 +278,8 @@ impl AudioPanel {
                 .icon(IconName::Close)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("关闭音频")
                 .ghost()
                 .disabled(!state.loaded)
@@ -507,6 +525,8 @@ impl AudioPanel {
             Button::new(id)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .icon(icon)
                 .accessibility_label(label)
                 .tooltip(label)
@@ -568,6 +588,8 @@ impl AudioPanel {
                 Button::new("audio-fit-line")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::Crosshair)
                     .label("定位当前句")
                     .tooltip("缩放到当前句的时间范围")
@@ -634,6 +656,8 @@ impl AudioPanel {
                     .icon(IconName::Play)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(label)
                     .ghost()
                     .when((state.rate - rate as f64).abs() < 0.5, |button| {
@@ -658,6 +682,8 @@ impl AudioPanel {
                 Button::new("audio-volume-down")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::Minus)
                     .accessibility_label("音量 −")
                     .tooltip("音量 −10%")
@@ -680,6 +706,8 @@ impl AudioPanel {
                 Button::new("audio-volume-up")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::Plus)
                     .accessibility_label("音量 +")
                     .tooltip("音量 +10%")
@@ -711,11 +739,11 @@ impl AudioPanel {
                     )));
                 let mut splits = div().h_flex().gap_1();
                 for character in 1..syllable.characters {
-                    splits = splits.child(Button::new(format!("split-{index}-{character}")).icon(IconName::Scissors).rounded(gpui_kit::px(999.)).small().label(format!("{character}｜"))
+                    splits = splits.child(Button::new(format!("split-{index}-{character}")).icon(IconName::Scissors).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label(format!("{character}｜"))
                         .on_click(cx.listener(move |view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke_split", "syllable":index, "character":character}), cx))));
                 }
                 if index > 0 {
-                    splits = splits.child(Button::new(format!("merge-{index}")).icon(IconName::Plus).rounded(gpui_kit::px(999.)).small().label("合并前一节")
+                    splits = splits.child(Button::new(format!("merge-{index}")).icon(IconName::Plus).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("合并前一节")
                         .on_click(cx.listener(move |view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke_merge", "syllable":index}), cx))));
                 }
                 cell = cell.child(splits);
@@ -729,6 +757,8 @@ impl AudioPanel {
                         .icon(IconName::Scissors)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("应用音节拆分")
                         .primary()
                         .disabled(!state.pending_splits)
@@ -741,6 +771,8 @@ impl AudioPanel {
                         .icon(IconName::Undo2)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("还原音节")
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.invoke(json!({"op":"audio_action", "action":"karaoke_cancel"}), cx)
@@ -756,6 +788,8 @@ impl AudioPanel {
                         .icon(IconName::Asterisk)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label(tag)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.invoke(
@@ -772,6 +806,8 @@ impl AudioPanel {
                 .icon(IconName::Video)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("从视频载入")
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
@@ -781,6 +817,8 @@ impl AudioPanel {
                 .icon(IconName::FolderOpen)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label("打开音频")
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
@@ -888,6 +926,8 @@ impl AudioPanel {
                         .icon(IconName::Minus)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("波形增益 −")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -907,6 +947,8 @@ impl AudioPanel {
                         .icon(IconName::Plus)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("波形增益 +")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -920,6 +962,8 @@ impl AudioPanel {
                         .icon(IconName::Locate)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("定位当前句")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -936,6 +980,8 @@ impl AudioPanel {
                         .icon(IconName::ZoomIn)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("放大波形")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -949,6 +995,8 @@ impl AudioPanel {
                         .icon(IconName::ZoomOut)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label("缩小波形")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {

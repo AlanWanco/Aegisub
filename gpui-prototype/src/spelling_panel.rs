@@ -121,7 +121,7 @@ impl SpellingPanel {
             .items_center()
             .gap_2()
             .child(
-                Button::new("spelling-start").rounded(gpui_kit::px(999.)).small()
+                Button::new("spelling-start").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::Check)
                     .label("从当前行检查")
                     .primary()
@@ -132,7 +132,7 @@ impl SpellingPanel {
                     })),
             )
             .child(
-                Button::new("spelling-language").rounded(gpui_kit::px(999.)).small()
+                Button::new("spelling-language").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::Languages)
                     .label(if selected.is_empty() {
                         "选择语言".into()
@@ -170,6 +170,8 @@ impl SpellingPanel {
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(label)
                     .ghost()
                     .when(value, |button| button.primary())
@@ -189,6 +191,8 @@ impl SpellingPanel {
             Button::new("spelling-undo")
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .icon(IconName::Undo2)
                 .accessibility_label("撤销")
                 .tooltip("撤销上一次修改")
@@ -283,6 +287,8 @@ impl SpellingPanel {
                         .icon(IconName::SpellCheck)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label(label)
                         .when(primary, |button| button.primary())
                         .disabled(self.loading || id == "add" && !self.state.can_add)
@@ -302,6 +308,8 @@ impl SpellingPanel {
                         .icon(IconName::Replace)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label(value.clone())
                         .ghost()
                         .disabled(self.loading)
@@ -342,6 +350,8 @@ impl SpellingPanel {
                             Button::new("spelling-dictionary-check")
                                 .rounded(gpui_kit::px(999.))
                                 .small()
+                                .px(gpui_kit::px(13.))
+                                .py(gpui_kit::px(3.))
                                 .icon(IconName::BookOpen)
                                 .label("检查替换词是否在个人词典")
                                 .disabled(self.loading || candidate.is_empty())
@@ -359,6 +369,8 @@ impl SpellingPanel {
                             Button::new("spelling-dictionary-remove")
                                 .rounded(gpui_kit::px(999.))
                                 .small()
+                                .px(gpui_kit::px(13.))
+                                .py(gpui_kit::px(3.))
                                 .icon(IconName::Delete)
                                 .label(if self.confirm_remove {
                                     "确认从个人词典移除"

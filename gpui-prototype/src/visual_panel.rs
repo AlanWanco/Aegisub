@@ -188,6 +188,8 @@ impl VisualPanel {
                         .icon(IconName::Asterisk)
                         .rounded(gpui_kit::px(999.))
                         .small()
+                        .px(gpui_kit::px(13.))
+                        .py(gpui_kit::px(3.))
                         .label(label)
                         .ghost()
                         .when(mode == self.subtool, |button| button.primary())
@@ -203,6 +205,8 @@ impl VisualPanel {
                     .icon(IconName::Move)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("pos ↔ move")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.queue_visual(json!({"action":"toggle_move"}), cx)

@@ -276,6 +276,8 @@ pub fn tabs(
             Button::new(id)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label(label)
                 .ghost()
                 .text_color(if active { p.text } else { p.muted })
@@ -389,6 +391,8 @@ pub fn select_trigger(
     Button::new(id)
         .rounded(gpui_kit::px(999.))
         .small()
+        .px(gpui_kit::px(13.))
+        .py(gpui_kit::px(3.))
         .w_full()
         .disabled(disabled)
         .child(

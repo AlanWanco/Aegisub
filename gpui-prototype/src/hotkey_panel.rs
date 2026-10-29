@@ -115,15 +115,15 @@ impl HotkeyPanel {
             .map(|binding| binding.command.clone())
             .collect();
         let mut actions = div().h_flex().flex_wrap().gap_2()
-            .child(Button::new("hotkey-record").icon(IconName::SquareTerminal).rounded(gpui_kit::px(999.)).small().label(if self.recording { "按下要绑定的组合键，Esc 取消" } else { "录入组合键" }).disabled(self.loading).on_click(cx.listener(|view, _, window, cx| { view.hotkeys.recording = !view.hotkeys.recording; view.focus_handle.focus(window, cx); cx.notify(); })))
-            .child(Button::new("hotkey-save").icon(IconName::Save).rounded(gpui_kit::px(999.)).small().label("保存绑定").primary().disabled(self.loading || selected_key.is_empty() || selected_context.is_empty()).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("hotkey-record").icon(IconName::SquareTerminal).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label(if self.recording { "按下要绑定的组合键，Esc 取消" } else { "录入组合键" }).disabled(self.loading).on_click(cx.listener(|view, _, window, cx| { view.hotkeys.recording = !view.hotkeys.recording; view.focus_handle.focus(window, cx); cx.notify(); })))
+            .child(Button::new("hotkey-save").icon(IconName::Save).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("保存绑定").primary().disabled(self.loading || selected_key.is_empty() || selected_context.is_empty()).on_click(cx.listener(|view, _, _, cx| {
                 view.hotkey_request(json!({"action":"set","context":view.hotkeys.context.read(cx).value().to_string(),"key":view.hotkeys.key.read(cx).value().to_string(),"command":view.hotkeys.command.read(cx).value().to_string(),"replace":view.hotkeys.replace}), cx);
             })))
-            .child(Button::new("hotkey-remove").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().label("移除此绑定").disabled(self.loading || !self.bindings.iter().any(|binding| binding.context == selected_context && binding.key == selected_key && binding.command == selected_command)).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("hotkey-remove").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("移除此绑定").disabled(self.loading || !self.bindings.iter().any(|binding| binding.context == selected_context && binding.key == selected_key && binding.command == selected_command)).on_click(cx.listener(|view, _, _, cx| {
                 view.hotkey_request(json!({"action":"remove","context":view.hotkeys.context.read(cx).value().to_string(),"key":view.hotkeys.key.read(cx).value().to_string(),"command":view.hotkeys.command.read(cx).value().to_string()}), cx);
             })))
-            .child(Button::new("hotkey-replace").icon(IconName::Replace).rounded(gpui_kit::px(999.)).small().label("替换同上下文的冲突绑定").when(self.replace, |button| button.primary()).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.hotkeys.replace = !view.hotkeys.replace; cx.notify(); })))
-            .child(Button::new("hotkey-reset").icon(IconName::RotateCw).rounded(gpui_kit::px(999.)).small().label(if self.confirm_reset { "确认恢复全部默认快捷键" } else { "恢复默认快捷键…" }).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| {
+            .child(Button::new("hotkey-replace").icon(IconName::Replace).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("替换同上下文的冲突绑定").when(self.replace, |button| button.primary()).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| { view.hotkeys.replace = !view.hotkeys.replace; cx.notify(); })))
+            .child(Button::new("hotkey-reset").icon(IconName::RotateCw).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label(if self.confirm_reset { "确认恢复全部默认快捷键" } else { "恢复默认快捷键…" }).disabled(self.loading).on_click(cx.listener(|view, _, _, cx| {
                 if view.hotkeys.confirm_reset { view.hotkey_request(json!({"action":"reset"}), cx); }
                 else { view.hotkeys.confirm_reset = true; cx.notify(); }
             })));
@@ -133,6 +133,8 @@ impl HotkeyPanel {
                     .icon(IconName::Close)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("取消恢复")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.hotkeys.confirm_reset = false;
@@ -205,6 +207,8 @@ impl HotkeyPanel {
                 Button::new(format!("hotkey-binding-{index}"))
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .ghost()
                     .w_full()
                     .h(px(34.))
@@ -268,7 +272,7 @@ impl HotkeyPanel {
         }
         let mut panel = crate::page::page(cx, "hotkeys-panel")
             .child(crate::page::toolbar([
-                Button::new("hotkeys-back").rounded(gpui_kit::px(999.)).small()
+                Button::new("hotkeys-back").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::ArrowLeft)
                     .label("返回设置")
                     .ghost()

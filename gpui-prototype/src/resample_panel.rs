@@ -233,6 +233,8 @@ impl ResamplePanel {
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -245,6 +247,8 @@ impl ResamplePanel {
                 Button::new("resample-reset")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::RefreshCw)
                     .label("从当前脚本重新读取")
                     .disabled(self.loading)
@@ -256,6 +260,8 @@ impl ResamplePanel {
                 Button::new("resample-from-video")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::Video)
                     .label("目标使用视频分辨率")
                     .disabled(disabled || self.state.video_x == 0)
@@ -275,6 +281,8 @@ impl ResamplePanel {
                 Button::new("resample-undo")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::Undo2)
                     .label("撤销")
                     .ghost()

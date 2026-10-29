@@ -298,6 +298,8 @@ impl TimingPanel {
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -312,6 +314,8 @@ impl TimingPanel {
                     .icon(IconName::Undo2)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("撤销")
                     .disabled(self.loading)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -392,6 +396,8 @@ impl TimingPanel {
                     .icon(IconName::Clock3)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .ghost()
                     .w_full()
                     .h(px(60.))
@@ -466,6 +472,8 @@ impl TimingPanel {
                             .icon(IconName::Delete)
                             .rounded(gpui_kit::px(999.))
                             .small()
+                            .px(gpui_kit::px(13.))
+                            .py(gpui_kit::px(3.))
                             .label(if self.confirm_clear {
                                 "确认清空"
                             } else {

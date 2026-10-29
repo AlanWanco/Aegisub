@@ -337,6 +337,8 @@ impl PreferencesPanel {
                             .icon(IconName::FolderOpen)
                             .rounded(gpui_kit::px(999.))
                             .small()
+                            .px(gpui_kit::px(13.))
+                            .py(gpui_kit::px(3.))
                             .label("选择…")
                             .disabled(self.loading)
                             .on_click(cx.listener(move |view, _, _, cx| {
@@ -378,6 +380,8 @@ impl PreferencesPanel {
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(if self.drafts.is_empty() {
                         "应用修改".to_owned()
                     } else {
@@ -397,6 +401,8 @@ impl PreferencesPanel {
                     .icon(IconName::Undo2)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("放弃未应用修改")
                     .disabled(self.loading || self.drafts.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -411,6 +417,8 @@ impl PreferencesPanel {
                     .icon(IconName::RotateCw)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(if self.confirm_reset {
                         "确认恢复当前列表默认值"
                     } else {
@@ -434,6 +442,8 @@ impl PreferencesPanel {
                     .icon(IconName::Settings2)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("快捷键…")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.active_panel = crate::Panel::Hotkeys;
@@ -447,6 +457,8 @@ impl PreferencesPanel {
                     .icon(IconName::Close)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("取消恢复")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.preferences.confirm_reset = false;

@@ -41,6 +41,8 @@ impl PastePanel {
                     .icon(IconName::ClipboardPaste)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(label)
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -111,6 +113,8 @@ impl PastePanel {
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -129,6 +133,8 @@ impl PastePanel {
                     .icon(IconName::ArrowLeft)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("返回字幕")
                     .ghost()
                     .on_click(cx.listener(|view, _, window, cx| {

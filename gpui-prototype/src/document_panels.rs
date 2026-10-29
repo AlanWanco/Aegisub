@@ -350,13 +350,13 @@ impl DocumentPanels {
                     .border_t_1()
                     .border_color(p.divider)
                     .child(
-                        Button::new("new-document-style").icon(IconName::Plus).rounded(gpui_kit::px(999.)).small()
+                        Button::new("new-document-style").icon(IconName::Plus).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                             .label("新建样式")
                             .w_full()
                             .on_click(cx.listener(|view, _, _, cx| view.new_style(cx))),
                     )
                     .child(
-                        Button::new("style-copy-to-catalog").rounded(gpui_kit::px(999.)).small()
+                        Button::new("style-copy-to-catalog").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                             .ghost()
                             .w_full()
                             .justify_start()
@@ -376,24 +376,24 @@ impl DocumentPanels {
         };
         let mut editor = div().id("document-style-form").v_flex().flex_1().min_w_0().min_h_0().gap_3().p_3().overflow_y_scrollbar()
             .child(div().h_flex().flex_wrap().gap_2()
-                .child(Button::new("apply-style-fields").icon(IconName::Check).rounded(gpui_kit::px(999.)).small().label("应用样式修改").primary()
+                .child(Button::new("apply-style-fields").icon(IconName::Check).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("应用样式修改").primary()
                     .on_click(cx.listener(|view, _, _, cx| view.commit_style(cx))))
-                .child(Button::new("discard-style-fields").icon(IconName::Undo2).rounded(gpui_kit::px(999.)).small().label("放弃修改")
+                .child(Button::new("discard-style-fields").icon(IconName::Undo2).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("放弃修改")
                     .on_click(cx.listener(|view, _, _, cx| { view.document.style_form.dirty.clear(); cx.notify(); })))
-                .child(Button::new("duplicate-document-style").icon(IconName::Copy).rounded(gpui_kit::px(999.)).small().label("复制为新样式")
+                .child(Button::new("duplicate-document-style").icon(IconName::Copy).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("复制为新样式")
                     .on_click(cx.listener(|view, _, _, cx| view.duplicate_style(cx))))
-                .child(Button::new("delete-document-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().label("删除…").danger()
+                .child(Button::new("delete-document-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("删除…").danger()
                     .on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = true; cx.notify(); }))))
             .child(div().text_xs().text_color(muted).child("颜色格式 #RRGGBBAA，AA 沿用 ASS 透明度（00 不透明）。重命名同步更新行样式及 \\r 引用。"));
         if self.confirm_delete && self.editing_library {
             let source = self.library_style.clone();
             editor = editor.child(div().h_flex().gap_2()
-                .child(Button::new("confirm-delete-library-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().label("确认从样式库删除")
+                .child(Button::new("confirm-delete-library-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("确认从样式库删除")
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.library_request(json!({"action":"delete", "catalog":view.document.library.catalog, "source":source, "confirmed":true}), cx);
                         view.document.confirm_delete = false;
                     })))
-                .child(Button::new("cancel-delete-library-style").icon(IconName::Close).rounded(gpui_kit::px(999.)).small().label("取消")
+                .child(Button::new("cancel-delete-library-style").icon(IconName::Close).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("取消")
                     .on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
         }
         if self.confirm_delete && !self.editing_library {
@@ -410,14 +410,14 @@ impl DocumentPanels {
                 .map(|name| format!("确认删除，并将引用改为 {name}"))
                 .unwrap_or_else(|| "至少保留一个样式".into());
             editor = editor.child(div().h_flex().gap_2()
-                .child(Button::new("confirm-delete-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().label(label).disabled(fallback.is_none())
+                .child(Button::new("confirm-delete-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label(label).disabled(fallback.is_none())
                     .on_click(cx.listener(move |view, _, _, cx| {
                         if let Some(replacement) = &fallback {
                             view.invoke(json!({"op":"style", "action":"delete", "source":style, "replacement":replacement}), cx);
                             view.document.confirm_delete = false;
                         }
                     })))
-                .child(Button::new("cancel-delete-style").icon(IconName::Close).rounded(gpui_kit::px(999.)).small().label("取消").on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
+                .child(Button::new("cancel-delete-style").icon(IconName::Close).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("取消").on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = false; cx.notify(); }))));
         }
         editor = editor
             .child(style_section(
@@ -549,6 +549,8 @@ impl DocumentPanels {
                             .icon(IconName::Plus)
                             .rounded(gpui_kit::px(999.))
                             .small()
+                            .px(gpui_kit::px(13.))
+                            .py(gpui_kit::px(3.))
                             .label("新建库")
                             .on_click(cx.listener(|view, _, _, cx| {
                                 let catalog =
@@ -564,6 +566,8 @@ impl DocumentPanels {
                             .icon(IconName::RefreshCw)
                             .rounded(gpui_kit::px(999.))
                             .small()
+                            .px(gpui_kit::px(13.))
+                            .py(gpui_kit::px(3.))
                             .label("刷新")
                             .ghost()
                             .on_click(cx.listener(|view, _, _, cx| view.refresh_library(cx))),
@@ -573,6 +577,8 @@ impl DocumentPanels {
                             .icon(IconName::Delete)
                             .rounded(gpui_kit::px(999.))
                             .small()
+                            .px(gpui_kit::px(13.))
+                            .py(gpui_kit::px(3.))
                             .label("删除库…")
                             .ghost()
                             .danger()
@@ -600,7 +606,7 @@ impl DocumentPanels {
                     .h_flex()
                     .gap_2()
                     .child(
-                        Button::new("confirm-delete-style-catalog").icon(IconName::Copy).rounded(gpui_kit::px(999.)).small()
+                        Button::new("confirm-delete-style-catalog").icon(IconName::Copy).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                             .label(format!("确认删除库 {catalog}"))
                             .on_click(cx.listener(move |view, _, _, cx| {
                                 view.library_request(
@@ -611,7 +617,7 @@ impl DocumentPanels {
                             })),
                     )
                     .child(
-                        Button::new("cancel-delete-style-catalog").icon(IconName::Close).rounded(gpui_kit::px(999.)).small()
+                        Button::new("cancel-delete-style-catalog").icon(IconName::Close).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                             .label("取消")
                             .ghost()
                             .on_click(cx.listener(|view, _, _, cx| {
@@ -673,7 +679,7 @@ impl DocumentPanels {
             );
         }
         body = body.child(
-            Button::new("catalog-copy-to-script").icon(IconName::Copy).rounded(gpui_kit::px(999.)).small()
+            Button::new("catalog-copy-to-script").icon(IconName::Copy).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                 .label("← 复制选中样式到脚本")
                 .w_full()
                 .disabled(self.selected_library.is_empty())
@@ -688,6 +694,8 @@ impl DocumentPanels {
             Button::new("import-styles-from-file")
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .ghost()
                 .w_full()
                 .justify_start()
@@ -715,6 +723,8 @@ impl DocumentPanels {
                     .icon(IconName::Delete)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(format!("导入 · {name}"))
                     .ghost()
                     .w_full()
@@ -731,7 +741,7 @@ impl DocumentPanels {
         }
         if !self.import_path.is_empty() {
             body = body.child(
-                Button::new("commit-style-file-import").icon(IconName::FileInput).rounded(gpui_kit::px(999.)).small()
+                Button::new("commit-style-file-import").icon(IconName::FileInput).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .label("导入勾选的样式")
                     .primary()
                     .w_full()
@@ -846,7 +856,7 @@ impl DocumentPanels {
 
         crate::page::page(cx, "project-properties")
             .child(crate::page::toolbar([
-                Button::new("apply-script-info").icon(IconName::Check).rounded(gpui_kit::px(999.)).small()
+                Button::new("apply-script-info").icon(IconName::Check).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .label("应用脚本属性")
                     .primary()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -856,7 +866,7 @@ impl DocumentPanels {
                         );
                     }))
                     .into_any_element(),
-                Button::new("discard-script-info").icon(IconName::Undo2).rounded(gpui_kit::px(999.)).small()
+                Button::new("discard-script-info").icon(IconName::Undo2).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .label("放弃修改")
                     .ghost()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -864,7 +874,7 @@ impl DocumentPanels {
                         cx.notify();
                     }))
                     .into_any_element(),
-                Button::new("video-script-dimensions").icon(IconName::Video).rounded(gpui_kit::px(999.)).small()
+                Button::new("video-script-dimensions").icon(IconName::Video).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .label("使用视频分辨率")
                     .disabled(media.width == 0)
                     .on_click(cx.listener(|view, _, window, cx| {
@@ -1055,6 +1065,8 @@ fn style_flag_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
             Button::new(format!("style-flag-{key}"))
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label(label)
                 .ghost()
                 .when(on, |button| button.primary())
@@ -1090,6 +1102,8 @@ fn style_border_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
                 .icon(IconName::Frame)
                 .rounded(gpui_kit::px(999.))
                 .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
                 .label(label)
                 .ghost()
                 .when(on, |button| button.primary())
@@ -1142,6 +1156,8 @@ fn style_alignment_section(cx: &mut Context<Workspace>, form: &Form) -> Div {
                 Button::new(format!("style-align-{value}"))
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label(value.clone())
                     .w(px(34.))
                     .h(px(28.))

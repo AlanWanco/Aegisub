@@ -89,6 +89,8 @@ impl TranslationPanel {
                 Button::new("translation-seek")
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(IconName::Crosshair)
                     .label("定位视频预览")
                     .tooltip("切块时把视频定位到该块开始时间")
@@ -104,6 +106,8 @@ impl TranslationPanel {
                     .icon(IconName::SkipForward)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .label("跳过空白块")
                     .ghost()
                     .when(self.skip_whitespace, |button| button.primary())
@@ -140,6 +144,8 @@ impl TranslationPanel {
                 Button::new(id)
                     .rounded(gpui_kit::px(999.))
                     .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
                     .icon(icon)
                     .accessibility_label(label)
                     .tooltip(label)
@@ -170,21 +176,21 @@ impl TranslationPanel {
         let divider = p.divider;
         crate::page::page(cx, "translation-assistant")
             .child(crate::page::toolbar([
-                Button::new("translation-commit").rounded(gpui_kit::px(999.)).small()
+                Button::new("translation-commit").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::Check)
                     .label("提交并前进")
                     .primary()
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("commit", cx)))
                     .into_any_element(),
-                Button::new("translation-preview").rounded(gpui_kit::px(999.)).small()
+                Button::new("translation-preview").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::Eye)
                     .label("提交并预览")
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("preview", cx)))
                     .into_any_element(),
                 div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
-                Button::new("translation-prev").rounded(gpui_kit::px(999.)).small()
+                Button::new("translation-prev").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::ChevronLeft)
                     .accessibility_label("上一块")
                     .tooltip("上一块")
@@ -192,7 +198,7 @@ impl TranslationPanel {
                     .disabled(!self.state.available || self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("prev", cx)))
                     .into_any_element(),
-                Button::new("translation-next").rounded(gpui_kit::px(999.)).small()
+                Button::new("translation-next").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::ChevronRight)
                     .accessibility_label("下一块")
                     .tooltip("下一块")
@@ -201,7 +207,7 @@ impl TranslationPanel {
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("next", cx)))
                     .into_any_element(),
                 div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
-                Button::new("translation-original").rounded(gpui_kit::px(999.)).small()
+                Button::new("translation-original").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::FileInput)
                     .label("插入原文")
                     .tooltip("把整行原文插入到译文")
@@ -211,7 +217,7 @@ impl TranslationPanel {
                         view.translation_action("insert_original", cx)
                     }))
                     .into_any_element(),
-                Button::new("translation-refresh").rounded(gpui_kit::px(999.)).small()
+                Button::new("translation-refresh").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                     .icon(IconName::RefreshCw)
                     .accessibility_label("从当前行刷新")
                     .tooltip("重新读取当前行与文本块")
