@@ -159,68 +159,111 @@ impl AudioPanel {
         // Three groups with different weights: file actions, playback and
         // commit (one primary), then the view/option toggles as quiet pills.
         let separator = Theme::global(cx).border;
-        let mut controls = div()
-            .h_flex()
-            .flex_wrap()
-            .gap_2()
-            .items_center()
-            .child(
-                Button::new("open-audio")
-                    .label("打开音频")
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
-                    })),
-            )
-            .child(
-                Button::new("audio-from-video")
-                    .label("从视频载入")
-                    .disabled(!video)
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
-                    })),
-            )
-            .child(div().w(px(1.)).h(px(20.)).mx_1().bg(separator));
-        for (id, label, command, primary) in [
-            ("audio-play", "播放选区", "audio/play/selection", false),
-            ("audio-stop", "停止", "audio/stop", false),
-            ("audio-save-clip", "导出音频剪辑…", "audio/save/clip", false),
-            ("audio-commit", "提交并前进", "audio/commit/next", true),
-            ("audio-commit-stay", "提交", "audio/commit/stay", false),
-            ("audio-revert", "还原时间", "edit/revert", false),
-        ] {
-            let quiet = matches!(id, "audio-save-clip" | "audio-revert");
-            controls = controls.child(
-                Button::new(id)
-                    .label(label)
-                    .when(primary, |button| button.primary())
-                    .when(quiet, |button| button.ghost())
-                    .disabled(!state.loaded)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":command}), cx)
-                    })),
-            );
-        }
-        controls = controls.child(div().w(px(1.)).h(px(20.)).mx_1().bg(separator));
-        for (id, label, mode) in [
-            ("audio-waveform", "波形", "waveform"),
-            ("audio-spectrum", "频谱", "spectrum"),
-        ] {
-            controls = controls.child(
-                Button::new(id)
-                    .label(label)
-                    .ghost()
-                    .when(self.mode == mode, |button| button.primary())
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.audio.mode = mode;
-                        if view.snapshot.audio.spectrum != (mode == "spectrum") {
-                            view.invoke(json!({"op":"command", "name":"audio/opt/spectrum"}), cx);
-                        }
-                        view.refresh_audio(cx);
-                        cx.notify();
-                    })),
-            );
-        }
-        controls = controls.child(div().w(px(1.)).h(px(20.)).mx_1().bg(separator));
+        // File, playback and commit actions live in the page toolbar; the row
+        // under the waveform only holds view and behaviour options.
+        let toolbar = crate::page::toolbar([
+            Button::new("open-audio")
+                .label("打开音频")
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/open"}), cx)
+                }))
+                .into_any_element(),
+            Button::new("audio-from-video")
+                .label("从视频载入")
+                .disabled(!video)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/open/video"}), cx)
+                }))
+                .into_any_element(),
+            div()
+                .w(px(1.))
+                .h(px(18.))
+                .mx_1()
+                .bg(separator)
+                .into_any_element(),
+            Button::new("audio-play")
+                .label("播放选区")
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/play/selection"}), cx)
+                }))
+                .into_any_element(),
+            Button::new("audio-stop")
+                .label("停止")
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/stop"}), cx)
+                }))
+                .into_any_element(),
+            Button::new("audio-save-clip")
+                .label("导出音频剪辑…")
+                .ghost()
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/save/clip"}), cx)
+                }))
+                .into_any_element(),
+            div()
+                .w(px(1.))
+                .h(px(18.))
+                .mx_1()
+                .bg(separator)
+                .into_any_element(),
+            Button::new("audio-commit")
+                .label("提交并前进")
+                .primary()
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/commit/next"}), cx)
+                }))
+                .into_any_element(),
+            Button::new("audio-commit-stay")
+                .label("提交")
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/commit/stay"}), cx)
+                }))
+                .into_any_element(),
+            Button::new("audio-revert")
+                .label("还原时间")
+                .ghost()
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"edit/revert"}), cx)
+                }))
+                .into_any_element(),
+            div().flex_1().into_any_element(),
+            Button::new("close-audio")
+                .label("关闭音频")
+                .ghost()
+                .disabled(!state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":"audio/close"}), cx)
+                }))
+                .into_any_element(),
+        ]);
+        let mut controls = div().h_flex().flex_wrap().gap_2().items_center();
+        controls = controls.child(crate::page::segmented(
+            cx,
+            [
+                ("waveform", "波形", self.mode == "waveform", false),
+                ("spectrum", "频谱", self.mode == "spectrum", false),
+            ]
+            .into_iter()
+            .map(|(id, label, selected, disabled)| {
+                (format!("audio-mode-{id}"), label, selected, disabled)
+            })
+            .collect(),
+            |view, index, _, cx| {
+                let mode = if index == 0 { "waveform" } else { "spectrum" };
+                view.audio.mode = mode;
+                if view.snapshot.audio.spectrum != (mode == "spectrum") {
+                    view.invoke(json!({"op":"command", "name":"audio/opt/spectrum"}), cx);
+                }
+                view.refresh_audio(cx);
+                cx.notify();
+            },
+        ));
         for (id, label, command, active) in [
             (
                 "audio-auto-commit",
@@ -242,19 +285,30 @@ impl AudioPanel {
             ),
         ] {
             controls = controls.child(
-                Button::new(id)
-                    .label(label)
-                    .ghost()
-                    .when(active, |button| button.primary())
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":command}), cx)
-                    })),
+                crate::page::toggle_chip(cx, id, label, active, false).on_click(cx.listener(
+                    move |view, _, _, cx| view.invoke(json!({"op":"command", "name":command}), cx),
+                )),
             );
         }
-        controls = controls.child(Button::new("audio-snap").label("吸附").ghost().when(state.snap, |button| button.primary())
-            .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"snap", "enabled":!view.snapshot.audio.snap}), cx))));
-        controls = controls.child(Button::new("audio-karaoke-mode").label("卡拉 OK").ghost().when(state.karaoke, |button| button.primary()).disabled(!state.loaded)
-            .on_click(cx.listener(|view, _, _, cx| view.invoke(json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}), cx))));
+        controls = controls.child(
+            crate::page::toggle_chip(cx, "audio-snap", "吸附", state.snap, false).on_click(
+                cx.listener(|view, _, _, cx| {
+                    view.invoke(
+                        json!({"op":"audio_action", "action":"snap", "enabled":!view.snapshot.audio.snap}),
+                        cx,
+                    )
+                }),
+            ),
+        );
+        controls = controls.child(
+            crate::page::toggle_chip(cx, "audio-karaoke-mode", "卡拉 OK", state.karaoke, !state.loaded)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.invoke(
+                        json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}),
+                        cx,
+                    )
+                })),
+        );
         let bounds = self.bounds.clone();
         let mut graph = div()
             .id("audio-graph")
@@ -708,27 +762,7 @@ impl AudioPanel {
             .w_full()
             .min_w_0()
             .gap_3()
-            .child(
-                title_row
-                    .when(!state.loaded, |row| row.child(load_audio))
-                    .when(state.loaded, |row| {
-                        row.child(Button::new("audio-play").label("播放选区").on_click(
-                            cx.listener(|view, _, _, cx| {
-                                view.invoke(
-                                    json!({"op":"command", "name":"audio/play/selection"}),
-                                    cx,
-                                )
-                            }),
-                        ))
-                        .child(
-                            Button::new("audio-stop")
-                                .label("停止")
-                                .on_click(cx.listener(|view, _, _, cx| {
-                                    view.invoke(json!({"op":"command", "name":"audio/stop"}), cx)
-                                })),
-                        )
-                    }),
-            )
+            .child(title_row.when(!full_controls && !state.loaded, |row| row.child(load_audio)))
             .child(graph);
         if full_controls {
             let divider = Theme::global(cx).border;
@@ -766,17 +800,7 @@ impl AudioPanel {
                         .text_color(Theme::global(cx).muted_foreground)
                         .child("左键设置开始并拖动结束，右键设置结束；Ctrl/⌘ 拖动重合标记，Alt 拖动整句。时间修改遵循原有自动提交与吸附设置。"),
                 )
-                .child(
-                    div().h_flex().child(
-                        Button::new("close-audio")
-                            .label("关闭音频")
-                            .ghost()
-                            .disabled(!state.loaded)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.invoke(json!({"op":"command", "name":"audio/close"}), cx)
-                            })),
-                    ),
-                );
+;
             crate::page::page(cx, "audio-panel")
                 .child(crate::page::header(
                     cx,
@@ -784,6 +808,7 @@ impl AudioPanel {
                     "音频调时",
                     "载入音频或视频音轨后拖动波形设置时间；时间修改遵循自动提交与吸附设置。",
                 ))
+                .child(toolbar)
                 .child(panel)
                 .into_any_element()
         } else {

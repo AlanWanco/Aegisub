@@ -243,7 +243,8 @@ pub fn segmented(
                 .child(label),
         );
     }
-    div().h_flex().w_full().child(row)
+    // Not full width: a wrapping row of controls must be able to sit beside it.
+    div().h_flex().flex_shrink_0().child(row)
 }
 
 /// Horizontal tab bar with an underline for the active tab. Use it when the

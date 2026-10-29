@@ -215,24 +215,26 @@ impl SearchPanel {
         };
         for (key, label) in keys {
             options = options.child(
-                Button::new(format!("search-option-{key}"))
-                    .label(label)
-                    .ghost()
-                    .when(self.options[key], |button| button.primary())
-                    .disabled(disabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        let value = view.find_panel.options[key];
-                        view.find_panel.options.insert(key, !value);
-                        if matches!(key, "comments" | "dialogue") && value {
-                            let other = if key == "comments" {
-                                "dialogue"
-                            } else {
-                                "comments"
-                            };
-                            view.find_panel.options.insert(other, true);
-                        }
-                        cx.notify();
-                    })),
+                crate::page::toggle_chip(
+                    cx,
+                    format!("search-option-{key}"),
+                    label,
+                    self.options[key],
+                    disabled,
+                )
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    let value = view.find_panel.options[key];
+                    view.find_panel.options.insert(key, !value);
+                    if matches!(key, "comments" | "dialogue") && value {
+                        let other = if key == "comments" {
+                            "dialogue"
+                        } else {
+                            "comments"
+                        };
+                        view.find_panel.options.insert(other, true);
+                    }
+                    cx.notify();
+                })),
             );
         }
         let mut panel = crate::page::page(cx, "search-panel")
@@ -332,14 +334,22 @@ impl SearchPanel {
                 ("replace_all", "全部替换"),
             ]
         };
-        let mut toolbar = crate::page::toolbar([]);
+        let mut toolbar = div()
+            .h_flex()
+            .items_center()
+            .gap_2()
+            .w_full()
+            .pt_3()
+            .mt_1()
+            .border_t_1()
+            .border_color(crate::workspace_theme::Palette::current(cx).border);
         for (index, (action, label)) in buttons.into_iter().enumerate() {
             let primary = index == 0;
             toolbar = toolbar.child(
                 Button::new(format!("search-{action}"))
                     .label(label)
                     .when(primary, |button| button.primary())
-                    .when(!primary, |button| button.ghost())
+                    .when(action == "replace_all", |button| button.ghost())
                     .disabled(
                         disabled || (!self.selection_mode && self.find.read(cx).value().is_empty()),
                     )
@@ -365,6 +375,7 @@ impl SearchPanel {
                         cx.notify();
                     })),
             )
+            .child(div().flex_1())
             .child(crate::page::badge(
                 cx,
                 format!("当前选中 {} 行", snapshot.selected.len()),

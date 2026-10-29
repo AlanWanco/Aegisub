@@ -80,8 +80,10 @@ impl TranslationPanel {
     ) -> impl IntoElement {
         // Toggles stay pills; the playback and undo actions are icon buttons.
         let divider = crate::workspace_theme::Palette::current(cx).divider;
-        let mut options = div().h_flex().flex_wrap().items_center().gap_2();
-        options = options
+        let mut options = div()
+            .h_flex()
+            .items_center()
+            .gap_1()
             .child(
                 Button::new("translation-seek")
                     .icon(IconName::Crosshair)
@@ -215,9 +217,11 @@ impl TranslationPanel {
                     .disabled(self.loading)
                     .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx)))
                     .into_any_element(),
+                div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
+                options.into_any_element(),
+                div().flex_1().into_any_element(),
                 crate::page::badge(cx, status).into_any_element(),
             ]))
-            .child(options)
             .child(crate::page::section(
                 cx,
                 "整行原文",
