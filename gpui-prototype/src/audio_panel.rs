@@ -351,6 +351,7 @@ impl AudioPanel {
             .w_full()
             .h(px(graph_height))
             .flex_shrink_0()
+            .rounded(gpui_kit::px(crate::workspace_theme::RADIUS_MD))
             .bg(graph_bg)
             .overflow_hidden()
             .child(
