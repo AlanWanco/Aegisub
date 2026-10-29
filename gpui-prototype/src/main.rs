@@ -77,7 +77,7 @@ use gpui_kit::{
         Icon, Root, StyledExt, Theme, ThemeMode, WindowExt,
         button::{Button, ButtonVariants},
         input::{Input, InputEvent, InputState, Textarea, TextareaState},
-        menu::DropdownMenu,
+        menu::{DropdownMenu, PopupMenuItem},
         scroll::ScrollableElement,
     },
     platform::application,
@@ -259,6 +259,71 @@ struct Line {
     text: String,
     #[serde(default)]
     display_text: String,
+}
+
+/// Space between subtitle list columns. Rows and the header both use it, so a
+/// column boundary lands on the same x in both.
+const COLUMN_GAP: f32 = 12.;
+
+/// The subtitle text column never shrinks below this, so adding optional
+/// columns squeezes the text last instead of making it disappear.
+const MIN_TEXT_COLUMN: f32 = 140.;
+
+/// One column of the subtitle list. The text column is implicit and always
+/// last, so it keeps absorbing whatever width the fixed columns leave over.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SubtitleColumn {
+    IdLayer,
+    Time,
+    StyleActor,
+    Layer,
+    Effect,
+    Actor,
+    Comment,
+}
+
+impl SubtitleColumn {
+    fn label(self) -> &'static str {
+        match self {
+            Self::IdLayer => "行 / 层",
+            Self::Time => "开始 → 结束",
+            Self::StyleActor => "样式 / 角色",
+            Self::Layer => "图层",
+            Self::Effect => "效果",
+            Self::Actor => "演员",
+            Self::Comment => "类型",
+        }
+    }
+
+    fn default_width(self, secondary: f32) -> f32 {
+        match self {
+            Self::IdLayer => (secondary * 4.2).clamp(46., 70.),
+            Self::Time => (secondary * 15.5).clamp(170., 245.),
+            Self::StyleActor => (secondary * 8.4).clamp(100., 145.),
+            Self::Layer => 52.,
+            Self::Effect => (secondary * 9.).clamp(90., 160.),
+            Self::Actor => (secondary * 7.5).clamp(80., 140.),
+            Self::Comment => 56.,
+        }
+    }
+
+    /// Floor used when the columns have to be squeezed to fit the panel.
+    fn min_width(self) -> f32 {
+        match self {
+            Self::IdLayer => 44.,
+            Self::Time => 150.,
+            Self::StyleActor => 64.,
+            Self::Layer => 32.,
+            Self::Effect => 52.,
+            Self::Actor => 52.,
+            Self::Comment => 40.,
+        }
+    }
+
+    /// Columns the user can add from the header menu.
+    fn optional() -> [Self; 4] {
+        [Self::Layer, Self::Effect, Self::Actor, Self::Comment]
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -577,6 +642,12 @@ enum WorkspaceResizeDrag {
         start_y: gpui_kit::Pixels,
         start_height: f32,
     },
+    /// Width of one fixed column of the subtitle list.
+    SubtitleColumn {
+        column: SubtitleColumn,
+        start_x: gpui_kit::Pixels,
+        start_width: f32,
+    },
     /// Height of the video preview above the line properties.
     VideoPreview {
         start_y: gpui_kit::Pixels,
@@ -598,6 +669,12 @@ struct Workspace {
     list_scroll_handle: gpui_kit::UniformListScrollHandle,
     subtitle_filter_cache: Option<(u64, String, String, Arc<Vec<Line>>)>,
     subtitle_editor_height: f32,
+    /// Fixed columns shown before the subtitle text column.
+    subtitle_columns: Vec<SubtitleColumn>,
+    /// User-adjusted widths; anything missing falls back to the default.
+    subtitle_column_widths: Vec<(SubtitleColumn, f32)>,
+    /// Measured width of the subtitle list, used to squeeze the columns.
+    subtitle_grid_width: f32,
     layout_drag: Option<WorkspaceResizeDrag>,
     audio_panel_height: f32,
     audio_page_height: f32,
@@ -820,6 +897,13 @@ impl Workspace {
             list_scroll_handle: gpui_kit::UniformListScrollHandle::new(),
             subtitle_filter_cache: None,
             subtitle_editor_height: 210.,
+            subtitle_columns: vec![
+                SubtitleColumn::IdLayer,
+                SubtitleColumn::Time,
+                SubtitleColumn::StyleActor,
+            ],
+            subtitle_column_widths: Vec::new(),
+            subtitle_grid_width: 0.,
             layout_drag: None,
             audio_panel_height: 80.,
             audio_page_height: 260.,
@@ -3255,7 +3339,9 @@ impl Workspace {
         // focus there is nothing to type into, so the key is only a shortcut:
         // macOS reports Option+letter as a character, and dropping those here is
         // what used to make every Alt+letter binding dead in the grid.
-        if event.prefer_character_input && (input_focused || editor_focused || command_search_focused) {
+        if event.prefer_character_input
+            && (input_focused || editor_focused || command_search_focused)
+        {
             return;
         }
         // A form field keeps the keys that would type into it, but command
@@ -4484,6 +4570,55 @@ impl Workspace {
             .child(self.timeline.render(&self.snapshot, cx))
     }
 
+    fn subtitle_column_width(&self, column: SubtitleColumn, secondary: f32) -> f32 {
+        self.subtitle_column_widths
+            .iter()
+            .find(|(key, _)| *key == column)
+            .map(|(_, width)| *width)
+            .unwrap_or_else(|| column.default_width(secondary))
+    }
+
+    fn set_subtitle_column_width(&mut self, column: SubtitleColumn, width: f32) {
+        match self
+            .subtitle_column_widths
+            .iter_mut()
+            .find(|(key, _)| *key == column)
+        {
+            Some(entry) => entry.1 = width,
+            None => self.subtitle_column_widths.push((column, width)),
+        }
+    }
+
+    /// Adds or removes an optional column, keeping the canonical left-to-right
+    /// order so a re-added column returns to where it was.
+    fn toggle_subtitle_column(&mut self, column: SubtitleColumn) {
+        const ORDER: [SubtitleColumn; 7] = [
+            SubtitleColumn::IdLayer,
+            SubtitleColumn::Time,
+            SubtitleColumn::StyleActor,
+            SubtitleColumn::Layer,
+            SubtitleColumn::Effect,
+            SubtitleColumn::Actor,
+            SubtitleColumn::Comment,
+        ];
+        if let Some(index) = self.subtitle_columns.iter().position(|key| *key == column) {
+            self.subtitle_columns.remove(index);
+            return;
+        }
+        let rank = |column: SubtitleColumn| {
+            ORDER
+                .iter()
+                .position(|key| *key == column)
+                .unwrap_or(usize::MAX)
+        };
+        let position = self
+            .subtitle_columns
+            .iter()
+            .position(|key| rank(*key) > rank(column))
+            .unwrap_or(self.subtitle_columns.len());
+        self.subtitle_columns.insert(position, column);
+    }
+
     fn render_subtitle_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let dark = Theme::global(cx).is_dark();
         let p = Palette::new(dark);
@@ -4519,12 +4654,83 @@ impl Workspace {
         // reads as one type scale instead of 16px text beside 11px labels.
         let secondary_size = (grid_size * 0.8).clamp(10., 20.);
         // Column widths follow the type size, otherwise a larger grid font
-        // pushes the time range into the style column.
-        // Cap the secondary columns so a large grid font does not squeeze the
-        // subtitle text out of the row entirely.
-        let id_width = (secondary_size * 4.2).clamp(46., 70.);
-        let time_width = (secondary_size * 15.5).clamp(170., 245.);
-        let style_width = (secondary_size * 8.4).clamp(100., 145.);
+        // pushes the time range into the style column. Anything the user has
+        // dragged keeps its pixel width instead.
+        let columns: std::rc::Rc<Vec<(SubtitleColumn, f32)>> = std::rc::Rc::new(
+            self.subtitle_columns
+                .iter()
+                .map(|column| (*column, self.subtitle_column_width(*column, secondary_size)))
+                .collect(),
+        );
+        let active_columns = self.subtitle_columns.clone();
+        // Adding columns must not push the text column off the panel, so once
+        // the fixed columns no longer fit they shrink together (down to a per
+        // column floor) instead of overflowing.
+        let grid_width = self.subtitle_grid_width;
+        let columns: std::rc::Rc<Vec<(SubtitleColumn, f32)>> = if grid_width > 0. {
+            let room = grid_width - 26. - COLUMN_GAP * columns.len() as f32 - MIN_TEXT_COLUMN;
+            let total: f32 = columns.iter().map(|(_, width)| *width).sum();
+            if total > room && room > 0. {
+                // Widths the user dragged are honoured; only the untouched
+                // columns give way, so resizing one column actually resizes it.
+                let dragged: Vec<bool> = columns
+                    .iter()
+                    .map(|(column, _)| {
+                        self.subtitle_column_widths
+                            .iter()
+                            .any(|(other, _)| other == column)
+                    })
+                    .collect();
+                let fixed: f32 = columns
+                    .iter()
+                    .zip(&dragged)
+                    .filter(|(_, dragged)| **dragged)
+                    .map(|((_, width), _)| *width)
+                    .sum();
+                let floors: f32 = columns
+                    .iter()
+                    .zip(&dragged)
+                    .filter(|(_, dragged)| !**dragged)
+                    .map(|((column, _), _)| column.min_width())
+                    .sum();
+                let auto: f32 = total - fixed;
+                if fixed + floors <= room {
+                    let factor = (room - fixed).max(0.) / auto.max(1.);
+                    let factor = factor.min(1.);
+                    std::rc::Rc::new(
+                        columns
+                            .iter()
+                            .zip(&dragged)
+                            .map(|((column, width), dragged)| {
+                                if *dragged {
+                                    (*column, *width)
+                                } else {
+                                    (*column, (*width * factor).max(column.min_width()))
+                                }
+                            })
+                            .collect(),
+                    )
+                } else {
+                    // Even the floors do not fit: everything shrinks so the
+                    // text column keeps its minimum instead of running off.
+                    let factor = room / total;
+                    std::rc::Rc::new(
+                        columns
+                            .iter()
+                            .map(|(column, width)| {
+                                (*column, (*width * factor).max(column.min_width()))
+                            })
+                            .collect(),
+                    )
+                }
+            } else {
+                columns
+            }
+        } else {
+            columns
+        };
+        let menu_weak = cx.weak_entity();
+        let size_weak = cx.weak_entity();
         let row_height = (grid_size * 1.6 + 12.).max(36.);
         let stripe = p.surface;
         let border = appearance.color("Colour/Subtitle Grid/Lines", p.divider);
@@ -4744,6 +4950,35 @@ impl Workspace {
                     )
                     .child(div().flex_1())
                     .child(
+                        Button::new("subtitle-columns")
+                            .rounded(gpui_kit::px(999.))
+                            .small()
+                            .px(gpui_kit::px(13.))
+                            .py(gpui_kit::px(3.))
+                            .icon(IconName::Columns3)
+                            .label("列")
+                            .tooltip("添加或移除字幕列表的列")
+                            .ghost()
+                            .dropdown_menu(move |mut menu, _, _| {
+                                let weak = menu_weak.clone();
+                                for column in SubtitleColumn::optional() {
+                                    let weak = weak.clone();
+                                    let active = active_columns.contains(&column);
+                                    menu = menu.item(
+                                        PopupMenuItem::new(column.label())
+                                            .checked(active)
+                                            .on_click(move |_, _, cx| {
+                                                let _ = weak.update(cx, |view, cx| {
+                                                    view.toggle_subtitle_column(column);
+                                                    cx.notify();
+                                                });
+                                            }),
+                                    );
+                                }
+                                menu
+                            }),
+                    )
+                    .child(
                         Input::new(&self.search)
                             .id("subtitle-search")
                             .prefix(Icon::new(IconName::Search).size(px(13.)))
@@ -4756,7 +4991,6 @@ impl Workspace {
                     .h(px(32.))
                     .flex_shrink_0()
                     .px_3()
-                    .gap_3()
                     .items_center()
                     .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
                     .bg(header_bg)
@@ -4765,63 +4999,100 @@ impl Workspace {
                     // the header needs the same inset or its labels sit 2px off.
                     .border_l_2()
                     .border_color(border)
-                    .child(
+                    .children(columns.iter().map(|(column, width)| {
+                        let column = *column;
+                        let width = *width;
                         div()
-                            .w(px(id_width))
+                            .h_flex()
+                            // The whole header cell is the resize handle: a
+                            // narrow grip inside it never received the drag.
+                            .h_full()
+                            .items_center()
+                            .justify_between()
+                            .w(px(width))
+                            .flex_shrink_0()
+                            .mr(px(COLUMN_GAP))
                             .text_size(px(secondary_size))
                             .text_color(muted)
-                            .child("行 / 层"),
-                    )
-                    .child(
-                        div()
-                            .w(px(time_width))
-                            .text_size(px(secondary_size))
-                            .text_color(muted)
-                            .child("开始 → 结束"),
-                    )
-                    .child(
-                        div()
-                            .w(px(style_width))
-                            .text_size(px(secondary_size))
-                            .text_color(muted)
-                            .child("样式 / 角色"),
-                    )
+                            .child(column.label())
+                            .cursor_col_resize()
+                            .rounded(px(crate::workspace_theme::RADIUS_SM))
+                            .hover(|style| style.bg(p.raised))
+                            .on_mouse_down(
+                                gpui_kit::MouseButton::Left,
+                                cx.listener(
+                                    move |view, event: &gpui_kit::MouseDownEvent, _, cx| {
+                                        view.layout_drag =
+                                            Some(WorkspaceResizeDrag::SubtitleColumn {
+                                                column,
+                                                start_x: event.position.x,
+                                                start_width: width,
+                                            });
+                                        cx.stop_propagation();
+                                        cx.notify();
+                                    },
+                                ),
+                            )
+                    }))
                     .child(
                         div()
                             .flex_1()
+                            .min_w(px(MIN_TEXT_COLUMN))
                             .text_size(px(secondary_size))
                             .text_color(muted)
                             .child("字幕文本"),
                     ),
             )
             .child(
-                div().flex_1().min_h(px(90.)).child(
-                    uniform_list(
-                        "subtitle-rows",
-                        row_count,
-                        cx.processor(move |_, range: Range<usize>, _, _| {
-                            range
-                                .map(|index| {
-                                    let line = visible[index].clone();
-                                    let is_active = selected.contains(&line.id);
-                                    let row_bg = if is_active && line.comment {
-                                        selected_comment_bg
-                                    } else if is_active {
-                                        selected_bg
-                                    } else if line.comment {
-                                        comment_bg
-                                    } else if highlight_visible
-                                        && line.start <= video_time
-                                        && video_time < line.end
-                                    {
-                                        inframe_bg
-                                    } else if line.row % 2 == 1 {
-                                        stripe
-                                    } else {
-                                        line_bg
-                                    };
-                                    let weak = weak.clone();
-                                    div()
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h(px(90.))
+                    .child(
+                        // The grid needs its own width to decide whether the
+                        // columns still fit, and layout only knows it here.
+                        canvas(
+                            move |bounds, _, cx| {
+                                let width = f32::from(bounds.size.width);
+                                let _ = size_weak.update(cx, |view, cx| {
+                                    if (view.subtitle_grid_width - width).abs() > 1. {
+                                        view.subtitle_grid_width = width;
+                                        cx.notify();
+                                    }
+                                });
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .size_full(),
+                    )
+                    .child(
+                        uniform_list(
+                            "subtitle-rows",
+                            row_count,
+                            cx.processor(move |_, range: Range<usize>, _, _| {
+                                range
+                                    .map(|index| {
+                                        let line = visible[index].clone();
+                                        let is_active = selected.contains(&line.id);
+                                        let row_bg = if is_active && line.comment {
+                                            selected_comment_bg
+                                        } else if is_active {
+                                            selected_bg
+                                        } else if line.comment {
+                                            comment_bg
+                                        } else if highlight_visible
+                                            && line.start <= video_time
+                                            && video_time < line.end
+                                        {
+                                            inframe_bg
+                                        } else if line.row % 2 == 1 {
+                                            stripe
+                                        } else {
+                                            line_bg
+                                        };
+                                        let weak = weak.clone();
+                                        div()
                                         .id(format!("subtitle-row-{}", line.id))
                                         .h(px(row_height))
                                         .text_size(px(grid_size))
@@ -4831,7 +5102,6 @@ impl Workspace {
                                         })
                                         .w_full()
                                         .h_flex()
-                                        .gap_3()
                                         .items_center()
                                         .px_3()
                                         .bg(row_bg)
@@ -4858,67 +5128,22 @@ impl Workspace {
                                                 });
                                             }
                                         })
-                                        .child(
-                                            div()
-                                                .w(px(id_width))
-                                                .flex_shrink_0()
-                                                .text_size(px(secondary_size))
-                                                .text_color(muted)
-                                                .child(format!(
-                                                    "{:03} / {}",
-                                                    line.row + 1,
-                                                    line.layer
-                                                )),
-                                        )
-                                        .child(
-                                            div()
-                                                .w(px(time_width))
-                                                .flex_shrink_0()
-                                                .font_family(time_font.clone())
-                                                .text_size(px(secondary_size))
-                                                .text_color(muted)
-                                                .child(format!(
-                                                    "{} → {}",
-                                                    format_time(line.start),
-                                                    format_time(line.end)
-                                                )),
-                                        )
-                                        .child({
-                                            // Stack style over actor and centre the
-                                            // block, so a single-line cell lines up
-                                            // with the other columns instead of
-                                            // sitting on the top edge.
-                                            let mut cell = div()
-                                                .v_flex()
-                                                .justify_center()
-                                                .w(px(style_width))
-                                                .flex_shrink_0()
-                                                .min_w_0()
-                                                .overflow_hidden()
-                                                .child(
-                                                    div()
-                                                        .text_size(px(secondary_size))
-                                                        .overflow_hidden()
-                                                        .text_ellipsis()
-                                                        .text_color(accent)
-                                                        .child(line.style),
-                                                );
-                                            if !line.actor.is_empty() {
-                                                cell = cell.child(
-                                                    div()
-                                                        .text_size(px(secondary_size))
-                                                        .overflow_hidden()
-                                                        .text_ellipsis()
-                                                        .text_color(muted)
-                                                        .child(line.actor),
-                                                );
-                                            }
-                                            cell
-                                        })
+                                        .children(columns.iter().map(|(column, width)| {
+                                            let column = *column;
+                                            subtitle_cell(
+                                                column,
+                                                *width,
+                                                &line,
+                                                secondary_size,
+                                                time_font.clone(),
+                                                muted,
+                                                accent,
+                                            )
+                                        }))
                                         .child(
                                             div()
                                                 .flex_1()
-                                                .min_w_0()
+                                                .min_w(px(MIN_TEXT_COLUMN))
                                                 .overflow_hidden()
                                                 .text_ellipsis()
                                                 .text_size(px(grid_size))
@@ -4929,13 +5154,13 @@ impl Workspace {
                                                 })
                                                 .child(line.display_text),
                                         )
-                                })
-                                .collect()
-                        }),
-                    )
-                    .track_scroll(&self.list_scroll_handle)
-                    .size_full(),
-                ),
+                                    })
+                                    .collect()
+                            }),
+                        )
+                        .track_scroll(&self.list_scroll_handle)
+                        .size_full(),
+                    ),
             );
         div()
             .v_flex()
@@ -4975,6 +5200,88 @@ impl Workspace {
                     ),
             )
             .child(subtitle_list.flex_1().min_h_0())
+    }
+}
+
+fn subtitle_cell(
+    column: SubtitleColumn,
+    width: f32,
+    line: &Line,
+    secondary_size: f32,
+    time_font: gpui_kit::SharedString,
+    muted: gpui_kit::Hsla,
+    accent: gpui_kit::Hsla,
+) -> gpui_kit::AnyElement {
+    let cell = || {
+        div()
+            .w(px(width))
+            .flex_shrink_0()
+            .mr(px(COLUMN_GAP))
+            .text_size(px(secondary_size))
+    };
+    match column {
+        SubtitleColumn::IdLayer => cell()
+            .text_color(muted)
+            .child(format!("{:03} / {}", line.row + 1, line.layer))
+            .into_any_element(),
+        SubtitleColumn::Time => cell()
+            .font_family(time_font)
+            .text_color(muted)
+            .child(format!(
+                "{} → {}",
+                format_time(line.start),
+                format_time(line.end)
+            ))
+            .into_any_element(),
+        SubtitleColumn::StyleActor => {
+            // Stack style over actor and centre the block, so a single-line
+            // cell lines up with the other columns instead of sitting on the
+            // top edge.
+            let mut stacked = cell()
+                .v_flex()
+                .justify_center()
+                .min_w_0()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(accent)
+                        .child(line.style.clone()),
+                );
+            if !line.actor.is_empty() {
+                stacked = stacked.child(
+                    div()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(muted)
+                        .child(line.actor.clone()),
+                );
+            }
+            stacked.into_any_element()
+        }
+        SubtitleColumn::Layer => cell()
+            .text_color(muted)
+            .child(line.layer.to_string())
+            .into_any_element(),
+        SubtitleColumn::Effect => cell()
+            .min_w_0()
+            .overflow_hidden()
+            .text_ellipsis()
+            .text_color(muted)
+            .child(line.effect.clone())
+            .into_any_element(),
+        SubtitleColumn::Actor => cell()
+            .min_w_0()
+            .overflow_hidden()
+            .text_ellipsis()
+            .text_color(muted)
+            .child(line.actor.clone())
+            .into_any_element(),
+        SubtitleColumn::Comment => cell()
+            .text_color(if line.comment { accent } else { muted })
+            .child(if line.comment { "注释" } else { "对白" })
+            .into_any_element(),
     }
 }
 
@@ -5214,6 +5521,16 @@ impl Render for Workspace {
                                     (start_width + f32::from(event.position.x - start_x))
                                         .clamp(300., 1400.),
                                 );
+                            }
+                            WorkspaceResizeDrag::SubtitleColumn {
+                                column,
+                                start_x,
+                                start_width,
+                            } => {
+                                let width = (start_width
+                                    + f32::from(event.position.x - start_x))
+                                    .clamp(40., 600.);
+                                view.set_subtitle_column_width(column, width);
                             }
                             WorkspaceResizeDrag::VideoPreview {
                                 start_y,

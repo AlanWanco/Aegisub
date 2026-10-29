@@ -2,8 +2,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::{
-    Icon,
-    StyledExt,
+    Icon, StyledExt,
     button::{Button, ButtonVariants},
     input::{InputEvent, Textarea, TextareaState},
 };
