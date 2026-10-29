@@ -929,7 +929,8 @@ impl AudioPanel {
                         .small()
                         .px(gpui_kit::px(13.))
                         .py(gpui_kit::px(3.))
-                        .label("波形增益 −")
+                        .label("波形增益")
+                        .tooltip("降低波形增益（÷2）")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.gain = (view.audio.gain / 2).max(10);
@@ -950,7 +951,8 @@ impl AudioPanel {
                         .small()
                         .px(gpui_kit::px(13.))
                         .py(gpui_kit::px(3.))
-                        .label("波形增益 +")
+                        .label("波形增益")
+                        .tooltip("提高波形增益（×2）")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.gain = (view.audio.gain * 2).min(1000);
