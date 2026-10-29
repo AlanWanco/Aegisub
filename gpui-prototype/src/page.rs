@@ -78,6 +78,17 @@ pub fn section(
     trailing: Option<gpui_kit::AnyElement>,
     body: gpui_kit::Div,
 ) -> gpui_kit::Div {
+    section_with_icon(cx, None, title, trailing, body)
+}
+
+/// Section card whose header carries a small icon as a visual anchor.
+pub fn section_with_icon(
+    cx: &gpui_kit::App,
+    icon: Option<IconName>,
+    title: impl Into<gpui_kit::SharedString>,
+    trailing: Option<gpui_kit::AnyElement>,
+    body: gpui_kit::Div,
+) -> gpui_kit::Div {
     let p = Palette::current(cx);
     let mut head = div()
         .h_flex()
@@ -90,7 +101,13 @@ pub fn section(
         .border_b_1()
         .border_color(p.divider)
         .bg(p.surface)
-        .child(div().text_sm().font_semibold().child(title.into()));
+        .child({
+            let mut row = div().h_flex().items_center().gap_2();
+            if let Some(icon) = icon {
+                row = row.child(Icon::new(icon).size(px(14.)).text_color(p.accent));
+            }
+            row.child(div().text_sm().font_semibold().child(title.into()))
+        });
     if let Some(trailing) = trailing {
         head = head.child(trailing);
     }

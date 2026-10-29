@@ -221,8 +221,23 @@ impl TimingProcessorPanel {
                     }))
                     .into_any_element(),
             ]))
-            .child(crate::page::section(
+            // Two columns: which styles to process beside the thresholds,
+            // so the page is not one long stack of full-width cards.
+            .child(
+                div()
+                    .h_flex()
+                    .items_start()
+                    .w_full()
+                    .min_w_0()
+                    .gap_4()
+                    .child(
+                        div()
+                            .w(px(330.))
+                            .flex_shrink_0()
+                            .min_w_0()
+                            .child(crate::page::section_with_icon(
                 cx,
+                Some(IconName::Palette),
                 "处理哪些样式",
                 None,
                 crate::page::section_body()
@@ -264,9 +279,11 @@ impl TimingProcessorPanel {
                             ),
                     )
                     .child(styles),
-            ))
-            .child(crate::page::section(
+            )),
+                    )
+                    .child(div().flex_1().min_w_0().child(crate::page::section_with_icon(
                 cx,
+                Some(IconName::Clock3),
                 "阈值",
                 None,
                 crate::page::section_body()
@@ -276,7 +293,8 @@ impl TimingProcessorPanel {
                         cx,
                         "衔接偏向：0 只改后一句开始，100 只改前一句结束，50 取两者中间。",
                     )),
-            ));
+            ))),
+            );
         if !self.can_keyframes {
             page = page.child(
                 div()
