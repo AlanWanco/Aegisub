@@ -147,65 +147,56 @@ impl SearchPanel {
 
     pub fn render(&self, snapshot: &Snapshot, cx: &mut Context<Workspace>) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
-        let mut modes_row = div()
-            .h_flex()
-            .gap_2()
-            .child(
-                Button::new("search-mode-find")
-                    .label("查找替换")
-                    .when(!self.selection_mode, |button| button.primary())
-                    .disabled(self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.open_search(false, cx);
-                    })),
-            )
-            .child(
-                Button::new("search-mode-select")
-                    .label("条件选行")
-                    .when(self.selection_mode, |button| button.primary())
-                    .disabled(self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.open_search(true, cx);
-                    })),
-            );
-        let mut panel = crate::page::page(cx, "search-panel")
-            .child(crate::page::header(
-                cx,
-                IconName::Search,
-                if self.selection_mode {
-                    "条件选行"
-                } else {
-                    "查找替换"
-                },
-                "在字幕文本、样式、角色或效果中检索；可预览匹配后一次性替换，整次操作可撤销。",
-            ))
-            .child(modes_row)
-            .child(crate::page::field(
-                cx,
-                "查找内容",
-                Input::new(&self.find).disabled(disabled),
-            ));
+        let modes = crate::page::segmented(
+            cx,
+            vec![
+                (
+                    "search-mode-find".into(),
+                    "查找替换",
+                    !self.selection_mode,
+                    self.loading,
+                ),
+                (
+                    "search-mode-select".into(),
+                    "条件选行",
+                    self.selection_mode,
+                    self.loading,
+                ),
+            ],
+            |view, index, _, cx| {
+                view.open_search(index == 1, cx);
+            },
+        );
+        let mut fields = vec![crate::page::field_cell(crate::page::field(
+            cx,
+            "查找内容",
+            Input::new(&self.find).h(px(32.)).disabled(disabled),
+        ))];
         if !self.selection_mode {
-            panel = panel.child(crate::page::field(
+            fields.push(crate::page::field_cell(crate::page::field(
                 cx,
                 "替换为",
-                Input::new(&self.replace).disabled(disabled),
-            ));
+                Input::new(&self.replace).h(px(32.)).disabled(disabled),
+            )));
         }
-        let mut field = div().h_flex().flex_wrap().gap_2();
-        for (value, label) in [(0, "字幕文本"), (1, "样式"), (2, "角色"), (3, "效果")] {
-            field = field.child(
-                Button::new(format!("search-field-{value}"))
-                    .label(label)
-                    .when(self.field == value, |button| button.primary())
-                    .disabled(disabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.find_panel.field = value;
-                        cx.notify();
-                    })),
-            );
-        }
-        panel = panel.child(div().v_flex().gap_1().child("检索字段").child(field));
+        let field_kind = crate::page::segmented(
+            cx,
+            [(0, "字幕文本"), (1, "样式"), (2, "角色"), (3, "效果")]
+                .into_iter()
+                .map(|(value, label)| {
+                    (
+                        format!("search-field-{value}"),
+                        label,
+                        self.field == value,
+                        disabled,
+                    )
+                })
+                .collect(),
+            |view, index, _, cx| {
+                view.find_panel.field = index as i64;
+                cx.notify();
+            },
+        );
         let mut options = div().h_flex().flex_wrap().gap_2();
         let keys = if self.selection_mode {
             vec![
@@ -227,6 +218,7 @@ impl SearchPanel {
             options = options.child(
                 Button::new(format!("search-option-{key}"))
                     .label(label)
+                    .ghost()
                     .when(self.options[key], |button| button.primary())
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -244,45 +236,95 @@ impl SearchPanel {
                     })),
             );
         }
-        panel = panel.child(options);
+        let mut panel = crate::page::page(cx, "search-panel")
+            .child(crate::page::header(
+                cx,
+                IconName::Search,
+                if self.selection_mode {
+                    "条件选行"
+                } else {
+                    "查找替换"
+                },
+                "在字幕文本、样式、角色或效果中检索；可预览匹配后一次性替换，整次操作可撤销。",
+            ))
+            .child(modes)
+            .child(crate::page::section_with_icon(
+                cx,
+                Some(IconName::Search),
+                if self.selection_mode {
+                    "匹配条件"
+                } else {
+                    "查找与替换"
+                },
+                None,
+                crate::page::section_body().child(crate::page::field_row(fields)),
+            ))
+            .child(crate::page::section_with_icon(
+                cx,
+                Some(IconName::Settings2),
+                "检索范围",
+                None,
+                crate::page::section_body()
+                    .child(crate::page::field_label(cx, "检索字段"))
+                    .child(field_kind)
+                    .child(crate::page::field_label(cx, "选项"))
+                    .child(options),
+            ));
         if self.selection_mode {
-            let mut modes = div().h_flex().flex_wrap().gap_2();
-            for (mode, label) in [(0, "完全匹配"), (1, "包含"), (2, "正则表达式")] {
-                modes = modes.child(
-                    Button::new(format!("selection-match-mode-{mode}"))
-                        .label(label)
-                        .when(self.mode == mode, |button| button.primary())
-                        .disabled(disabled)
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.find_panel.mode = mode;
-                            cx.notify();
-                        })),
-                );
-            }
-            let mut actions = div().h_flex().flex_wrap().gap_2();
-            for (action, label) in [
-                (0, "设为选区"),
-                (1, "加入选区"),
-                (2, "从选区移除"),
-                (3, "与选区相交"),
-            ] {
-                actions = actions.child(
-                    Button::new(format!("selection-action-{action}"))
-                        .label(label)
-                        .when(self.selection_action == action, |button| button.primary())
-                        .disabled(disabled)
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.find_panel.selection_action = action;
-                            cx.notify();
-                        })),
-                );
-            }
-            panel = panel
-                .child(div().v_flex().gap_1().child("匹配方式").child(modes))
-                .child(div().v_flex().gap_1().child("选择操作").child(actions));
+            let match_mode = crate::page::segmented(
+                cx,
+                [(0, "完全匹配"), (1, "包含"), (2, "正则表达式")]
+                    .into_iter()
+                    .map(|(mode, label)| {
+                        (
+                            format!("selection-match-mode-{mode}"),
+                            label,
+                            self.mode == mode,
+                            disabled,
+                        )
+                    })
+                    .collect(),
+                |view, index, _, cx| {
+                    view.find_panel.mode = index as i64;
+                    cx.notify();
+                },
+            );
+            let selection_action = crate::page::segmented(
+                cx,
+                [
+                    (0, "设为选区"),
+                    (1, "加入选区"),
+                    (2, "从选区移除"),
+                    (3, "与选区相交"),
+                ]
+                .into_iter()
+                .map(|(action, label)| {
+                    (
+                        format!("selection-action-{action}"),
+                        label,
+                        self.selection_action == action,
+                        disabled,
+                    )
+                })
+                .collect(),
+                |view, index, _, cx| {
+                    view.find_panel.selection_action = index as i64;
+                    cx.notify();
+                },
+            );
+            panel = panel.child(crate::page::section_with_icon(
+                cx,
+                Some(IconName::Check),
+                "选择方式",
+                None,
+                crate::page::section_body()
+                    .child(crate::page::field_label(cx, "匹配方式"))
+                    .child(match_mode)
+                    .child(crate::page::field_label(cx, "选择操作"))
+                    .child(selection_action),
+            ));
         }
-        let mut actions = div().h_flex().flex_wrap().gap_2();
-        let buttons = if self.selection_mode {
+        let buttons: Vec<(&'static str, &'static str)> = if self.selection_mode {
             vec![("preview", "预览匹配"), ("select", "应用选择")]
         } else {
             vec![
@@ -291,47 +333,52 @@ impl SearchPanel {
                 ("replace_all", "全部替换"),
             ]
         };
-        for (action, label) in buttons {
-            actions = actions.child(
+        let mut toolbar = crate::page::toolbar([]);
+        for (index, (action, label)) in buttons.into_iter().enumerate() {
+            let primary = index == 0;
+            toolbar = toolbar.child(
                 Button::new(format!("search-{action}"))
                     .label(label)
-                    .when(action == "find" || action == "select", |button| {
-                        button.primary()
-                    })
+                    .when(primary, |button| button.primary())
+                    .when(!primary, |button| button.ghost())
                     .disabled(
                         disabled || (!self.selection_mode && self.find.read(cx).value().is_empty()),
                     )
                     .on_click(cx.listener(move |view, _, _, cx| view.search_request(action, cx))),
             );
         }
-        actions = actions.child(
-            Button::new("search-back-to-grid")
-                .label("回到字幕")
-                .disabled(self.loading)
-                .on_click(cx.listener(|view, _, window, cx| {
-                    view.active_panel = crate::Panel::Subtitles;
-                    view.focus_handle.focus(window, cx);
-                    cx.notify();
-                })),
-        );
-        panel = panel.child(actions).child(
-            div()
-                .text_sm()
-                .child(format!("当前选中 {} 行", snapshot.selected.len())),
-        );
+        toolbar = toolbar
+            .child(
+                div()
+                    .w(px(1.))
+                    .h(px(18.))
+                    .mx_1()
+                    .bg(crate::workspace_theme::Palette::current(cx).divider),
+            )
+            .child(
+                Button::new("search-back-to-grid")
+                    .label("回到字幕")
+                    .ghost()
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        view.active_panel = crate::Panel::Subtitles;
+                        view.focus_handle.focus(window, cx);
+                        cx.notify();
+                    })),
+            )
+            .child(crate::page::badge(
+                cx,
+                format!("当前选中 {} 行", snapshot.selected.len()),
+            ));
+        panel = panel.child(toolbar);
         if !self.message.is_empty() {
-            panel = panel.child(div().text_sm().child(self.message.clone()));
+            panel = panel.child(crate::page::hint(cx, self.message.clone()));
         }
         if let Some(error) = &self.error {
-            panel = panel.child(
-                div()
-                    .text_sm()
-                    .text_color(Theme::global(cx).danger)
-                    .child(error.clone()),
-            );
+            panel = panel.child(crate::page::error(cx, error.clone()));
         }
         if self.loading {
-            panel = panel.child("正在检索…");
+            panel = panel.child(crate::page::hint(cx, "正在检索…"));
         }
         if !self.history.is_empty() {
             let mut history = div().h_flex().flex_wrap().gap_2();
@@ -340,6 +387,7 @@ impl SearchPanel {
                 history = history.child(
                     Button::new(format!("search-history-{index}"))
                         .label(text.clone())
+                        .ghost()
                         .disabled(disabled)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.find_panel.pending_find = Some(value.clone());
@@ -347,7 +395,12 @@ impl SearchPanel {
                         })),
                 );
             }
-            panel = panel.child(div().v_flex().gap_2().child("最近查找").child(history));
+            panel = panel.child(crate::page::section(
+                cx,
+                "最近查找",
+                None,
+                crate::page::section_body().child(history),
+            ));
         }
         panel
     }

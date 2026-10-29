@@ -151,13 +151,31 @@ pub fn field(
     label: impl Into<gpui_kit::SharedString>,
     control: impl IntoElement,
 ) -> gpui_kit::Div {
+    // Full width, but never vertically greedy: a `flex_1` here would stretch
+    // fields down the whole page inside a column container.
     div()
         .v_flex()
-        .flex_1()
+        .w_full()
         .min_w_0()
         .gap_1()
         .child(field_label(cx, label))
         .child(control)
+}
+
+/// Row of fields sharing the width equally.
+pub fn field_row(children: impl IntoIterator<Item = gpui_kit::AnyElement>) -> gpui_kit::Div {
+    div()
+        .h_flex()
+        .items_start()
+        .w_full()
+        .min_w_0()
+        .gap_3()
+        .children(children)
+}
+
+/// Cell inside [`field_row`]; gives the field an equal share of the row.
+pub fn field_cell(field: gpui_kit::Div) -> gpui_kit::AnyElement {
+    div().flex_1().min_w_0().child(field).into_any_element()
 }
 
 /// Error text placed directly under the control it belongs to.
