@@ -1,5 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt,
     button::{Button, ButtonVariants},
@@ -39,6 +40,7 @@ impl PastePanel {
                 Button::new(format!("paste-over-preset-{preset}"))
                     .icon(IconName::ClipboardPaste)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label(label)
                     .disabled(disabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -108,6 +110,7 @@ impl PastePanel {
                 Button::new("paste-over-apply")
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -125,6 +128,7 @@ impl PastePanel {
                 Button::new("paste-over-back")
                     .icon(IconName::ArrowLeft)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("返回字幕")
                     .ghost()
                     .on_click(cx.listener(|view, _, window, cx| {
@@ -134,24 +138,25 @@ impl PastePanel {
                     })),
             )
             .child(div().text_sm().text_color(p.muted).child(scope));
-        let mut panel = crate::page::page(cx, "paste-panel")
-            .child(actions)
-            .child(crate::page::section(
-                cx,
-                "覆盖哪些字段",
-                None,
-                crate::page::section_body()
-                    .child(
-                        div()
-                            .h_flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap_2()
-                            .child(crate::page::field_label(cx, "快捷选择"))
-                            .child(presets),
-                    )
-                    .child(field_groups),
-            ));
+        let mut panel =
+            crate::page::page(cx, "paste-panel")
+                .child(actions)
+                .child(crate::page::section(
+                    cx,
+                    "覆盖哪些字段",
+                    None,
+                    crate::page::section_body()
+                        .child(
+                            div()
+                                .h_flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap_2()
+                                .child(crate::page::field_label(cx, "快捷选择"))
+                                .child(presets),
+                        )
+                        .child(field_groups),
+                ));
         if let Some(error) = &self.error {
             panel = panel.child(crate::page::error(cx, error.clone()));
         }

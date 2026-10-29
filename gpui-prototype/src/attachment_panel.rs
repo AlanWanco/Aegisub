@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -65,7 +66,7 @@ impl AttachmentPanel {
             .items_center()
             .gap_2()
             .child(
-                Button::new("attachment-add").icon(IconName::Plus).rounded(gpui_kit::px(999.))
+                Button::new("attachment-add").icon(IconName::Plus).rounded(gpui_kit::px(999.)).small()
                     .label("添加附件…")
                     .primary()
                     .disabled(self.loading)
@@ -90,14 +91,14 @@ impl AttachmentPanel {
                     .into_any_element(),
             )
             .child(
-                Button::new("attachment-extract").icon(IconName::ExternalLink).rounded(gpui_kit::px(999.))
+                Button::new("attachment-extract").icon(IconName::ExternalLink).rounded(gpui_kit::px(999.)).small()
                     .label("导出所选…")
                     .disabled(self.loading || self.selected.is_empty())
                     .on_click(cx.listener(|view, _, _, cx| view.extract_attachments(cx)))
                     .into_any_element(),
             )
             .child(
-                Button::new("attachment-delete").icon(IconName::Delete).rounded(gpui_kit::px(999.))
+                Button::new("attachment-delete").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small()
                     .label(if self.confirm_delete {
                         "确认删除"
                     } else {
@@ -124,6 +125,7 @@ impl AttachmentPanel {
                 Button::new("attachment-cancel-delete")
                     .icon(IconName::Close)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("取消删除")
                     .ghost()
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -143,6 +145,7 @@ impl AttachmentPanel {
                     Button::new("attachment-undo")
                         .icon(IconName::Undo2)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label("撤销")
                         .ghost()
                         .disabled(self.loading)
@@ -154,6 +157,7 @@ impl AttachmentPanel {
                     Button::new("attachment-refresh")
                         .icon(IconName::RefreshCw)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label("刷新")
                         .ghost()
                         .disabled(self.loading)

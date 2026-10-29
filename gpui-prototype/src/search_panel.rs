@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt,
     button::{Button, ButtonVariants},
@@ -339,6 +340,7 @@ impl SearchPanel {
                 Button::new(format!("search-{action}"))
                     .icon(IconName::Search)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label(label)
                     .when(primary, |button| button.primary())
                     .when(action == "replace_all", |button| button.ghost())
@@ -360,6 +362,7 @@ impl SearchPanel {
                 Button::new("search-back-to-grid")
                     .icon(IconName::ArrowLeft)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("回到字幕")
                     .ghost()
                     .disabled(self.loading)
@@ -392,6 +395,7 @@ impl SearchPanel {
                     Button::new(format!("search-history-{index}"))
                         .icon(IconName::Replace)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label(text.clone())
                         .ghost()
                         .disabled(disabled)

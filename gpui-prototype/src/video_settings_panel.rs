@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -155,8 +156,7 @@ impl VideoSettingsPanel {
                 cx.notify();
             },
         );
-        let mut panel = crate::page::page(cx, "video-settings-panel")
-            .child(tabs);
+        let mut panel = crate::page::page(cx, "video-settings-panel").child(tabs);
         let fields: Vec<_> = match self.page {
             VideoPage::Dummy => vec![
                 ("width", "宽度 · 像素"),
@@ -191,6 +191,7 @@ impl VideoSettingsPanel {
                     Button::new("dummy-video-create")
                         .icon(IconName::Video)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label("载入空白视频")
                         .primary()
                         .disabled(disabled)
@@ -207,6 +208,7 @@ impl VideoSettingsPanel {
                             Button::new("jump-frame-apply")
                                 .icon(IconName::Frame)
                                 .rounded(gpui_kit::px(999.))
+                                .small()
                                 .label("按帧跳转")
                                 .primary()
                                 .disabled(disabled || !self.state.loaded)
@@ -218,6 +220,7 @@ impl VideoSettingsPanel {
                             Button::new("jump-time-apply")
                                 .icon(IconName::Clock3)
                                 .rounded(gpui_kit::px(999.))
+                                .small()
                                 .label("按时间跳转")
                                 .disabled(disabled || !self.state.loaded)
                                 .on_click(cx.listener(|view, _, _, cx| {
@@ -230,6 +233,7 @@ impl VideoSettingsPanel {
                     Button::new("custom-aspect-apply")
                         .icon(IconName::Check)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label("应用显示比例")
                         .primary()
                         .disabled(disabled || !self.state.loaded)
@@ -260,6 +264,7 @@ impl VideoSettingsPanel {
                         Button::new(format!("dummy-resolution-{width}-{height}"))
                             .icon(IconName::Frame)
                             .rounded(gpui_kit::px(999.))
+                            .small()
                             .label(format!("{width} × {height}"))
                             .disabled(disabled)
                             .on_click(cx.listener(move |view, _, window, cx| {
@@ -365,6 +370,7 @@ impl VideoSettingsPanel {
                     Button::new("refresh-video-details")
                         .icon(IconName::RefreshCw)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label("刷新详情")
                         .disabled(self.loading)
                         .on_click(

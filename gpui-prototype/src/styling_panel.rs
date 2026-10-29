@@ -1,5 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt,
     button::{Button, ButtonVariants},
@@ -123,6 +124,7 @@ impl StylingPanel {
                 Button::new("styling-commit")
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("应用并前进")
                     .primary()
                     .disabled(active.is_none())
@@ -131,6 +133,7 @@ impl StylingPanel {
                 Button::new("styling-preview")
                     .icon(IconName::Eye)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("应用并预览")
                     .disabled(active.is_none())
                     .on_click(
@@ -140,6 +143,7 @@ impl StylingPanel {
                 Button::new("styling-prev")
                     .icon(IconName::ChevronLeft)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("上一行")
                     .ghost()
                     .disabled(active.is_none())
@@ -148,6 +152,7 @@ impl StylingPanel {
                 Button::new("styling-next")
                     .icon(IconName::ChevronRight)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("下一行")
                     .ghost()
                     .disabled(active.is_none())

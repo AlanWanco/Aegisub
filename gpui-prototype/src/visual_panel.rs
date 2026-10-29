@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::{
     Bounds, ContentMask, Context, FillOptions, FillRule, IntoElement, Path, PathBuilder, PathStyle,
@@ -186,6 +187,7 @@ impl VisualPanel {
                     Button::new(format!("visual-vector-{mode}"))
                         .icon(IconName::Asterisk)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label(label)
                         .ghost()
                         .when(mode == self.subtool, |button| button.primary())
@@ -200,6 +202,7 @@ impl VisualPanel {
                 Button::new("visual-toggle-move")
                     .icon(IconName::Move)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("pos ↔ move")
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.queue_visual(json!({"action":"toggle_move"}), cx)

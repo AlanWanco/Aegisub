@@ -44,6 +44,7 @@ use video_settings_panel::{VideoPage, VideoSettings, VideoSettingsPanel};
 mod visual_panel;
 mod workspace_theme;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Sizable;
 use image::Frame as VideoImageFrame;
 use workspace_theme::Palette;
 
@@ -3381,6 +3382,7 @@ impl Workspace {
             .child(
                 Button::new("open-subtitles")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::FolderOpen)
                     .label("打开")
                     .ghost()
@@ -3389,6 +3391,7 @@ impl Workspace {
             .child(
                 Button::new("save-subtitles")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Save)
                     .label("保存")
                     .ghost()
@@ -3400,6 +3403,7 @@ impl Workspace {
             .child(
                 Button::new("undo")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Undo2)
                     .accessibility_label("撤销")
                     .tooltip("撤销")
@@ -3412,6 +3416,7 @@ impl Workspace {
             .child(
                 Button::new("redo")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Redo2)
                     .accessibility_label("重做")
                     .tooltip("重做")
@@ -3425,6 +3430,7 @@ impl Workspace {
             .child(
                 Button::new("open-video")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Play)
                     .label("视频")
                     .ghost()
@@ -3499,6 +3505,7 @@ impl Workspace {
                 Button::new(format!("legacy-menu-{label}"))
                     .icon(IconName::Menu)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label(label)
                     .ghost()
                     .dropdown_menu(move |menu, window, cx| {
@@ -3521,6 +3528,7 @@ impl Workspace {
         bar.child(div().flex_1()).child(
             Button::new("command-browser")
                 .rounded(gpui_kit::px(999.))
+                .small()
                 .icon(IconName::Search)
                 .label("搜索命令")
                 .ghost()
@@ -3555,7 +3563,7 @@ impl Workspace {
                     .id("command-search")
                     .w(px(320.))
                     .into_any_element(),
-                Button::new("refresh-command-catalog").icon(IconName::RefreshCw).rounded(gpui_kit::px(999.))
+                Button::new("refresh-command-catalog").icon(IconName::RefreshCw).rounded(gpui_kit::px(999.)).small()
                     .label("刷新状态")
                     .ghost()
                     .on_click(cx.listener(|view, _, _, cx| view.refresh_catalog(cx)))
@@ -3584,7 +3592,7 @@ impl Workspace {
                             .child(div().text_xs().text_color(Theme::global(cx).muted_foreground).child(format!("{} · {}", command.name, command.help))))
                         .child(div().w(px(120.)).flex_shrink_0().text_xs().child(command.surface_label()))
                         .child(div().w(px(100.)).flex_shrink_0().text_xs().child(command.shortcut.clone()))
-                        .child(Button::new(format!("invoke-{name}")).icon(IconName::Play).rounded(gpui_kit::px(999.)).label("执行").disabled(!command.can_invoke()).on_click(move |_, _, cx| {
+                        .child(Button::new(format!("invoke-{name}")).icon(IconName::Play).rounded(gpui_kit::px(999.)).small().label("执行").disabled(!command.can_invoke()).on_click(move |_, _, cx| {
                             let _ = weak.update(cx, |view, cx| view.invoke(json!({"op":"command", "name":name}), cx));
                         }))
                 }).collect()
@@ -3682,7 +3690,7 @@ impl Workspace {
                             .child(format!("{} 行", self.snapshot.selected.len())),
                     )
                     .child(
-                        Button::new("toggle-comment").icon(IconName::Captions).rounded(gpui_kit::px(999.))
+                        Button::new("toggle-comment").icon(IconName::Captions).rounded(gpui_kit::px(999.)).small()
                             .label(if commented { "改为对白" } else { "改为注释" })
                             .ghost()
                             .disabled(self.selected_line < 0)
@@ -3691,7 +3699,7 @@ impl Workspace {
                             })),
                     )
                     .child(
-                        Button::new("save-as").rounded(gpui_kit::px(999.))
+                        Button::new("save-as").rounded(gpui_kit::px(999.)).small()
                             .icon(IconName::Save)
                             .accessibility_label("另存为")
                             .tooltip("另存为…")
@@ -3701,7 +3709,7 @@ impl Workspace {
                             })),
                     )
                     .child(
-                        Button::new("apply-line-fields").rounded(gpui_kit::px(999.))
+                        Button::new("apply-line-fields").rounded(gpui_kit::px(999.)).small()
                             .icon(IconName::Check)
                             .label("应用修改")
                             .primary()
@@ -3888,6 +3896,7 @@ impl Workspace {
                     });
                 let button = Button::new(format!("panel-{}", panel.label()))
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .ghost()
                     .selected(selected)
                     .accessibility_label(panel.label())
@@ -3938,6 +3947,7 @@ impl Workspace {
                     .child(
                         Button::new("toggle-sidebar")
                             .rounded(gpui_kit::px(999.))
+                            .small()
                             .icon(if compact {
                                 IconName::PanelLeftOpen
                             } else {
@@ -4129,6 +4139,7 @@ impl Workspace {
                 Button::new("video-window-zoom-menu")
                     .icon(IconName::Maximize)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label(if fit {
                         "适应".to_owned()
                     } else {
@@ -4171,6 +4182,7 @@ impl Workspace {
             .child(
                 Button::new("video-fit")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Maximize)
                     .accessibility_label("适应窗口")
                     .tooltip("适应窗口")
@@ -4187,6 +4199,7 @@ impl Workspace {
             .child(
                 Button::new("video-content-out")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::ZoomOut)
                     .accessibility_label("缩小画面")
                     .tooltip("缩小画面")
@@ -4207,6 +4220,7 @@ impl Workspace {
             .child(
                 Button::new("video-content-in")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::ZoomIn)
                     .accessibility_label("放大画面")
                     .tooltip("放大画面")
@@ -4219,6 +4233,7 @@ impl Workspace {
             .child(
                 Button::new("video-zoom-reset")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::RotateCw)
                     .accessibility_label("复位画面")
                     .tooltip("复位缩放和平移")
@@ -4230,6 +4245,7 @@ impl Workspace {
             .child(
                 Button::new("video-pan-menu")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Move)
                     .accessibility_label("平移画面")
                     .tooltip("平移画面")
@@ -4262,6 +4278,7 @@ impl Workspace {
             .child(
                 Button::new("video-overscan")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Frame)
                     .label("安全区")
                     .toggled(overscan)
@@ -4346,6 +4363,7 @@ impl Workspace {
                                     v.child(
                                         Button::new("empty-open-video")
                                             .rounded(gpui_kit::px(999.))
+                                            .small()
                                             .label("打开视频")
                                             .icon(IconName::FolderOpen)
                                             .on_click(cx.listener(|view, _, _, cx| {
@@ -4547,6 +4565,7 @@ impl Workspace {
             format_toolbar = format_toolbar.child(
                 Button::new(id)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(icon)
                     .accessibility_label(label)
                     .tooltip(label)
@@ -4589,7 +4608,7 @@ impl Workspace {
                                     .child(format!("已选 {} 行", self.snapshot.selected.len())),
                             )
                             .child(
-                                Button::new("shrink-subtitle-editor").rounded(gpui_kit::px(999.))
+                                Button::new("shrink-subtitle-editor").rounded(gpui_kit::px(999.)).small()
                                     .icon(IconName::ChevronUp)
                                     .accessibility_label("缩小字幕编辑区")
                                     .tooltip("缩小字幕编辑区")
@@ -4602,7 +4621,7 @@ impl Workspace {
                                     })),
                             )
                             .child(
-                                Button::new("grow-subtitle-editor").rounded(gpui_kit::px(999.))
+                                Button::new("grow-subtitle-editor").rounded(gpui_kit::px(999.)).small()
                                     .icon(IconName::ChevronDown)
                                     .accessibility_label("增大字幕编辑区")
                                     .tooltip("增大字幕编辑区")
@@ -4615,7 +4634,7 @@ impl Workspace {
                                     })),
                             )
                             .child(
-                                Button::new("apply-edit").rounded(gpui_kit::px(999.))
+                                Button::new("apply-edit").rounded(gpui_kit::px(999.)).small()
                                     .icon(IconName::Check)
                                     .label("应用文本")
                                     .ghost()

@@ -1,5 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -74,6 +75,7 @@ impl AutomationPanel {
             Button::new("automation-add")
                 .icon(IconName::Plus)
                 .rounded(gpui_kit::px(999.))
+                .small()
                 .label("添加项目脚本…")
                 .primary()
                 .disabled(self.loading)
@@ -82,6 +84,7 @@ impl AutomationPanel {
             Button::new("automation-reload-all")
                 .icon(IconName::RefreshCw)
                 .rounded(gpui_kit::px(999.))
+                .small()
                 .label("重新加载全部")
                 .disabled(self.loading)
                 .on_click(cx.listener(|view, _, _, cx| {
@@ -91,6 +94,7 @@ impl AutomationPanel {
             Button::new("automation-rescan")
                 .icon(IconName::Search)
                 .rounded(gpui_kit::px(999.))
+                .small()
                 .label("重新扫描目录")
                 .ghost()
                 .disabled(self.loading)
@@ -109,8 +113,7 @@ impl AutomationPanel {
         ))
         .child(crate::page::badge(cx, format!("引擎 {engines}")));
 
-        let mut panel = crate::page::page(cx, "automation-panel")
-            .child(toolbar);
+        let mut panel = crate::page::page(cx, "automation-panel").child(toolbar);
         if self.loading {
             panel = panel.child(div().text_sm().child("正在同步脚本…"));
         }
@@ -135,6 +138,7 @@ impl AutomationPanel {
                 Button::new(format!("automation-reload-{index}"))
                     .icon(IconName::RefreshCw)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label("重新加载")
                     .disabled(self.loading)
                     .on_click(cx.listener(move |view, _, _, cx| {
@@ -146,7 +150,7 @@ impl AutomationPanel {
             );
             if script.scope == "local" {
                 actions = actions.child(
-                    Button::new(format!("automation-remove-{index}")).icon(IconName::Delete).rounded(gpui_kit::px(999.))
+                    Button::new(format!("automation-remove-{index}")).icon(IconName::Delete).rounded(gpui_kit::px(999.)).small()
                         .label(if confirming { "确认卸载项目脚本" } else { "卸载…" })
 
                         .disabled(self.loading)
@@ -166,6 +170,7 @@ impl AutomationPanel {
                     Button::new(format!("automation-cancel-remove-{index}"))
                         .icon(IconName::Close)
                         .rounded(gpui_kit::px(999.))
+                        .small()
                         .label("取消")
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.automation.confirm_remove = None;
@@ -226,6 +231,7 @@ impl AutomationPanel {
                             Button::new(format!("automation-macro-{}-{index}", feature.name))
                                 .icon(IconName::Play)
                                 .rounded(gpui_kit::px(999.))
+                                .small()
                                 .label(format!("执行 {}", feature.label))
                                 .disabled(self.loading || !enabled)
                                 .on_click(cx.listener(move |view, _, _, cx| {

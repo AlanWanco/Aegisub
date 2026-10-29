@@ -10,6 +10,7 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -271,6 +272,7 @@ pub fn tabs(
         tab = tab.child(
             Button::new(id)
                 .rounded(gpui_kit::px(999.))
+                .small()
                 .label(label)
                 .ghost()
                 .text_color(if active { p.text } else { p.muted })
@@ -383,6 +385,7 @@ pub fn select_trigger(
     let p = Palette::current(cx);
     Button::new(id)
         .rounded(gpui_kit::px(999.))
+        .small()
         .w_full()
         .disabled(disabled)
         .child(

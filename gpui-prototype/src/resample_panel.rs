@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt,
     button::{Button, ButtonVariants},
@@ -231,6 +232,7 @@ impl ResamplePanel {
                 Button::new("resample-apply")
                     .icon(IconName::Check)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -242,6 +244,7 @@ impl ResamplePanel {
                     .into_any_element(),
                 Button::new("resample-reset")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::RefreshCw)
                     .label("从当前脚本重新读取")
                     .disabled(self.loading)
@@ -252,6 +255,7 @@ impl ResamplePanel {
                     .into_any_element(),
                 Button::new("resample-from-video")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Video)
                     .label("目标使用视频分辨率")
                     .disabled(disabled || self.state.video_x == 0)
@@ -270,6 +274,7 @@ impl ResamplePanel {
                     .into_any_element(),
                 Button::new("resample-undo")
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(IconName::Undo2)
                     .label("撤销")
                     .ghost()

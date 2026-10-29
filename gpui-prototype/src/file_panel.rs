@@ -1,5 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -128,8 +129,7 @@ impl FilePanel {
                 view.file_tools_request(json!({"action":"state"}), cx);
             },
         );
-        let mut panel = crate::page::page(cx, "file-tools-panel")
-            .child(tabs);
+        let mut panel = crate::page::page(cx, "file-tools-panel").child(tabs);
         if self.loading {
             panel = panel.child("正在读取文件信息…");
         }
@@ -221,7 +221,7 @@ impl FilePanel {
                                 .child(
                                     Button::new("encoded-open-pick")
                                         .icon(IconName::FolderOpen)
-                                        .rounded(gpui_kit::px(999.))
+                    .rounded(gpui_kit::px(999.)).small()
                                         .label("选择字幕文件…")
                                         .disabled(self.loading)
                                         .on_click(cx.listener(|view, _, _, cx| {
@@ -250,7 +250,7 @@ impl FilePanel {
                                         .child(crate::page::field_label(cx, "读取编码"))
                                         .child(
                                             Button::new("encoded-open-charset")
-                                                .rounded(gpui_kit::px(999.))
+                    .rounded(gpui_kit::px(999.)).small()
                                                 .w(px(300.))
                                                 .disabled(self.loading)
                                                 .child(
@@ -322,7 +322,7 @@ impl FilePanel {
                             div().h_flex().items_center().gap_3().child(
                                 Button::new("encoded-open-submit")
                                     .icon(IconName::FileInput)
-                                    .rounded(gpui_kit::px(999.))
+                    .rounded(gpui_kit::px(999.)).small()
                                     .label("按所选编码打开")
                                     .primary()
                                     .disabled(self.loading || self.path.is_empty())
@@ -476,13 +476,13 @@ impl FilePanel {
             }
             panel = panel
                 .child(crate::page::toolbar([
-                    Button::new("recovery-open").icon(IconName::FileInput).rounded(gpui_kit::px(999.))
+                    Button::new("recovery-open").icon(IconName::FileInput).rounded(gpui_kit::px(999.)).small()
                         .label("打开所选版本")
                         .primary()
                         .disabled(self.loading || self.version.is_empty())
                         .on_click(cx.listener(|view, _, _, cx| view.open_file_tools_selection(cx)))
                         .into_any_element(),
-                    Button::new("recovery-refresh").icon(IconName::RefreshCw).rounded(gpui_kit::px(999.))
+                    Button::new("recovery-refresh").icon(IconName::RefreshCw).rounded(gpui_kit::px(999.)).small()
                         .label("刷新版本")
                         .disabled(self.loading)
                         .on_click(cx.listener(|view, _, _, cx| {

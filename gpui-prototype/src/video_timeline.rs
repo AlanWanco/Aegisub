@@ -1,4 +1,5 @@
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
@@ -49,7 +50,7 @@ impl VideoTimeline {
         let p = Palette::current(cx);
         let mut controls = div().h_flex().flex_wrap().gap_1().items_center()
             .child(
-                Button::new("play-video").rounded(gpui_kit::px(999.))
+                Button::new("play-video").rounded(gpui_kit::px(999.)).small()
                     .icon(if snapshot.playing { IconName::Pause } else { IconName::Play })
                     .label(if snapshot.playing { "暂停" } else { "播放" })
                     .primary()
@@ -102,6 +103,7 @@ impl VideoTimeline {
             controls = controls.child(
                 Button::new(id)
                     .rounded(gpui_kit::px(999.))
+                    .small()
                     .icon(icon)
                     .accessibility_label(label)
                     .tooltip(label)

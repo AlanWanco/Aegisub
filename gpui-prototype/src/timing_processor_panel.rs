@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::{
     StyledExt,
     button::{Button, ButtonVariants},
@@ -196,7 +197,7 @@ impl TimingProcessorPanel {
             .any(|key| self.options[key]);
         let mut page = crate::page::page(cx, "timing-processor-panel")
             .child(crate::page::toolbar([
-                Button::new("processor-apply").icon(IconName::Check).rounded(gpui_kit::px(999.))
+                Button::new("processor-apply").icon(IconName::Check).rounded(gpui_kit::px(999.)).small()
                     .label(if self.loading {
                         "处理中…"
                     } else {
@@ -206,14 +207,14 @@ impl TimingProcessorPanel {
                     .disabled(disabled || self.selected_styles.is_empty() || !enabled)
                     .on_click(cx.listener(|view, _, _, cx| view.processor_request("apply", cx)))
                     .into_any_element(),
-                Button::new("processor-undo").icon(IconName::Undo2).rounded(gpui_kit::px(999.))
+                Button::new("processor-undo").icon(IconName::Undo2).rounded(gpui_kit::px(999.)).small()
                     .label("撤销")
                     .disabled(self.loading)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":"edit/undo"}), cx)
                     }))
                     .into_any_element(),
-                Button::new("processor-open-keyframes").icon(IconName::Locate).rounded(gpui_kit::px(999.))
+                Button::new("processor-open-keyframes").icon(IconName::Locate).rounded(gpui_kit::px(999.)).small()
                     .label("关键帧…")
                     .disabled(self.can_keyframes)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -240,7 +241,7 @@ impl TimingProcessorPanel {
                                 Some(IconName::Palette),
                                 "处理哪些样式",
                                 Some(
-                                    Button::new("processor-refresh").icon(IconName::RefreshCw).rounded(gpui_kit::px(999.))
+                                    Button::new("processor-refresh").icon(IconName::RefreshCw).rounded(gpui_kit::px(999.)).small()
                                         .label("刷新参数")
                                         .ghost()
                                         .disabled(self.loading)
@@ -258,7 +259,7 @@ impl TimingProcessorPanel {
                                             .h_flex()
                                             .gap_2()
                                             .child(
-                                                Button::new("processor-all-styles").icon(IconName::Check).rounded(gpui_kit::px(999.))
+                                                Button::new("processor-all-styles").icon(IconName::Check).rounded(gpui_kit::px(999.)).small()
                                                     .label("全选")
                                                     .ghost()
                                                     .disabled(disabled)
@@ -273,7 +274,7 @@ impl TimingProcessorPanel {
                                                     })),
                                             )
                                             .child(
-                                                Button::new("processor-no-styles").icon(IconName::CircleX).rounded(gpui_kit::px(999.))
+                                                Button::new("processor-no-styles").icon(IconName::CircleX).rounded(gpui_kit::px(999.)).small()
                                                     .label("清空")
                                                     .ghost()
                                                     .disabled(disabled)
