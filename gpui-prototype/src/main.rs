@@ -7213,8 +7213,10 @@ impl Workspace {
                             .text_color(muted)
                             .child(column.label())
                             .cursor_col_resize()
-                            .rounded(px(crate::workspace_theme::RADIUS_SM))
-                            .hover(|style| style.bg(p.raised))
+                            // Painting the strip colour keeps a full-cell
+                            // hitbox: a bare div only reacts over its text.
+                            .bg(header_bg)
+
                             .on_mouse_down(
                                 gpui_kit::MouseButton::Left,
                                 cx.listener(
