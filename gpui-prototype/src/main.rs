@@ -3151,9 +3151,6 @@ impl Workspace {
             cx.notify();
             return;
         }
-        if event.prefer_character_input {
-            return;
-        }
         let primary = if cfg!(target_os = "macos") {
             key.modifiers.platform
         } else {
@@ -3252,8 +3249,17 @@ impl Workspace {
                 return;
             }
         }
-        // Preserve editing/navigation shortcuts inside form fields and search inputs.
-        if input_focused && !editor_focused && !command_search_focused {
+        // A character key belongs to whichever text field has focus. With no text
+        // focus there is nothing to type into, so the key is only a shortcut:
+        // macOS reports Option+letter as a character, and dropping those here is
+        // what used to make every Alt+letter binding dead in the grid.
+        if event.prefer_character_input && (input_focused || editor_focused || command_search_focused) {
+            return;
+        }
+        // A form field keeps the keys that would type into it, but command
+        // shortcuts still have to reach the catalog: pressing Cmd+S with the
+        // filter box focused must save, not be swallowed.
+        if input_focused && !editor_focused && !command_search_focused && !primary {
             return;
         }
         if command_search_focused {
