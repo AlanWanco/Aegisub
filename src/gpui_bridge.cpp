@@ -60,12 +60,26 @@
 #include <iomanip>
 #include <map>
 #include <limits>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <string_view>
 #include <vector>
 
 namespace {
+std::mutex notice_mutex;
+std::vector<std::pair<std::string, std::string>> pending_notices;
+int attached_clients = 0;
+
+void AttachClient() {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	++attached_clients;
+}
+
+void DetachClient() {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients > 0) --attached_clients;
+}
 constexpr size_t max_message_size = 2 * 1024 * 1024;
 
 std::string make_token() {
@@ -135,6 +149,17 @@ bool is_json_string(json::UnknownElement const& element) {
 }
 }
 
+bool gpui::FrontendAttached() {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	return attached_clients > 0;
+}
+
+void gpui::PushNotice(std::string title, std::string body) {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients == 0) return;
+	pending_notices.emplace_back(std::move(title), std::move(body));
+}
+
 struct GpuiBridge::Impl final : wxEvtHandler {
 	struct Client {
 		std::string request;
@@ -189,6 +214,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		socket->Close();
 		socket->Destroy();
 		clients.erase(it);
+		DetachClient();
 	}
 
 	void Stop() {
@@ -259,6 +285,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			client->SetNotify(wxSOCKET_INPUT_FLAG | wxSOCKET_LOST_FLAG);
 			client->Notify(true);
 			clients.emplace(client, Client{});
+			AttachClient();
 			return;
 		}
 
@@ -501,6 +528,18 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		    << ",\"video_shift_scroll\":" << OPT_GET("Video/Shift Scroll Action")->GetInt()
 		    << ",\"video_overscan\":" << (OPT_GET("Video/Overscan Mask")->GetBool() ? "true" : "false");
 		out << ",\"audio\":" << audio.Snapshot();
+		out << ",\"notices\":[";
+		{
+			std::lock_guard<std::mutex> lock(notice_mutex);
+			bool first_notice = true;
+			for (auto const& [title, body] : pending_notices) {
+				if (!first_notice) out << ',';
+				first_notice = false;
+				out << "{\"title\":" << quote_json(title) << ",\"body\":" << quote_json(body) << '}';
+			}
+			pending_notices.clear();
+		}
+		out << ']';
 		out << ",\"active\":";
 		auto active = context->selectionController->GetActiveLine();
 		out << (active ? active->Id : -1) << ",\"selected\":[";

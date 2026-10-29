@@ -385,6 +385,15 @@ struct PlaybackSnapshot {
     audio_position: i64,
 }
 
+/// A warning the host could not show itself because it has no wx window.
+#[derive(Clone, Debug, Deserialize)]
+struct Notice {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: String,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct Snapshot {
     #[serde(default)]
@@ -446,6 +455,8 @@ struct Snapshot {
     text_selection: [usize; 2],
     #[serde(default)]
     lines: Vec<Line>,
+    #[serde(default)]
+    notices: Vec<Notice>,
 }
 
 fn hotkey_key(key: &str) -> String {
@@ -724,6 +735,7 @@ struct Workspace {
     sidebar_collapsed: Option<bool>,
     selected_line: i64,
     status: String,
+    notices: Vec<Notice>,
     _editor_events: Subscription,
     _search_events: Subscription,
 }
@@ -866,6 +878,7 @@ impl Workspace {
             focus_handle,
             snapshot: Snapshot {
                 file: "正在连接 Aegisub…".into(),
+                notices: Vec::new(),
                 modified: false,
                 can_save: false,
                 dark: true,
@@ -953,12 +966,16 @@ impl Workspace {
             sidebar_collapsed: None,
             selected_line: -1,
             status: "已连接当前 Aegisub 文档".into(),
+            notices: Vec::new(),
             _editor_events: editor_events,
             _search_events: search_events,
         }
     }
 
     fn apply_snapshot(&mut self, snapshot: Snapshot, cx: &mut Context<Self>) {
+        if !snapshot.notices.is_empty() {
+            self.notices.extend(snapshot.notices.iter().cloned());
+        }
         if snapshot.dark != Theme::global(cx).is_dark() {
             Theme::change(
                 if snapshot.dark {
@@ -3252,6 +3269,14 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         let key = &event.keystroke;
+        // A host notice behaves like a modal: Enter or Escape acknowledges it.
+        if !self.notices.is_empty()
+            && matches!(key.key.as_str(), "escape" | "enter" | "return" | "space")
+        {
+            self.notices.remove(0);
+            cx.notify();
+            return;
+        }
         if self.active_panel == Panel::Hotkeys && self.hotkeys.recording {
             if key.key == "escape" {
                 self.hotkeys.recording = false;
@@ -6014,7 +6039,7 @@ impl Render for Workspace {
                         }),
                 ),
         );
-        root.child(self.render_menu(window, cx)).child(
+        let workspace = root.child(self.render_menu(window, cx)).child(
             div()
                 .v_flex()
                 .h_full()
@@ -6029,7 +6054,111 @@ impl Render for Workspace {
                     v.child(self.render_toolbar(cx))
                 })
                 .child(body),
-        )
+        );
+        if self.notices.is_empty() {
+            return workspace.into_any_element();
+        }
+        let notice = self.notices[0].clone();
+        let remaining = self.notices.len() - 1;
+        let card = div()
+            .id("host-notice")
+            .w(px(520.))
+            .max_w_full()
+            .v_flex()
+            .rounded(px(workspace_theme::RADIUS_LG))
+            .border_1()
+            .border_color(border)
+            .bg(p.surface)
+            .overflow_hidden()
+            .shadow_lg()
+            .child(
+                div()
+                    .h_flex()
+                    .items_center()
+                    .gap_2()
+                    .px(px(20.))
+                    .py(px(14.))
+                    .bg(p.raised)
+                    .rounded_t(px(workspace_theme::RADIUS_LG - 1.))
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        Icon::new(IconName::TriangleAlert)
+                            .size(px(16.))
+                            .text_color(p.warning),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .child(notice.title.clone()),
+                    ),
+            )
+            .child(
+                div()
+                    .v_flex()
+                    .gap_2()
+                    .px(px(20.))
+                    .py(px(16.))
+                    .text_sm()
+                    .text_color(p.text)
+                    .children(
+                        notice
+                            .body
+                            .split('\n')
+                            .map(str::trim)
+                            .filter(|line| !line.is_empty())
+                            .map(|line| div().child(line.to_owned())),
+                    ),
+            )
+            .child(
+                div()
+                    .h_flex()
+                    .items_center()
+                    .justify_between()
+                    .px(px(20.))
+                    .pb(px(16.))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(if remaining > 0 {
+                                format!("还有 {remaining} 条提示")
+                            } else {
+                                String::new()
+                            }),
+                    )
+                    .child(
+                        Button::new("dismiss-host-notice")
+                            .label("知道了")
+                            .primary()
+                            .rounded(px(999.))
+                            .small()
+                            .px(px(13.))
+                            .py(px(3.))
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                if !view.notices.is_empty() {
+                                    view.notices.remove(0);
+                                }
+                                cx.notify();
+                            })),
+                    ),
+            );
+        div()
+            .relative()
+            .size_full()
+            .child(workspace)
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .h_flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(gpui_kit::hsla(0., 0., 0., 0.42))
+                    .child(card),
+            )
+            .into_any_element()
     }
 }
 

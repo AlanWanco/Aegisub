@@ -19,6 +19,7 @@
 #include "async_video_provider.h"
 #include "include/aegisub/context.h"
 #include "format.h"
+#include "gpui_bridge.h"
 #include "help_button.h"
 #include "options.h"
 #include "resolution_resampler.h"
@@ -116,6 +117,13 @@ bool check_ar_changed(int sx, int sy, int vx, int vy) {
 
 // Basically a wxGetSingleChoiceIndex that also shows a Help button
 int prompt_choice_dialog(const wxString& message, const wxString& caption, const wxArrayString& choices, int initialSelection, wxWindow *parent) {
+	// The GPUI front end never shows wx dialogs, so hand the question over as a
+	// notice and fall through to the "do nothing" choice.
+	if (gpui::FrontendAttached()) {
+		gpui::PushNotice(caption.ToStdString(wxConvUTF8), message.ToStdString(wxConvUTF8));
+		return -1;
+	}
+
 	wxDialog d(parent, -1, caption);
 
 	auto sizer = new wxBoxSizer(wxVERTICAL);
@@ -155,8 +163,7 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 		// Warn on an untagged matrix but not on an untagged range:
 		// No sane player will ever guess a full range, so an untagged range is not really an issue in practice.
 
-		wxMessageBox(
-			fmt_tl(
+		auto untagged = fmt_tl(
 			/* TRANSLATORS: Keep the space between the two line breaks; it's required for the message
 			                to display correctly on Windows. */
 			"The video you have loaded has no specified color matrix. "
@@ -164,15 +171,23 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 			"This may make the video appear with different colors in different media players and can prevent subtitle colors from matching video colors."
 			"\n \n"
 			"Consider tagging your video with a color matrix to ensure that your video displays consistently in all players and that subtitle colors can reliably match video colors."
-			, ycbcr::matrix_to_string(guessCM)), _("Untagged video"), wxICON_WARNING | wxOK | wxCENTER);
+			, ycbcr::matrix_to_string(guessCM));
+		if (gpui::FrontendAttached())
+			gpui::PushNotice(_("Untagged video").ToStdString(wxConvUTF8), untagged.ToStdString(wxConvUTF8));
+		else
+			wxMessageBox(untagged, _("Untagged video"), wxICON_WARNING | wxOK | wxCENTER);
 	}
 
 	if (new_provider->IsHDRorWCG() && OPT_GET("Video/HDR Video Warning")->GetBool()) {
-		wxMessageBox(_(
+		auto hdr = _(
 			"The video you have loaded has HDR and/or WCG colors. "
 			"While ordinary dialogue subtitles will work fine on such videos, "
 			"matching video colors using subtitles will not be possible on HDR and/or WCG footage."
-			), _("HDR and/or WCG video"), wxICON_WARNING | wxOK | wxCENTER);
+			);
+		if (gpui::FrontendAttached())
+			gpui::PushNotice(_("HDR and/or WCG video").ToStdString(wxConvUTF8), hdr.ToStdString(wxConvUTF8));
+		else
+			wxMessageBox(hdr, _("HDR and/or WCG video"), wxICON_WARNING | wxOK | wxCENTER);
 	}
 
 	auto script_matrix = file->GetYCbCrMatrix();
