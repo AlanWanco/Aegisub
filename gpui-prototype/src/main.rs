@@ -7623,6 +7623,7 @@ impl Workspace {
                     ),
             );
         div()
+            .relative()
             .v_flex()
             .flex_1()
             .min_w_0()
@@ -7632,6 +7633,10 @@ impl Workspace {
             .border_1()
             .border_color(p.border)
             .bg(line_bg)
+            // The list viewport paints a square background that gpui clips to
+            // a rectangle, so it covers the card's rounded bottom corners.
+            // Stop the list a radius short of the edge instead.
+            .pb(px(crate::workspace_theme::RADIUS_LG))
             .shadow(crate::page::card_shadow(dark))
             .child(editor_section.h(px(editor_height)).flex_shrink_0())
             .child(
