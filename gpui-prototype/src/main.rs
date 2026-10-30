@@ -8142,9 +8142,13 @@ impl Render for Workspace {
                 self.editor_line_id = line.id;
                 self.editor_dirty_line = -1;
             } else if self.editor_dirty_line != line.id
+                && !self.editor.read(cx).focus_handle(cx).is_focused(window)
                 && self.editor.read(cx).value().as_ref() != line.text
             {
                 // A change made in Aegisub (undo, Lua, or the original editor) replaces the local draft.
+                // Never while the editor has focus: `set_value` resets the selection to
+                // 0..0, and doing that in the middle of an IME composition throws the
+                // caret back to the start of the line.
                 let text = line.text.clone();
                 self.editor
                     .update(cx, |state, cx| state.set_value(text, window, cx));
