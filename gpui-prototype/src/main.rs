@@ -1466,12 +1466,17 @@ impl Workspace {
         if self.snapshot.video != playback.video || self.video_epoch != playback.video_epoch {
             return;
         }
+        let frame = self.snapshot.frame;
         self.snapshot.frame = playback.frame;
         self.snapshot.video_time = playback.video_time;
         self.snapshot.playing = playback.playing;
         self.snapshot.audio.playing = playback.audio_playing;
         self.snapshot.audio.position = playback.audio_position;
-        cx.notify();
+        // The poll runs many times per frame; repainting the whole workspace on
+        // every tick costs more than the video decode it is waiting for.
+        if self.snapshot.frame != frame {
+            cx.notify();
+        }
     }
 
     fn select_lines(&mut self, id: i64, extend: bool, toggle: bool, cx: &mut Context<Self>) {
@@ -5325,8 +5330,12 @@ impl Workspace {
         }
         // Keeping the previous image up while the replacement is fetched stops
         // visual drags from flashing the placeholder on every step.
+        // During playback a request has to stay pending: the host only renders
+        // into a waiting client, so a gap between requests drops the frames the
+        // controller produced in the meantime.
         if self.frame_request_inflight
-            || (self.frame_image_frame == self.snapshot.frame
+            || (!self.snapshot.playing
+                && self.frame_image_frame == self.snapshot.frame
                 && self.frame_image_revision == self.snapshot.revision)
         {
             return;
@@ -5430,6 +5439,14 @@ impl Workspace {
                             if view.snapshot.video && view.video_epoch == request_epoch
                                 && (view.snapshot.frame == frame
                                     || (view.snapshot.playing && frame >= view.frame_image_frame)) {
+                                // Ask for the next frame before touching the
+                                // image: the upload and repaint below cost a few
+                                // milliseconds, and the host only renders into a
+                                // client that is already waiting, so spending
+                                // them first makes the next frame arrive late.
+                                if view.snapshot.playing {
+                                    view.refresh_frame(cx);
+                                }
                                 view.replace_frame_image(image, frame, request_revision);
                                 cx.notify();
                             } else {
@@ -8654,8 +8671,11 @@ fn open_workspace(
                     if weak.upgrade().is_none() {
                         break;
                     }
+                    // A full document snapshot is a large reply; during
+                    // playback it competes with the frame requests, so only
+                    // refresh it when the document can actually have changed.
                     let read_document =
-                        !playing || last_document_snapshot.elapsed() >= Duration::from_millis(350);
+                        !playing || last_document_snapshot.elapsed() >= Duration::from_millis(800);
                     let result = if read_document {
                         poll_bridge.snapshot().await.map(Ok)
                     } else {
@@ -8695,8 +8715,11 @@ fn open_workspace(
                             }
                         }
                     }
+                    // The frame request is throttled by frame_request_inflight,
+                    // so a short tick during playback costs nothing and keeps
+                    // the next request from waiting on a fixed timer.
                     cx.background_executor()
-                        .timer(Duration::from_millis(if playing { 40 } else { 350 }))
+                        .timer(Duration::from_millis(if playing { 16 } else { 350 }))
                         .await;
                 }
             })
