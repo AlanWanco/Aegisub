@@ -8527,10 +8527,21 @@ impl Render for Workspace {
                         .min_w_0()
                         .min_h_0()
                         .gap_0p5()
+                        // Audio and video share the left column: the text editor
+                        // and the subtitle list own the right one.
+                        .child(self.audio.render_compact(
+                            &self.snapshot.audio,
+                            self.snapshot.video,
+                            &self.snapshot.appearance,
+                            self.audio_panel_height,
+                            focus_area == KeyFocus::Audio,
+                            cx,
+                        ))
+                        .child(audio_handle)
                         .child(self.render_player(
                             window,
                             side_by_side,
-                            properties_rail.is_some(),
+                            side_by_side,
                             focus_area == KeyFocus::Video,
                             cx,
                         ))
@@ -8573,15 +8584,6 @@ impl Render for Workspace {
                     .overflow_hidden()
                     .gap_1()
                     .p_2()
-                    .child(self.audio.render_compact(
-                        &self.snapshot.audio,
-                        self.snapshot.video,
-                        &self.snapshot.appearance,
-                        self.audio_panel_height,
-                        focus_area == KeyFocus::Audio,
-                        cx,
-                    ))
-                    .child(audio_handle)
                     .child(columns),
             );
         } else if self.active_panel == Panel::Visual {
