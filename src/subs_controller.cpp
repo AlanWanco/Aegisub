@@ -15,6 +15,7 @@
 // Aegisub Project http://www.aegisub.org/
 
 #include "subs_controller.h"
+#include "gpui_bridge.h"
 
 #include "ass_attachment.h"
 #include "ass_dialogue.h"
@@ -243,6 +244,14 @@ int SubsController::TryToClose(bool allow_cancel) const {
 	int flags = wxYES_NO;
 	if (allow_cancel)
 		flags |= wxCANCEL;
+	if (gpui::FrontendAttached()) {
+		// The front end asked for this over the bridge, so a modal dialog would
+		// deadlock it. Refuse the switch and let the user save first.
+		gpui::PushNotice(from_wx(_("Unsaved changes")),
+			from_wx(fmt_tl("Do you want to save changes to %s?", Filename())) + "\n\n" +
+			from_wx(_("Save the subtitles before switching files.")));
+		return wxCANCEL;
+	}
 	int result = wxMessageBox(fmt_tl("Do you want to save changes to %s?", Filename()), _("Unsaved changes"), flags, context->parent);
 	if (result == wxYES) {
 		cmd::call("subtitle/save", context);

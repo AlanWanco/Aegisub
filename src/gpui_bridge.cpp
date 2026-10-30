@@ -893,10 +893,14 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			if (!is_json_string(path_it->second))
 				return R"({"ok":false,"error":"save path must be a string"})";
 			std::string const& path = path_it->second;
-			if (wxFileExists(wxString::FromUTF8(path)) && wxMessageBox(
-				wxString::Format(_("The file %s already exists. Replace it?"), wxString::FromUTF8(path)),
-				_("Confirm Save As"), wxYES_NO | wxNO_DEFAULT | wxICON_WARNING | wxCENTER, nullptr) != wxYES)
+			if (wxFileExists(wxString::FromUTF8(path))) {
+				// A modal prompt inside the bridge handler would block the front
+				// end that is waiting for this response.
+				gpui::PushNotice(from_wx(_("Confirm Save As")),
+					from_wx(wxString::Format(_("The file %s already exists. Replace it?"), wxString::FromUTF8(path))) +
+					"\n\n" + from_wx(_("Pick a different name, or delete the old file first.")));
 				return R"({"ok":false,"error":"save was cancelled"})";
+			}
 			context->subsController->Save(agi::fs::path(path));
 			return R"({"ok":true})";
 		}

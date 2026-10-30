@@ -15,6 +15,7 @@
 // Aegisub Project http://www.aegisub.org/
 
 #include "project.h"
+#include "gpui_bridge.h"
 
 #include "ass_dialogue.h"
 #include "ass_file.h"
@@ -86,6 +87,10 @@ void Project::ReloadVideo() {
 }
 
 void Project::ShowError(wxString const& message) {
+	if (gpui::FrontendAttached()) {
+		gpui::PushNotice(from_wx(_("Error loading file")), from_wx(message));
+		return;
+	}
 	wxMessageBox(message, _("Error loading file"), wxOK | wxICON_ERROR | wxCENTER, context->parent);
 }
 
@@ -232,6 +237,13 @@ void Project::LoadUnloadFiles(ProjectProperties properties) {
 		if (keyframes != keyframes_file)
 			append_file(keyframes, _("Unload keyframes"), _("Load keyframes file: %s"));
 
+		if (gpui::FrontendAttached()) {
+			// A modal prompt here would block the bridge while the front end
+			// waits for this very call; report it and keep the files unloaded.
+			gpui::PushNotice(from_wx(_("(Un)Load files?")),
+				from_wx(str) + "\n\n" + from_wx(_("Load them from the video settings panel.")));
+			return;
+		}
 		if (wxMessageBox(str, _("(Un)Load files?"), wxYES_NO | wxCENTRE, context->parent) != wxYES)
 			return;
 	}
@@ -393,8 +405,12 @@ bool Project::DoLoadVideo(agi::fs::path const& path) {
 	SetPath(video_file, "?video", "Video", path);
 
 	std::string warning = video_provider->GetWarning();
-	if (!warning.empty())
-		wxMessageBox(to_wx(warning), _("Warning"), wxICON_WARNING | wxOK);
+	if (!warning.empty()) {
+		if (gpui::FrontendAttached())
+			gpui::PushNotice(from_wx(_("Warning")), warning);
+		else
+			wxMessageBox(to_wx(warning), _("Warning"), wxICON_WARNING | wxOK);
+	}
 
 	video_has_subtitles = false;
 	if (agi::fs::HasExtension(path, "mkv"))

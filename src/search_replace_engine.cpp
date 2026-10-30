@@ -15,6 +15,9 @@
 // Aegisub Project http://www.aegisub.org/
 
 #include "search_replace_engine.h"
+#include "compat.h"
+#include "utils.h"
+#include "gpui_bridge.h"
 
 #include "ass_dialogue.h"
 #include "ass_file.h"
@@ -276,6 +279,13 @@ size_t SearchReplaceEngine::ReplaceAllMatches() {
 bool SearchReplaceEngine::ReplaceAll() {
 	if (!initialized) return false;
 	auto count = ReplaceAllMatches();
+	if (gpui::FrontendAttached()) {
+		if (count)
+			gpui::PushNotice(from_wx(_("Replace")), from_wx(fmt_plural(count, "One match was replaced.", "%d matches were replaced.", static_cast<int>(count))));
+		else
+			gpui::PushNotice(from_wx(_("Replace")), from_wx(_("No matches found.")));
+		return true;
+	}
 	if (count) wxMessageBox(fmt_plural(count, "One match was replaced.", "%d matches were replaced.", static_cast<int>(count)));
 	else wxMessageBox(_("No matches found."));
 	return true;
