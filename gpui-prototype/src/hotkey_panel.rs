@@ -5,7 +5,6 @@ use gpui_kit::component::{
     StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
-    scroll::ScrollableElement,
 };
 use gpui_kit::{
     App, AppContext, Context, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
@@ -169,14 +168,15 @@ impl HotkeyPanel {
                     .min_w_0()
                     .child(crate::page::field_label(cx, "命令")),
             );
+        // No inner scroll box: a nested scrollbar inside the page's own scroll
+        // container never receives the wheel, so the tail of the list was
+        // unreachable. Let the page scroll through all bindings instead.
         let mut list = div()
             .id("hotkey-binding-list")
             .v_flex()
             .w_full()
             .min_w_0()
-            .gap_0()
-            .max_h(px(420.))
-            .overflow_y_scrollbar();
+            .gap_0();
         for (index, binding) in self.bindings.iter().enumerate() {
             if !query.is_empty()
                 && !format!("{} {} {}", binding.context, binding.key, binding.command)
