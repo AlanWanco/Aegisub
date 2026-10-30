@@ -20,6 +20,15 @@ void PushNotice(std::string title, std::string body);
 /// Commands the front end owns (the colour pickers today) use this so Lua and
 /// the legacy menus do not pop a wx window over the GPUI frame.
 void PushCommand(std::string name);
+
+/// Publish a long-running task's progress so the front end can draw its own
+/// progress card. `fraction` is 0..1, or negative for an indeterminate task.
+/// The wx dialog is skipped entirely while a front end is attached.
+void PushProgress(std::string title, std::string message, double fraction,
+                  bool cancellable);
+void ClearProgress();
+/// Whether the user pressed cancel on the front end's progress card.
+bool ProgressCancelled();
 }
 
 class GpuiBridge {

@@ -394,6 +394,22 @@ struct PlaybackSnapshot {
     audio_position: i64,
 }
 
+/// Progress of a long host task (indexing, exporting, ...). The host used to
+/// draw this with a wx dialog; while the GPUI front end is attached it reports
+/// the state here instead and we draw the card.
+#[derive(Clone, Debug, Default, Deserialize)]
+struct Progress {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    message: String,
+    /// 0..1, or negative while the task cannot estimate its own progress.
+    #[serde(default)]
+    fraction: f64,
+    #[serde(default)]
+    cancellable: bool,
+}
+
 /// A warning the host could not show itself because it has no wx window.
 #[derive(Clone, Debug, Deserialize)]
 struct Notice {
@@ -562,6 +578,8 @@ struct Snapshot {
     lines: Vec<Line>,
     #[serde(default)]
     notices: Vec<Notice>,
+    #[serde(default)]
+    progress: Option<Progress>,
     /// Commands the host wants this front end to run, because it owns their UI.
     #[serde(default)]
     commands: Vec<String>,
@@ -1198,6 +1216,7 @@ impl Workspace {
             snapshot: Snapshot {
                 file: "正在连接 Aegisub…".into(),
                 notices: Vec::new(),
+                progress: None,
                 commands: Vec::new(),
                 modified: false,
                 can_save: false,
@@ -3050,6 +3069,124 @@ impl Workspace {
                 .await;
         })
         .detach();
+    }
+
+    /// Long host tasks (indexing a video, collecting fonts) report their state
+    /// through the snapshot; this draws the card the wx progress dialog used to.
+    fn render_progress_card(&mut self, cx: &mut Context<Self>) -> Option<gpui_kit::AnyElement> {
+        let progress = self.snapshot.progress.clone()?;
+        let p = Palette::current(cx);
+        let border = p.border;
+        let fraction = progress.fraction.clamp(-1., 1.);
+        let percent = if fraction < 0. {
+            None
+        } else {
+            Some((fraction * 100.).round() as i32)
+        };
+        let fill: f32 = if fraction < 0. {
+            0.28
+        } else {
+            fraction.max(0.02) as f32
+        };
+
+        Some(
+            div()
+                .id("host-progress")
+                .w(px(460.))
+                .max_w_full()
+                .v_flex()
+                .rounded(px(workspace_theme::RADIUS_LG))
+                .border_1()
+                .border_color(border)
+                .bg(p.surface)
+                .overflow_hidden()
+                .shadow_lg()
+                .child(
+                    div()
+                        .h_flex()
+                        .items_center()
+                        .gap_2()
+                        .px(px(20.))
+                        .py(px(14.))
+                        .bg(p.raised)
+                        .rounded_t(px(workspace_theme::RADIUS_LG - 1.))
+                        .border_b_1()
+                        .border_color(border)
+                        .child(
+                            Icon::new(IconName::Clock3)
+                                .size(px(16.))
+                                .text_color(p.accent),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                .child(if progress.title.is_empty() {
+                                    "处理中".to_string()
+                                } else {
+                                    progress.title.clone()
+                                }),
+                        ),
+                )
+                .child(
+                    div()
+                        .v_flex()
+                        .gap_3()
+                        .px(px(20.))
+                        .py(px(16.))
+                        .text_sm()
+                        .text_color(p.text)
+                        .child(if progress.message.is_empty() {
+                            "正在处理…".to_string()
+                        } else {
+                            progress.message.clone()
+                        })
+                        .child(
+                            div()
+                                .h(px(6.))
+                                .w_full()
+                                .rounded(px(999.))
+                                .bg(p.inset)
+                                .overflow_hidden()
+                                .child(
+                                    div()
+                                        .h_full()
+                                        .w(gpui_kit::relative(fill))
+                                        .rounded(px(999.))
+                                        .bg(p.accent),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .h_flex()
+                                .items_center()
+                                .justify_between()
+                                .child(div().text_xs().text_color(p.muted).child(match percent {
+                                    Some(percent) => format!("{percent}%"),
+                                    None => "正在计算进度…".to_string(),
+                                }))
+                                .when(progress.cancellable, |row| {
+                                    row.child(
+                                        Button::new("progress-cancel")
+                                            .label("取消")
+                                            .ghost()
+                                            .rounded(px(999.))
+                                            .small()
+                                            .px(px(13.))
+                                            .py(px(3.))
+                                            .on_click(cx.listener(|view, _, _, cx| {
+                                                view.cancel_progress(cx)
+                                            })),
+                                    )
+                                }),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn cancel_progress(&mut self, cx: &mut Context<Self>) {
+        self.invoke(json!({"op": "progress_cancel"}), cx);
     }
 
     fn render_color_dialog(
@@ -8306,6 +8443,18 @@ impl Render for Workspace {
                         gpui_kit::MouseButton::Left,
                         cx.listener(|view, _, _, cx| view.close_host_dialog(cx)),
                     )
+                    .child(card),
+            );
+        }
+        if let Some(card) = self.render_progress_card(cx) {
+            layered = layered.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .h_flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(gpui_kit::hsla(0., 0., 0., 0.42))
                     .child(card),
             );
         }

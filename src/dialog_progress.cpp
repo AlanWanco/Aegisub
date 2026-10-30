@@ -20,6 +20,7 @@
 #include "dialog_progress.h"
 
 #include "compat.h"
+#include "gpui_bridge.h"
 #include "utils.h"
 
 #include <libaegisub/dispatch.h>
@@ -27,6 +28,9 @@
 #include <libaegisub/util_osx.h>
 
 #include <atomic>
+#include <chrono>
+#include <thread>
+#include <wx/app.h>
 #include <wx/button.h>
 #include <wx/gauge.h>
 #include <wx/sizer.h>
@@ -107,6 +111,86 @@ public:
 	}
 };
 
+namespace {
+/// Publishes progress to the GPUI front end instead of driving a wx dialog, so
+/// the indexing dialog is drawn by the same UI as everything else.
+class GpuiProgressSink final : public agi::ProgressSink {
+	std::string title = "Working";
+	std::string message;
+	double fraction = 0.;
+	bool cancelled = false;
+
+	void Publish() {
+		gpui::PushProgress(title, message, fraction, true);
+	}
+
+public:
+	void SetIndeterminate() override {
+		fraction = -1.;
+		Publish();
+	}
+
+	void SetTitle(std::string const& value) override {
+		title = value;
+		Publish();
+	}
+
+	void SetMessage(std::string const& value) override {
+		message = value;
+		Publish();
+	}
+
+	void SetProgress(int64_t cur, int64_t max) override {
+		fraction = max > 0 ? std::clamp(double(cur) / double(max), 0., 1.) : 0.;
+		Publish();
+	}
+
+	void Log(std::string const& str) override {
+		gpui::PushNotice(title, str);
+	}
+
+	bool IsCancelled() override {
+		cancelled = cancelled || gpui::ProgressCancelled();
+		return cancelled;
+	}
+};
+}
+
+void DialogProgress::RunInFrontend(std::function<void(agi::ProgressSink*)> task) {
+	GpuiProgressSink ps;
+	std::atomic<bool> done{false};
+	std::exception_ptr failure;
+
+	auto work = [&] {
+		agi::osx::AppNapDisabler app_nap_disabler("Working");
+		try {
+			task(&ps);
+		}
+		catch (...) {
+			failure = std::current_exception();
+		}
+		done = true;
+	};
+
+	if (wxThread::IsMain()) {
+		agi::dispatch::Background().Async(work);
+		// The wx dialog used to keep the event loop turning through its modal
+		// loop; without it the bridge would stop answering until indexing ends.
+		while (!done) {
+			wxTheApp->Yield();
+			std::this_thread::sleep_for(std::chrono::milliseconds(8));
+		}
+	}
+	else {
+		work();
+	}
+
+	bool cancelled = ps.IsCancelled();
+	gpui::ClearProgress();
+	if (failure) std::rethrow_exception(failure);
+	if (cancelled) throw agi::UserCancelException("Cancelled by user");
+}
+
 DialogProgress::DialogProgress(wxWindow *parent, wxString const& title_text, wxString const& message)
 : wxDialog(parent, -1, title_text, wxDefaultPosition, wxDefaultSize, wxBORDER_RAISED)
 , pulse_timer(GetEventHandler())
@@ -140,6 +224,11 @@ DialogProgress::DialogProgress(wxWindow *parent, wxString const& title_text, wxS
 }
 
 void DialogProgress::Run(std::function<void(agi::ProgressSink*)> task) {
+	if (gpui::FrontendAttached()) {
+		RunInFrontend(std::move(task));
+		return;
+	}
+
 	DialogProgressSink ps(this);
 	this->ps = &ps;
 

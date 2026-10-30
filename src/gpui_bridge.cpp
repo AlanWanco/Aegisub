@@ -72,6 +72,17 @@ namespace {
 std::mutex notice_mutex;
 std::vector<std::pair<std::string, std::string>> pending_notices;
 std::vector<std::string> pending_commands;
+
+struct ProgressState {
+	bool active = false;
+	std::string title;
+	std::string message;
+	double fraction = 0.;
+	bool cancellable = true;
+	bool cancelled = false;
+};
+ProgressState progress_state;
+
 int attached_clients = 0;
 
 void AttachClient() {
@@ -167,6 +178,30 @@ void gpui::PushCommand(std::string name) {
 	std::lock_guard<std::mutex> lock(notice_mutex);
 	if (attached_clients == 0) return;
 	pending_commands.push_back(std::move(name));
+}
+
+void gpui::PushProgress(std::string title, std::string message, double fraction,
+                        bool cancellable) {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients == 0) return;
+	// A new task starts with a clean cancel flag; a task that keeps publishing
+	// must not wipe a cancel the user already pressed.
+	if (!progress_state.active) progress_state.cancelled = false;
+	progress_state.active = true;
+	progress_state.title = std::move(title);
+	progress_state.message = std::move(message);
+	progress_state.fraction = fraction;
+	progress_state.cancellable = cancellable;
+}
+
+void gpui::ClearProgress() {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	progress_state = ProgressState{};
+}
+
+bool gpui::ProgressCancelled() {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	return progress_state.cancelled;
 }
 
 struct GpuiBridge::Impl final : wxEvtHandler {
@@ -426,6 +461,14 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "save_media") { BeginResponse(socket, client, gpui::SaveMedia(context, object)); return; }
 		if (op == "preferences") { BeginResponse(socket, client, gpui::Preferences(object)); return; }
 		if (op == "hotkeys") { BeginResponse(socket, client, gpui::Hotkeys(object)); return; }
+		if (op == "progress_cancel") {
+			{
+				std::lock_guard<std::mutex> lock(notice_mutex);
+				if (progress_state.active) progress_state.cancelled = true;
+			}
+			BeginResponse(socket, client, "{\"ok\":true}");
+			return;
+		}
 		if (op == "snapshot") { BeginResponse(socket, client, Snapshot()); return; }
 		if (op == "playback") { BeginResponse(socket, client, PlaybackSnapshot()); return; }
 		if (op == "video_settings") { BeginResponse(socket, client, gpui::VideoSettings(context, object)); return; }
@@ -566,6 +609,19 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			pending_commands.clear();
 		}
 		out << ']';
+		out << ",\"progress\":";
+		{
+			std::lock_guard<std::mutex> lock(notice_mutex);
+			if (progress_state.active) {
+				out << "{\"title\":" << quote_json(progress_state.title)
+				    << ",\"message\":" << quote_json(progress_state.message)
+				    << ",\"fraction\":" << progress_state.fraction
+				    << ",\"cancellable\":" << (progress_state.cancellable ? "true" : "false")
+				    << '}';
+			}
+			else
+				out << "null";
+		}
 		out << ",\"active\":";
 		auto active = context->selectionController->GetActiveLine();
 		out << (active ? active->Id : -1) << ",\"selected\":[";

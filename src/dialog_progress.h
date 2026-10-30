@@ -52,6 +52,8 @@ class DialogProgress final : public wxDialog, public agi::BackgroundRunner {
 	std::chrono::steady_clock::time_point progress_anim_start_time;
 	int progress_anim_duration = 0;
 
+	void RunInFrontend(std::function<void(agi::ProgressSink*)> task);
+
 	void OnShow(wxShowEvent&);
 	void OnCancel(wxCommandEvent &);
 	void OnIdle(wxIdleEvent&);
