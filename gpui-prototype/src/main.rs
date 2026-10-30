@@ -7445,6 +7445,58 @@ impl Workspace {
                     })),
             );
         }
+        // Playback lives next to the text it affects: jumping frames or replaying
+        // the current line used to require moving the pointer to the video panel.
+        let mut playback_toolbar = div().h_flex().flex_wrap().gap_1().items_center();
+        for (id, label, icon, name) in [
+            ("editor-play", "播放/暂停", IconName::Play, "video/play"),
+            (
+                "editor-prev-frame",
+                "上一帧",
+                IconName::ChevronLeft,
+                "video/frame/prev",
+            ),
+            (
+                "editor-next-frame",
+                "下一帧",
+                IconName::ChevronRight,
+                "video/frame/next",
+            ),
+            (
+                "editor-play-line-video",
+                "播放当前行视频",
+                IconName::Video,
+                "video/play/line",
+            ),
+            (
+                "editor-play-line-audio",
+                "播放当前行音频",
+                IconName::AudioLines,
+                "audio/play/selection",
+            ),
+            ("editor-undo", "撤销", IconName::Undo2, "edit/undo"),
+            ("editor-redo", "重做", IconName::Redo2, "edit/redo"),
+        ] {
+            let enabled = self
+                .catalog
+                .command(name)
+                .is_some_and(|command| command.can_invoke());
+            playback_toolbar = playback_toolbar.child(
+                Button::new(id)
+                    .rounded(gpui_kit::px(999.))
+                    .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
+                    .child(Icon::new(icon).size(px(15.)))
+                    .accessibility_label(label)
+                    .tooltip(label)
+                    .ghost()
+                    .disabled(!enabled)
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":name}), cx)
+                    })),
+            );
+        }
         let row_count = visible.len();
         let properties_rail =
             rail.map(|width| self.render_properties(Some(width), cx).into_any_element());
@@ -7537,6 +7589,7 @@ impl Workspace {
                             ),
                     )
                     .child(format_toolbar)
+                    .child(playback_toolbar)
                     .child(editor.flex_1().min_h(px(40.)))
                     .child(line_field_row(cx, self, &p));
         let editor_section = div()
