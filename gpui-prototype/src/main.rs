@@ -572,6 +572,9 @@ struct Snapshot {
     active: i64,
     #[serde(default)]
     selected: Vec<i64>,
+    /// Style names in the script, for the line property dropdown.
+    #[serde(default)]
+    styles: Vec<String>,
     #[serde(default)]
     text_selection: [usize; 2],
     #[serde(default)]
@@ -669,13 +672,47 @@ fn line_field_row(
                 .min_w_0()
                 .gap_1()
                 .child(div().text_size(px(11.)).text_color(p.muted).child(label))
-                .child(
+                .child(if key == "style" {
+                    // Style names come from the script, so a text box only ever
+                    // produced typos: pick one of the styles that exist.
+                    let options = view.snapshot.styles.clone();
+                    let current = view.property_inputs[key].read(cx).value().to_string();
+                    let weak = cx.weak_entity();
+                    let disabled = view.selected_line < 0;
+                    let label = current.clone();
+                    page::select_trigger(cx, "editor-style-select", label, disabled)
+                        .accessibility_label("样式")
+                        .dropdown_menu(move |mut menu, _, _| {
+                            for name in options.iter() {
+                                let choice = name.clone();
+                                let target = weak.clone();
+                                menu = menu.item(PopupMenuItem::new(choice.clone()).on_click(
+                                    move |_, window, cx| {
+                                        let choice = choice.clone();
+                                        let _ = target.update(cx, |view, cx| {
+                                            if let Some(input) = view.property_inputs.get("style") {
+                                                input.update(cx, |state, cx| {
+                                                    state.set_value(choice.clone(), window, cx);
+                                                });
+                                            }
+                                            view.properties_dirty = true;
+                                            view.commit_properties(cx);
+                                            cx.notify();
+                                        });
+                                    },
+                                ));
+                            }
+                            menu
+                        })
+                        .into_any_element()
+                } else {
                     Input::new(&view.property_inputs[key])
                         .id(format!("editor-{key}"))
                         .aria_label(label)
                         .h(px(28.))
-                        .w_full(),
-                ),
+                        .w_full()
+                        .into_any_element()
+                }),
         );
     }
     row.child(
@@ -1229,6 +1266,7 @@ impl Workspace {
                 timecodes: false,
                 playing: false,
                 audio: AudioState::default(),
+                styles: Vec::new(),
                 frame: 0,
                 frame_count: 0,
                 video_time: 0,

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #include "gpui_bridge.h"
+#include "ass_style.h"
+
 #include "gpui_audio.h"
 #include "gpui_automation.h"
 #include "gpui_color.h"
@@ -584,6 +586,16 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		    << ",\"video_ctrl_scroll\":" << OPT_GET("Video/Ctrl Scroll Action")->GetInt()
 		    << ",\"video_shift_scroll\":" << OPT_GET("Video/Shift Scroll Action")->GetInt()
 		    << ",\"video_overscan\":" << (OPT_GET("Video/Overscan Mask")->GetBool() ? "true" : "false");
+		out << ",\"styles\":[";
+		{
+			bool first_style = true;
+			for (auto const& style : context->ass->Styles) {
+				if (!first_style) out << ',';
+				first_style = false;
+				out << quote_json(style.name);
+			}
+		}
+		out << ']';
 		out << ",\"audio\":" << audio.Snapshot();
 		out << ",\"notices\":[";
 		{
