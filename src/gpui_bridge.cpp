@@ -542,6 +542,13 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "edit") { BeginResponse(socket, client, Edit(object)); return; }
 		if (op == "line_fields") { BeginResponse(socket, client, LineFields(object)); return; }
 		if (op == "seek") { BeginResponse(socket, client, Seek(object)); return; }
+		if (op == "linked_files") {
+			auto value = object.find("apply");
+			bool const apply = value != object.end() && static_cast<json::Boolean const&>(value->second);
+			context->project->AnswerLinkedFiles(apply);
+			BeginResponse(socket, client, R"({"ok":true})");
+			return;
+		}
 		if (op == "notice_discard") {
 			// The user answered "don't save": put the document back to what is on
 			// disk so nothing is lost silently. An untitled document has no file to

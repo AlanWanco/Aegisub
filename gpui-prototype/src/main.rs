@@ -8814,7 +8814,46 @@ impl Render for Workspace {
                                         })),
                                 )
                             })
-                            .when(notice.kind != "unsaved" && !notice.suppress.is_empty(), |row| {
+                            .when(notice.kind == "linked", |row| {
+                                row.child(div().flex_1())
+                                    .child(
+                                        Button::new("notice-linked-skip")
+                                            .label("不打开")
+                                            .rounded(px(999.))
+                                            .px(px(13.))
+                                            .py(px(3.))
+                                            .ghost()
+                                            .on_click(cx.listener(|view, _, _, cx| {
+                                                view.invoke(
+                                                    json!({"op":"linked_files","apply":false}),
+                                                    cx,
+                                                );
+                                                if !view.notices.is_empty() {
+                                                    view.notices.remove(0);
+                                                }
+                                                cx.notify();
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("notice-linked-apply")
+                                            .label("确定")
+                                            .primary()
+                                            .rounded(px(999.))
+                                            .px(px(13.))
+                                            .py(px(3.))
+                                            .on_click(cx.listener(|view, _, _, cx| {
+                                                view.invoke(
+                                                    json!({"op":"linked_files","apply":true}),
+                                                    cx,
+                                                );
+                                                if !view.notices.is_empty() {
+                                                    view.notices.remove(0);
+                                                }
+                                                cx.notify();
+                                            })),
+                                    )
+                            })
+                            .when(notice.kind != "unsaved" && notice.kind != "linked" && !notice.suppress.is_empty(), |row| {
                                 let key = notice.suppress.clone();
                                 row.child(
                                     Button::new("host-notice-suppress")
@@ -8853,7 +8892,11 @@ impl Render for Workspace {
                                         })),
                                 )
                             })
-                            .when(notice.kind != "unsaved" && notice.suppress.is_empty(), |row| {
+                            .when(
+                                notice.kind != "unsaved"
+                                    && notice.kind != "linked"
+                                    && notice.suppress.is_empty(),
+                                |row| {
                                 row.child(
                                     Button::new("dismiss-host-notice")
                                         .label("知道了")

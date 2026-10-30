@@ -189,7 +189,14 @@ void Project::CloseSubtitles() {
 	context->selectionController->SetSelectionAndActive({line}, line);
 }
 
-void Project::LoadUnloadFiles(ProjectProperties properties) {
+void Project::AnswerLinkedFiles(bool apply) {
+	if (!pending_linked) return;
+	ProjectProperties properties = std::move(*pending_linked);
+	pending_linked.reset();
+	if (apply) LoadUnloadFiles(properties, false);
+}
+
+void Project::LoadUnloadFiles(ProjectProperties properties, bool ask) {
 	auto load_linked = OPT_GET("App/Auto/Load Linked Files")->GetInt();
 	if (!load_linked) return;
 
@@ -218,6 +225,7 @@ void Project::LoadUnloadFiles(ProjectProperties properties) {
 		if (video == video_file && audio == audio_file && keyframes == keyframes_file && timecodes == timecodes_file)
 			return;
 
+		if (ask) {
 		wxString str = _("Do you want to load/unload the associated files?");
 		str += "\n";
 
@@ -239,13 +247,15 @@ void Project::LoadUnloadFiles(ProjectProperties properties) {
 
 		if (gpui::FrontendAttached()) {
 			// A modal prompt here would block the bridge while the front end
-			// waits for this very call; report it and keep the files unloaded.
-			gpui::PushNotice(from_wx(_("(Un)Load files?")),
-				from_wx(str) + "\n\n" + from_wx(_("Load them from the video settings panel.")));
+			// waits for this very call, so the files stay unloaded until the
+			// notice's buttons come back through ApplyLinkedFiles.
+			pending_linked = std::make_unique<ProjectProperties>(properties);
+			gpui::PushNotice(from_wx(_("(Un)Load files?")), from_wx(str), {}, "linked");
 			return;
 		}
 		if (wxMessageBox(str, _("(Un)Load files?"), wxYES_NO | wxCENTRE, context->parent) != wxYES)
 			return;
+		}
 	}
 
 	auto is_linked_avisynth = [](agi::fs::path const& linked, agi::fs::path const& current) {

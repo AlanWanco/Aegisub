@@ -59,7 +59,10 @@ class Project : private agi::signal::ConnectionScope {
 	void DoLoadTimecodes(agi::fs::path const& path);
 	void DoLoadKeyframes(agi::fs::path const& path);
 
-	void LoadUnloadFiles(ProjectProperties properties);
+	void LoadUnloadFiles(ProjectProperties properties, bool ask = true);
+	/// Pending linked-file answer: the paths the script asks for, kept until the
+	/// front end answers the notice.
+	std::unique_ptr<ProjectProperties> pending_linked;
 	void UpdateRelativePaths();
 	void ReloadAudio();
 	void ReloadVideo();
@@ -73,6 +76,8 @@ public:
 	void LoadSubtitles(agi::fs::path path, std::string encoding="", bool load_linked=true);
 	void SetSubtitlesFilename(agi::fs::path path);
 	void CloseSubtitles();
+	/// Answer the "(Un)Load files?" prompt the front end is showing.
+	void AnswerLinkedFiles(bool apply);
 	bool CanLoadSubtitlesFromVideo() const { return video_has_subtitles; }
 
 	void LoadAudio(agi::fs::path path);
