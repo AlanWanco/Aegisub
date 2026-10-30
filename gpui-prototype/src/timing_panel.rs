@@ -115,12 +115,7 @@ impl TimingPanel {
         self.error = None;
     }
 
-    pub fn render(
-        &self,
-        snapshot: &Snapshot,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) -> impl IntoElement {
+    pub fn render(&self, snapshot: &Snapshot, cx: &mut Context<Workspace>) -> impl IntoElement {
         let disabled = self.loading || !self.initialized;
         let p = crate::workspace_theme::Palette::current(cx);
         let units = crate::page::segmented(
@@ -220,15 +215,12 @@ impl TimingPanel {
                 .map_or(0, |index| snapshot.lines.len() - index),
             _ => snapshot.lines.len(),
         };
-        let form_max = (f32::from(window.viewport_size().height) * 0.62).max(260.) - 150.;
         let mut form = div()
             .id("shift-parameters-scroll")
             .v_flex()
-            .max_h(px(form_max.max(160.)))
             .min_w_0()
             .p_4()
             .gap_3()
-            .overflow_y_scrollbar()
             .child(units)
             .child(
                 div()

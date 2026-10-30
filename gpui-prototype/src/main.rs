@@ -8145,7 +8145,7 @@ impl Render for Workspace {
         } else if self.active_panel == Panel::Resample {
             body = body.child(self.resample.render(cx));
         } else if self.active_panel == Panel::Timing {
-            body = body.child(self.timing.render(&self.snapshot, window, cx));
+            body = body.child(self.timing.render(&self.snapshot, cx));
         } else if self.active_panel == Panel::Styles {
             body = body.child(self.document.render_styles(self.style_preview_height, cx));
         } else {
@@ -8401,7 +8401,7 @@ fn open_workspace(
     let window_bounds = match bounds {
         Some(bounds) => WindowBounds::Windowed(bounds),
         None => match detached {
-            Some(_) => WindowBounds::centered(size(px(760.), px(640.)), cx),
+            Some(_) => WindowBounds::centered(size(px(820.), px(720.)), cx),
             None => WindowBounds::centered(size(px(1420.), px(920.)), cx),
         },
     };
@@ -8425,7 +8425,10 @@ fn open_workspace(
                 let mut view = Workspace::new(bridge.clone(), window, cx);
                 if let Some(panel) = detached {
                     view.detached = Some(panel);
-                    view.active_panel = panel;
+                    // Go through the normal activation path so the panel asks the
+                    // host for its state; assigning active_panel directly left the
+                    // detached window stuck on disabled, uninitialised controls.
+                    view.activate_panel(panel, window, cx);
                 }
                 view
             });
