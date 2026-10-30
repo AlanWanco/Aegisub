@@ -72,7 +72,13 @@
 
 namespace {
 std::mutex notice_mutex;
-std::vector<std::pair<std::string, std::string>> pending_notices;
+struct PendingNotice {
+	std::string title;
+	std::string body;
+	/// Option that turns this warning off; empty when the notice is one-shot.
+	std::string suppress;
+};
+std::vector<PendingNotice> pending_notices;
 std::vector<std::string> pending_commands;
 
 struct ProgressState {
@@ -173,7 +179,13 @@ bool gpui::FrontendAttached() {
 void gpui::PushNotice(std::string title, std::string body) {
 	std::lock_guard<std::mutex> lock(notice_mutex);
 	if (attached_clients == 0) return;
-	pending_notices.emplace_back(std::move(title), std::move(body));
+	pending_notices.push_back({std::move(title), std::move(body), {}});
+}
+
+void gpui::PushNotice(std::string title, std::string body, std::string suppress_option) {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients == 0) return;
+	pending_notices.push_back({std::move(title), std::move(body), std::move(suppress_option)});
 }
 
 void gpui::PushCommand(std::string name) {
@@ -522,6 +534,23 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "edit") { BeginResponse(socket, client, Edit(object)); return; }
 		if (op == "line_fields") { BeginResponse(socket, client, LineFields(object)); return; }
 		if (op == "seek") { BeginResponse(socket, client, Seek(object)); return; }
+		if (op == "notice_suppress") {
+			// Only the warnings that offer the switch may be silenced here; the
+			// socket is not a licence to write arbitrary preferences.
+			static const std::map<std::string, std::string> suppressible = {
+				{"Video/No LayoutRes in Script", "Video/No LayoutRes in Script"},
+				{"Video/No YCbCr Matrix in Script", "Video/No YCbCr Matrix in Script"},
+			};
+			std::string const& key = object.at("key");
+			if (!suppressible.count(key)) throw std::runtime_error("unsupported notice option: " + key);
+			OPT_SET(key)->SetInt(0);
+			// Write through now: the switch is a preference, and losing it when
+			// the app is killed before the next options flush would bring the
+			// prompt straight back.
+			config::opt->Flush();
+			BeginResponse(socket, client, R"({"ok":true})");
+			return;
+		}
 		if (op == "command") { BeginResponse(socket, client, Command(object)); return; }
 		if (op == "open") { BeginResponse(socket, client, Open(object)); return; }
 		if (op == "save_as") { BeginResponse(socket, client, SaveAs(object)); return; }
@@ -602,10 +631,14 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		{
 			std::lock_guard<std::mutex> lock(notice_mutex);
 			bool first_notice = true;
-			for (auto const& [title, body] : pending_notices) {
+			for (auto const& notice : pending_notices) {
 				if (!first_notice) out << ',';
 				first_notice = false;
-				out << "{\"title\":" << quote_json(title) << ",\"body\":" << quote_json(body) << '}';
+				out << "{\"title\":" << quote_json(notice.title)
+					<< ",\"body\":" << quote_json(notice.body);
+				if (!notice.suppress.empty())
+					out << ",\"suppress\":" << quote_json(notice.suppress);
+				out << '}';
 			}
 			pending_notices.clear();
 		}

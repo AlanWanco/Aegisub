@@ -116,11 +116,11 @@ bool check_ar_changed(int sx, int sy, int vx, int vy) {
 
 
 // Basically a wxGetSingleChoiceIndex that also shows a Help button
-int prompt_choice_dialog(const wxString& message, const wxString& caption, const wxArrayString& choices, int initialSelection, wxWindow *parent) {
+int prompt_choice_dialog(const wxString& message, const wxString& caption, const wxArrayString& choices, int initialSelection, wxWindow *parent, std::string const& suppress = {}) {
 	// The GPUI front end never shows wx dialogs, so hand the question over as a
 	// notice and fall through to the "do nothing" choice.
 	if (gpui::FrontendAttached()) {
-		gpui::PushNotice(caption.ToStdString(wxConvUTF8), message.ToStdString(wxConvUTF8));
+		gpui::PushNotice(caption.ToStdString(wxConvUTF8), message.ToStdString(wxConvUTF8), suppress);
 		return -1;
 	}
 
@@ -208,7 +208,8 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 				_("Set script's YCbCr Matrix?"),
 				{_("Leave YCbCr Matrix unset"), fmt_tl("Set script's YCbCr Matrix to the video's (\"%s\")", recommended_matrix.to_string().value())},
 				OPT_GET("Video/Last No YCbCr Matrix in Script Choice")->GetInt(),
-				parent
+				parent,
+				"Video/No YCbCr Matrix in Script"
 			);
 
 			if (Choice == -1) {
@@ -428,7 +429,8 @@ bool update_layout_res(AssFile *file, const AsyncVideoProvider *new_provider, wx
 				 fmt_tl("Set script's layout resolution to the video's (%d \u00D7 %d)", vx, vy), // U+00D7 multiplication sign
 				 fmt_tl("Set script's layout resolution to its script resolution (%d \u00D7 %d)", spx, spy)},
 				OPT_GET("Video/Last No LayoutRes in Script Choice")->GetInt(),
-				parent
+				parent,
+				"Video/No LayoutRes in Script"
 			);
 
 			if (Choice == -1) {

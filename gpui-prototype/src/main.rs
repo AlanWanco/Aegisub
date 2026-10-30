@@ -417,6 +417,9 @@ struct Notice {
     title: String,
     #[serde(default)]
     body: String,
+    /// Preference that silences this warning; empty for one-off notices.
+    #[serde(default)]
+    suppress: String,
 }
 
 /// Host-drawn dialogs the front end renders itself: about, log, language and
@@ -1043,6 +1046,8 @@ struct Workspace {
     selected_line: i64,
     status: String,
     notices: Vec<Notice>,
+    /// Ticked "do not show again" on the notice card currently on screen.
+    notice_suppress: bool,
     color_dialog: Option<ColorDialog>,
     color_hex_input: Entity<InputState>,
     color_alpha_input: Entity<InputState>,
@@ -1357,6 +1362,7 @@ impl Workspace {
             selected_line: -1,
             status: "已连接当前 Aegisub 文档".into(),
             notices: Vec::new(),
+            notice_suppress: false,
             color_dialog: None,
             color_hex_input,
             color_alpha_input,
@@ -8671,6 +8677,7 @@ impl Render for Workspace {
         }
         let notice = self.notices[0].clone();
         let remaining = self.notices.len() - 1;
+        let suppress_checked = self.notice_suppress && !notice.suppress.is_empty();
         let card = div()
             .id("host-notice")
             .w(px(520.))
@@ -8735,19 +8742,67 @@ impl Render for Workspace {
                         String::new()
                     }))
                     .child(
-                        Button::new("dismiss-host-notice")
-                            .label("知道了")
-                            .primary()
-                            .rounded(px(999.))
-                            .small()
-                            .px(px(13.))
-                            .py(px(3.))
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                if !view.notices.is_empty() {
-                                    view.notices.remove(0);
-                                }
-                                cx.notify();
-                            })),
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .gap_2()
+                            .when(!notice.suppress.is_empty(), |row| {
+                                let key = notice.suppress.clone();
+                                row.child(
+                                    Button::new("host-notice-suppress")
+                                        .label("下次不再提示")
+                                        .rounded(px(999.))
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .ghost()
+                                        .selected(suppress_checked)
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.notice_suppress = !view.notice_suppress;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(div().flex_1())
+                                .child(
+                                    Button::new("dismiss-host-notice")
+                                        .label("知道了")
+                                        .primary()
+                                        .rounded(px(999.))
+                                        .small()
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .on_click(cx.listener(move |view, _, _, cx| {
+                                            if view.notice_suppress && !key.is_empty() {
+                                                view.invoke(
+                                                    json!({"op":"notice_suppress","key":key}),
+                                                    cx,
+                                                );
+                                            }
+                                            view.notice_suppress = false;
+                                            if !view.notices.is_empty() {
+                                                view.notices.remove(0);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                            })
+                            .when(notice.suppress.is_empty(), |row| {
+                                row.child(
+                                    Button::new("dismiss-host-notice")
+                                        .label("知道了")
+                                        .primary()
+                                        .rounded(px(999.))
+                                        .small()
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.notice_suppress = false;
+                                            if !view.notices.is_empty() {
+                                                view.notices.remove(0);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                            }),
                     ),
             );
         layered
