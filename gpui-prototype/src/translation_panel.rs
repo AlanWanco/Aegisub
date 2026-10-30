@@ -79,84 +79,27 @@ impl TranslationPanel {
         audio: bool,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        // Toggles stay pills; the playback and undo actions are icon buttons.
-        let divider = crate::workspace_theme::Palette::current(cx).divider;
-        let mut options = div()
-            .h_flex()
-            .items_center()
-            .gap_1()
-            .child(
-                Button::new("translation-seek")
-                    .rounded(gpui_kit::px(999.))
-                    .small()
-                    .px(gpui_kit::px(13.))
-                    .py(gpui_kit::px(3.))
-                    .icon(IconName::Crosshair)
-                    .label("定位视频预览")
-                    .tooltip("切块时把视频定位到该块开始时间")
-                    .ghost()
-                    .when(self.seek, |button| button.primary())
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.translation.seek = !view.translation.seek;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("translation-skip-whitespace")
-                    .icon(IconName::SkipForward)
-                    .rounded(gpui_kit::px(999.))
-                    .small()
-                    .px(gpui_kit::px(13.))
-                    .py(gpui_kit::px(3.))
-                    .label("跳过空白块")
-                    .ghost()
-                    .when(self.skip_whitespace, |button| button.primary())
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.translation.skip_whitespace = !view.translation.skip_whitespace;
-                        view.translation_action("start", cx);
-                    })),
-            )
-            .child(div().w(px(1.)).h(px(18.)).mx_1().bg(divider));
-        for (id, icon, label, command, enabled) in [
-            (
-                "translation-video",
-                IconName::Video,
-                "播放当前行视频",
-                "video/play/line",
-                video,
-            ),
-            (
-                "translation-audio",
-                IconName::AudioLines,
-                "播放当前行音频",
-                "audio/play/selection",
-                audio,
-            ),
-            (
-                "translation-undo",
-                IconName::Undo2,
-                "撤销",
-                "edit/undo",
-                true,
-            ),
-        ] {
-            options = options.child(
-                Button::new(id)
-                    .rounded(gpui_kit::px(999.))
-                    .small()
-                    .px(gpui_kit::px(13.))
-                    .py(gpui_kit::px(3.))
-                    .child(gpui_kit::component::Icon::new(icon).size(gpui_kit::px(15.)))
-                    .accessibility_label(label)
-                    .tooltip(label)
-                    .ghost()
-                    .disabled(!enabled)
-                    .on_click(cx.listener(move |view, _, _, cx| {
-                        view.invoke(json!({"op":"command", "name":command}), cx)
-                    })),
-            );
-        }
+        // Two rows: every labelled action on the first, every icon-only action
+        // below. Mixed into one wrapped row they read as an undifferentiated
+        // strip and the icons looked like stray glyphs between the pills.
         let p = crate::workspace_theme::Palette::current(cx);
+        let divider = p.divider;
+        let separator = || div().w(px(1.)).h(px(18.)).bg(divider).into_any_element();
+        let pill = |id: &'static str| {
+            Button::new(id)
+                .rounded(gpui_kit::px(999.))
+                .small()
+                .px(gpui_kit::px(13.))
+                .py(gpui_kit::px(3.))
+        };
+        let icon_pill = |id: &'static str| {
+            Button::new(id)
+                .rounded(gpui_kit::px(999.))
+                .small()
+                .px(gpui_kit::px(11.))
+                .py(gpui_kit::px(3.))
+        };
+
         let status = if self.state.available {
             format!(
                 "行 {} / {} · 文本块 {} / {}{}",
@@ -173,63 +116,114 @@ impl TranslationPanel {
         } else {
             "当前脚本没有可翻译的文本块".to_owned()
         };
-        let divider = p.divider;
-        crate::page::page(cx, "translation-assistant")
-            .child(crate::page::toolbar([
-                Button::new("translation-commit").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .icon(IconName::Check)
-                    .label("提交并前进")
-                    .primary()
-                    .disabled(!self.state.available || self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("commit", cx)))
-                    .into_any_element(),
-                Button::new("translation-preview").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .icon(IconName::Eye)
-                    .label("提交并预览")
-                    .disabled(!self.state.available || self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("preview", cx)))
-                    .into_any_element(),
-                div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
-                Button::new("translation-prev").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .child(Icon::new(IconName::ChevronLeft).size(px(15.)))
-                    .accessibility_label("上一块")
-                    .tooltip("上一块")
+
+        let mut labelled = vec![
+            pill("translation-commit")
+                .icon(IconName::Check)
+                .label("提交并前进")
+                .primary()
+                .disabled(!self.state.available || self.loading)
+                .on_click(cx.listener(|view, _, _, cx| view.translation_action("commit", cx)))
+                .into_any_element(),
+            pill("translation-preview")
+                .icon(IconName::Eye)
+                .label("提交并预览")
+                .disabled(!self.state.available || self.loading)
+                .on_click(cx.listener(|view, _, _, cx| view.translation_action("preview", cx)))
+                .into_any_element(),
+            separator(),
+            pill("translation-original")
+                .icon(IconName::FileInput)
+                .label("插入原文")
+                .tooltip("把整行原文插入到译文")
+                .ghost()
+                .disabled(!self.state.available || self.loading)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.translation_action("insert_original", cx)
+                }))
+                .into_any_element(),
+            pill("translation-seek")
+                .icon(IconName::Crosshair)
+                .label("定位视频预览")
+                .tooltip("切块时把视频定位到该块开始时间")
+                .ghost()
+                .when(self.seek, |button| button.primary())
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.translation.seek = !view.translation.seek;
+                    cx.notify();
+                }))
+                .into_any_element(),
+            pill("translation-skip-whitespace")
+                .icon(IconName::SkipForward)
+                .label("跳过空白块")
+                .ghost()
+                .when(self.skip_whitespace, |button| button.primary())
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.translation.skip_whitespace = !view.translation.skip_whitespace;
+                    view.translation_action("start", cx);
+                }))
+                .into_any_element(),
+            div().flex_1().into_any_element(),
+            crate::page::badge(cx, status).into_any_element(),
+        ];
+        labelled.shrink_to_fit();
+
+        let mut icons = vec![
+            icon_pill("translation-prev")
+                .child(Icon::new(IconName::ChevronLeft).size(px(15.)))
+                .accessibility_label("上一块")
+                .tooltip("上一块")
+                .ghost()
+                .disabled(!self.state.available || self.loading)
+                .on_click(cx.listener(|view, _, _, cx| view.translation_action("prev", cx)))
+                .into_any_element(),
+            icon_pill("translation-next")
+                .child(Icon::new(IconName::ChevronRight).size(px(15.)))
+                .accessibility_label("下一块")
+                .tooltip("下一块")
+                .ghost()
+                .disabled(!self.state.available || self.loading)
+                .on_click(cx.listener(|view, _, _, cx| view.translation_action("next", cx)))
+                .into_any_element(),
+            separator(),
+            icon_pill("translation-refresh")
+                .child(Icon::new(IconName::RefreshCw).size(px(15.)))
+                .accessibility_label("从当前行刷新")
+                .tooltip("重新读取当前行与文本块")
+                .ghost()
+                .disabled(self.loading)
+                .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx)))
+                .into_any_element(),
+            separator(),
+        ];
+        for (id, icon, label, command, enabled) in [
+            ("translation-video", IconName::Video, "播放当前行视频", "video/play/line", video),
+            ("translation-audio", IconName::AudioLines, "播放当前行音频", "audio/play/selection", audio),
+            ("translation-undo", IconName::Undo2, "撤销", "edit/undo", true),
+        ] {
+            icons.push(
+                icon_pill(id)
+                    .child(Icon::new(icon).size(px(15.)))
+                    .accessibility_label(label)
+                    .tooltip(label)
                     .ghost()
-                    .disabled(!self.state.available || self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("prev", cx)))
-                    .into_any_element(),
-                Button::new("translation-next").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .child(Icon::new(IconName::ChevronRight).size(px(15.)))
-                    .accessibility_label("下一块")
-                    .tooltip("下一块")
-                    .ghost()
-                    .disabled(!self.state.available || self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("next", cx)))
-                    .into_any_element(),
-                div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
-                Button::new("translation-original").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .icon(IconName::FileInput)
-                    .label("插入原文")
-                    .tooltip("把整行原文插入到译文")
-                    .ghost()
-                    .disabled(!self.state.available || self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.translation_action("insert_original", cx)
+                    .disabled(!enabled)
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.invoke(json!({"op":"command", "name":command}), cx)
                     }))
                     .into_any_element(),
-                Button::new("translation-refresh").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
-                    .child(Icon::new(IconName::RefreshCw).size(px(15.)))
-                    .accessibility_label("从当前行刷新")
-                    .tooltip("重新读取当前行与文本块")
-                    .ghost()
-                    .disabled(self.loading)
-                    .on_click(cx.listener(|view, _, _, cx| view.translation_action("start", cx)))
-                    .into_any_element(),
-                div().w(px(1.)).h(px(18.)).mx_1().bg(divider).into_any_element(),
-                options.into_any_element(),
-                div().flex_1().into_any_element(),
-                crate::page::badge(cx, status).into_any_element(),
-            ]))
+            );
+        }
+
+        crate::page::page(cx, "translation-assistant")
+            .child(
+                div()
+                    .v_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(crate::page::toolbar(labelled))
+                    .child(crate::page::toolbar(icons)),
+            )
             .child(crate::page::section(
                 cx,
                 "整行原文",
