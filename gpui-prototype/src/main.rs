@@ -5907,6 +5907,42 @@ impl Workspace {
         }
     }
 
+    pub(crate) fn set_key_focus(&mut self, focus: KeyFocus, cx: &mut Context<Self>) {
+        if self.key_focus != focus {
+            self.key_focus = focus;
+            cx.notify();
+        }
+    }
+
+    /// Claim the shortcut context for a panel the user just clicked. The window
+    /// also has to focus the workspace itself: clicking a plain div leaves no
+    /// focused element behind, and then no key ever reaches `handle_key`.
+    pub(crate) fn claim_key_focus(
+        &mut self,
+        focus: KeyFocus,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_key_focus(focus, cx);
+        self.focus_handle.focus(window, cx);
+    }
+
+    /// Which panel owns the keyboard right now. The focused one gets an accent
+    /// outline, so the shortcut context is visible instead of implicit.
+    fn focus_area(&self, window: &mut Window, cx: &mut Context<Self>) -> KeyFocus {
+        if self.editor.read(cx).focus_handle(cx).is_focused(window) {
+            return KeyFocus::Grid;
+        }
+        match self.key_focus {
+            KeyFocus::Grid => match self.active_panel {
+                Panel::Audio => KeyFocus::Audio,
+                Panel::Visual => KeyFocus::Video,
+                _ => KeyFocus::Grid,
+            },
+            other => other,
+        }
+    }
+
     /// Shortcut hints for the status bar. Keys come from the host hotkey table so
     /// remapped bindings show up here too; the labels are the short UI names.
     fn shortcut_hints(&self, context: &str) -> Option<(&'static str, Vec<(String, &'static str)>)> {
@@ -6761,6 +6797,7 @@ impl Workspace {
         window: &Window,
         side_by_side: bool,
         fill: bool,
+        focused: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let p = Palette::current(cx);
@@ -7041,7 +7078,13 @@ impl Workspace {
             .when(fill, |card| card.flex_1())
             .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
-            .border_color(p.border)
+            .border_color(if focused { p.accent } else { p.border })
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|view, _, window, cx| {
+                    view.claim_key_focus(KeyFocus::Video, window, cx)
+                }),
+            )
             .when(self.snapshot.video, |v| v.child(controls))
             .child(
                 div()
@@ -7221,6 +7264,7 @@ impl Workspace {
     fn render_subtitle_panel(
         &mut self,
         rail: Option<f32>,
+        focused: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let dark = Theme::global(cx).is_dark();
@@ -7880,7 +7924,7 @@ impl Workspace {
             .overflow_hidden()
             .rounded(px(crate::workspace_theme::RADIUS_LG))
             .border_1()
-            .border_color(p.border)
+            .border_color(if focused { p.accent } else { p.border })
             .bg(line_bg)
             // The list viewport paints a square background that gpui clips to
             // a rectangle, so it covers the card's rounded bottom corners.
@@ -8132,6 +8176,7 @@ async fn invoke_weak(
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let focus_area = self.focus_area(window, cx);
         if let Some(line) = self
             .snapshot
             .lines
@@ -8486,6 +8531,7 @@ impl Render for Workspace {
                             window,
                             side_by_side,
                             properties_rail.is_some(),
+                            focus_area == KeyFocus::Video,
                             cx,
                         ))
                         // The stacked layout has no spare height to trade
@@ -8507,7 +8553,13 @@ impl Render for Workspace {
                         .min_w_0()
                         .min_h_0()
                         .overflow_hidden()
-                        .child(self.render_subtitle_panel(properties_rail, cx)),
+                        .child(
+                            self.render_subtitle_panel(
+                                properties_rail,
+                                focus_area == KeyFocus::Grid,
+                                cx,
+                            ),
+                        ),
                 );
             if !side_by_side {
                 columns = columns.flex_col();
@@ -8526,6 +8578,7 @@ impl Render for Workspace {
                         self.snapshot.video,
                         &self.snapshot.appearance,
                         self.audio_panel_height,
+                        focus_area == KeyFocus::Audio,
                         cx,
                     ))
                     .child(audio_handle)
@@ -8535,7 +8588,7 @@ impl Render for Workspace {
             body = body.child(
                 page::page(cx, "visual-panel")
                     .child(self.visual.toolbar(cx))
-                    .child(self.render_player(window, false, false, cx))
+                    .child(self.render_player(window, false, false, true, cx))
                     .child(page::hint(
                         cx,
                         "双击十字定位；拖动控制点调整，Shift 约束，Ctrl/⌘ 多选。",

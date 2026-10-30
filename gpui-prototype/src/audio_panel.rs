@@ -136,7 +136,7 @@ impl AudioPanel {
         height: f32,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        self.render_inner(state, video, appearance, cx, true, height)
+        self.render_inner(state, video, appearance, cx, true, height, true)
     }
 
     pub fn render_compact(
@@ -145,9 +145,10 @@ impl AudioPanel {
         video: bool,
         appearance: &crate::Appearance,
         height: f32,
+        focused: bool,
         cx: &mut Context<Workspace>,
     ) -> impl IntoElement {
-        self.render_inner(state, video, appearance, cx, false, height)
+        self.render_inner(state, video, appearance, cx, false, height, focused)
     }
 
     fn render_inner(
@@ -158,6 +159,7 @@ impl AudioPanel {
         cx: &mut Context<Workspace>,
         full_controls: bool,
         graph_height: f32,
+        focused: bool,
     ) -> impl IntoElement {
         // Three groups with different weights: file actions, playback and
         // commit (one primary), then the view/option toggles as quiet pills.
@@ -882,9 +884,20 @@ impl AudioPanel {
             // workspace reads as one set of surfaces instead of a bare canvas.
             .rounded(gpui_kit::px(crate::workspace_theme::RADIUS_LG))
             .border_1()
-            .border_color(palette.border)
+            .border_color(if focused {
+                palette.accent
+            } else {
+                palette.border
+            })
             .bg(palette.surface)
             .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
+            // Clicking anywhere in the strip claims the audio shortcut context.
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|view, _, window, cx| {
+                    view.claim_key_focus(crate::KeyFocus::Audio, window, cx)
+                }),
+            )
             .p_3()
             .child(title_row.when(!full_controls && !state.loaded, |row| row.child(load_audio)))
             .child(graph);
