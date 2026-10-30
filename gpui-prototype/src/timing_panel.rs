@@ -391,7 +391,7 @@ impl TimingPanel {
             let description = format!("{filename} · {details}");
             history = history.child(
                 Button::new(format!("shift-history-{index}"))
-                    .icon(IconName::Clock3)
+                    .child(gpui_kit::component::Icon::new(IconName::Clock3).size(gpui_kit::px(15.)))
                     .rounded(gpui_kit::px(999.))
                     .small()
                     .px(gpui_kit::px(13.))

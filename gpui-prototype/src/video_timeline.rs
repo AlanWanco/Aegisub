@@ -106,11 +106,13 @@ impl VideoTimeline {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .icon(icon)
+                    .when(!id.starts_with("line-"), |button| {
+                        button.child(gpui_kit::component::Icon::new(icon).size(gpui_kit::px(15.)))
+                    })
+                    .when(id.starts_with("line-"), |button| button.icon(icon).label(label))
                     .accessibility_label(label)
                     .tooltip(label)
                     .ghost()
-                    .when(id.starts_with("line-"), |button| button.label(label))
                     .disabled(!enabled)
                     .on_click(cx.listener(move |view, _, _, cx| {
                         view.invoke(json!({"op":"command", "name":command}), cx)

@@ -528,7 +528,7 @@ impl AudioPanel {
                 .small()
                 .px(gpui_kit::px(13.))
                 .py(gpui_kit::px(3.))
-                .icon(icon)
+                .child(gpui_kit::component::Icon::new(icon).size(gpui_kit::px(15.)))
                 .accessibility_label(label)
                 .tooltip(label)
                 .ghost()
