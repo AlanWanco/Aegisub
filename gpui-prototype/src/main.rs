@@ -2228,6 +2228,10 @@ impl Workspace {
                     if *official { "正式版" } else { "开发版" }.to_owned(),
                 );
                 add("界面", "GPUI 工作台".to_owned());
+                add(
+                    "图标",
+                    "Papirus Development Team · GPL-3.0".to_owned(),
+                );
                 drop(add);
                 let rows = div().v_flex().gap_2().children(rows);
                 (

@@ -1,5 +1,9 @@
 # Meson
-build*
+build*/
+# The build directories are symlinks onto the external cache image; a trailing
+# slash only matches real directories, so they need their own entries.
+/build-ui
+/build-ui-gpui
 /subprojects/*
 !/subprojects/*.wrap
 !/subprojects/packagefiles
