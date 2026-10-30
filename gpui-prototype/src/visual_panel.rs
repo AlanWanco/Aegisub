@@ -87,7 +87,7 @@ impl VisualPanel {
             bounds: Rc::new(RefCell::new(Bounds::default())),
             canvas_bounds: Rc::new(RefCell::new(Bounds::default())),
             viewport_bounds: Rc::new(RefCell::new(Bounds::default())),
-            fit_video: false,
+            fit_video: true,
             zoom: 1.,
             pan: point(px(0.), px(0.)),
             pan_last: None,
