@@ -7646,7 +7646,7 @@ impl Workspace {
                     .justify_center()
                     .cursor_row_resize()
                     .bg(p.surface)
-                    .child(div().w(px(36.)).h(px(2.)).rounded(px(1.)).bg(p.divider))
+                    .child(div().w(px(36.)).h(px(2.)).rounded(px(1.)).bg(p.muted.opacity(0.7)))
                     .on_mouse_down(
                         gpui_kit::MouseButton::Left,
                         cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
@@ -8132,7 +8132,7 @@ impl Render for Workspace {
             let properties_rail = side_by_side
                 .then_some(rail_width)
                 .filter(|_| right_column_width >= 420.);
-            let divider = p.divider;
+            let grip = p.muted.opacity(0.7);
             let audio_handle = div()
                 .id("audio-panel-resize-handle")
                 .aria_label("调整音频波形高度")
@@ -8144,7 +8144,7 @@ impl Render for Workspace {
                 .items_center()
                 .justify_center()
                 .cursor_row_resize()
-                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(divider))
+                .child(div().w(px(48.)).h(px(2.)).rounded(px(1.)).bg(grip))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
                     cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
@@ -8167,7 +8167,7 @@ impl Render for Workspace {
                 .items_center()
                 .justify_center()
                 .cursor_col_resize()
-                .child(div().h(px(48.)).w(px(3.)).rounded(px(2.)).bg(divider))
+                .child(div().h(px(48.)).w(px(2.)).rounded(px(1.)).bg(grip))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
                     cx.listener(move |view, event: &gpui_kit::MouseDownEvent, _, cx| {
@@ -8190,7 +8190,7 @@ impl Render for Workspace {
                 .items_center()
                 .justify_center()
                 .cursor_row_resize()
-                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(divider))
+                .child(div().w(px(48.)).h(px(2.)).rounded(px(1.)).bg(grip))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
                     cx.listener(|view, event: &gpui_kit::MouseDownEvent, window, cx| {
