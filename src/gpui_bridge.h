@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace agi { struct Context; }
 
@@ -21,6 +23,12 @@ void PushNotice(std::string title, std::string body);
 void PushNotice(std::string title, std::string body, std::string suppress_option);
 /// Notice that carries an action row; `kind` names which one the front end draws.
 void PushNotice(std::string title, std::string body, std::string suppress_option, std::string kind);
+/// Question whose answers are buttons. `apply` receives the chosen index once
+/// the front end answers, so a prompt can stay asynchronous instead of blocking
+/// the host thread the bridge is waiting on.
+void PushChoice(std::string title, std::string body, std::string suppress_option,
+                std::string kind, std::vector<std::string> choices,
+                std::function<void(int)> apply);
 /// Runs a command on the front end instead of opening the host's own dialog.
 /// Commands the front end owns (the colour pickers today) use this so Lua and
 /// the legacy menus do not pop a wx window over the GPUI frame.

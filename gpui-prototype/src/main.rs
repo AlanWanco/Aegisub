@@ -423,6 +423,9 @@ struct Notice {
     /// Host-selected button row; "unsaved" asks the user to resolve edits.
     #[serde(default)]
     kind: String,
+    /// Answers for a question notice; the host gets the index back.
+    #[serde(default)]
+    choices: Vec<String>,
 }
 
 /// Host-drawn dialogs the front end renders itself: about, log, language and
@@ -8910,7 +8913,47 @@ impl Render for Workspace {
                                             })),
                                     )
                             })
-                            .when(notice.kind != "unsaved" && notice.kind != "linked" && !notice.suppress.is_empty(), |row| {
+                            .when(!notice.choices.is_empty(), |row| {
+                                let labels = notice.choices.clone();
+                                let mut buttons = row.child(div().flex_1());
+                                for (index, label) in labels.iter().enumerate() {
+                                    buttons = buttons.child(
+                                        Button::new(format!("notice-choice-{index}"))
+                                            .label(label.clone())
+                                            .rounded(px(999.))
+                                            .px(px(13.))
+                                            .py(px(3.))
+                                            .when(index == 0, |button| button.ghost())
+                                            .when(index > 0, |button| button.primary())
+                                            .on_click(cx.listener(move |view, _, _, cx| {
+                                                view.invoke(
+                                                    json!({"op":"notice_choice","index":index}),
+                                                    cx,
+                                                );
+                                                if !view.notices.is_empty() {
+                                                    view.notices.remove(0);
+                                                }
+                                                cx.notify();
+                                            })),
+                                    );
+                                }
+                                buttons.child(
+                                    Button::new("notice-choice-cancel")
+                                        .label("取消")
+                                        .rounded(px(999.))
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .ghost()
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.invoke(json!({"op":"notice_choice","index":-1}), cx);
+                                            if !view.notices.is_empty() {
+                                                view.notices.remove(0);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                            })
+                            .when(notice.kind != "unsaved" && notice.kind != "linked" && notice.choices.is_empty() && !notice.suppress.is_empty(), |row| {
                                 let key = notice.suppress.clone();
                                 row.child(
                                     Button::new("host-notice-suppress")
@@ -8952,6 +8995,7 @@ impl Render for Workspace {
                             .when(
                                 notice.kind != "unsaved"
                                     && notice.kind != "linked"
+                                    && notice.choices.is_empty()
                                     && notice.suppress.is_empty(),
                                 |row| {
                                 row.child(

@@ -283,11 +283,32 @@ void Project::LoadUnloadFiles(ProjectProperties properties, bool ask) {
 			? _("\n\nDo you want to load these scripts now?")
 			: _("\n\nDo you want to load this script now?");
 
-		wxMessageDialog dlg(
-			context->parent, message, _("Load linked AviSynth script?"),
-			wxYES_NO | wxNO_DEFAULT | wxICON_WARNING | wxCENTRE);
-		dlg.SetYesNoLabels(_("Trust author && load"), _("Do not load"));
-		if (dlg.ShowModal() != wxID_YES) {
+		bool trust_scripts = false;
+		if (gpui::FrontendAttached() && avisynth_answer < 0) {
+			// A wx dialog here would block the host thread the bridge is waiting
+			// on, so the question goes to the front end and the load runs again
+			// once it is answered.
+			pending_linked = std::make_unique<ProjectProperties>(properties);
+			gpui::PushChoice(from_wx(_("Load linked AviSynth script?")), from_wx(message), {}, "avisynth",
+				{from_wx(_("Trust author && load")), from_wx(_("Do not load"))},
+				[this](int choice) {
+					avisynth_answer = choice;
+					auto properties = std::move(pending_linked);
+					if (properties)
+						LoadUnloadFiles(*properties, false);
+				});
+			return;
+		} else if (gpui::FrontendAttached()) {
+			trust_scripts = avisynth_answer == 0;
+			avisynth_answer = -1;
+		} else {
+			wxMessageDialog dlg(
+				context->parent, message, _("Load linked AviSynth script?"),
+				wxYES_NO | wxNO_DEFAULT | wxICON_WARNING | wxCENTRE);
+			dlg.SetYesNoLabels(_("Trust author && load"), _("Do not load"));
+			trust_scripts = dlg.ShowModal() == wxID_YES;
+		}
+		if (!trust_scripts) {
 			if (avisynth_audio)
 				audio = audio_file;
 			if (avisynth_video)

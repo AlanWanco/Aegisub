@@ -79,8 +79,15 @@ struct PendingNotice {
 	std::string suppress;
 	/// Tells the front end which action row to draw; empty for a plain notice.
 	std::string kind;
+	/// Answer buttons; empty for an ordinary acknowledgement.
+	std::vector<std::string> choices;
 };
 std::vector<PendingNotice> pending_notices;
+/// Answer handlers for the questions that are currently on screen, oldest
+/// first. A single slot is not enough: loading a video can raise the YCbCr and
+/// the layout resolution questions in the same pass, and the front end answers
+/// them in the order it shows them.
+std::deque<std::function<void(int)>> pending_choices;
 std::vector<std::string> pending_commands;
 
 struct ProgressState {
@@ -194,6 +201,16 @@ void gpui::PushNotice(std::string title, std::string body, std::string suppress_
 	std::lock_guard<std::mutex> lock(notice_mutex);
 	if (attached_clients == 0) return;
 	pending_notices.push_back({std::move(title), std::move(body), std::move(suppress_option), std::move(kind)});
+}
+
+void gpui::PushChoice(std::string title, std::string body, std::string suppress_option,
+                      std::string kind, std::vector<std::string> choices,
+                      std::function<void(int)> apply) {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients == 0) return;
+	pending_notices.push_back({std::move(title), std::move(body), std::move(suppress_option),
+		std::move(kind), std::move(choices)});
+	pending_choices.push_back(std::move(apply));
 }
 
 void gpui::PushCommand(std::string name) {
@@ -549,6 +566,21 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			BeginResponse(socket, client, R"({"ok":true})");
 			return;
 		}
+		if (op == "notice_choice") {
+			auto index = object.find("index");
+			int const choice = index == object.end() ? -1 : static_cast<int>(static_cast<json::Integer const&>(index->second));
+			std::function<void(int)> apply;
+			{
+				std::lock_guard<std::mutex> lock(notice_mutex);
+				if (!pending_choices.empty()) {
+					apply = std::move(pending_choices.front());
+					pending_choices.pop_front();
+				}
+			}
+			if (apply) apply(choice);
+			BeginResponse(socket, client, R"({"ok":true})");
+			return;
+		}
 		if (op == "notice_discard") {
 			// The user answered "don't save": put the document back to what is on
 			// disk so nothing is lost silently. An untitled document has no file to
@@ -665,6 +697,16 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 					<< ",\"body\":" << quote_json(notice.body);
 				if (!notice.suppress.empty())
 					out << ",\"suppress\":" << quote_json(notice.suppress);
+				if (!notice.kind.empty())
+					out << ",\"kind\":" << quote_json(notice.kind);
+				if (!notice.choices.empty()) {
+					out << ",\"choices\":[";
+					for (size_t i = 0; i < notice.choices.size(); ++i) {
+						if (i) out << ',';
+						out << quote_json(notice.choices[i]);
+					}
+					out << ']';
+				}
 				if (!notice.kind.empty())
 					out << ",\"kind\":" << quote_json(notice.kind);
 				out << '}';

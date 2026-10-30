@@ -116,11 +116,16 @@ bool check_ar_changed(int sx, int sy, int vx, int vy) {
 
 
 // Basically a wxGetSingleChoiceIndex that also shows a Help button
-int prompt_choice_dialog(const wxString& message, const wxString& caption, const wxArrayString& choices, int initialSelection, wxWindow *parent, std::string const& suppress = {}) {
-	// The GPUI front end never shows wx dialogs, so hand the question over as a
-	// notice and fall through to the "do nothing" choice.
+int prompt_choice_dialog(const wxString& message, const wxString& caption, const wxArrayString& choices, int initialSelection, wxWindow *parent, std::string const& suppress = {}, std::function<void(int)> apply = {}) {
+	// The GPUI front end never shows wx dialogs. The question goes out with its
+	// answers as buttons and `apply` runs when one comes back; the synchronous
+	// return is "cancel" because the caller has to keep going either way.
 	if (gpui::FrontendAttached()) {
-		gpui::PushNotice(caption.ToStdString(wxConvUTF8), message.ToStdString(wxConvUTF8), suppress);
+		std::vector<std::string> labels;
+		for (auto const& choice : choices)
+			labels.push_back(choice.ToStdString(wxConvUTF8));
+		gpui::PushChoice(caption.ToStdString(wxConvUTF8), message.ToStdString(wxConvUTF8),
+			suppress, "choice", std::move(labels), std::move(apply));
 		return -1;
 	}
 
@@ -198,6 +203,14 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 		auto action = static_cast<MissingYCbCrMatrixAction>(OPT_GET("Video/No YCbCr Matrix in Script")->GetInt());
 
 		if (action == MissingYCbCrMatrixAction::Prompt) {
+			auto apply_choice = [file, recommended_matrix](int choice) {
+				if (choice < 0) return;
+				OPT_SET("Video/Last No YCbCr Matrix in Script Choice")->SetInt(choice);
+				if (choice == static_cast<int>(MissingYCbCrMatrixFix::Set)) {
+					file->SetScriptInfo("YCbCr Matrix", recommended_matrix.to_string().value());
+					file->Commit(_("change ycbcr matrix"), AssFile::COMMIT_SCRIPTINFO);
+				}
+			};
 			int Choice = prompt_choice_dialog(
 				fmt_tl(
 					"The current subtitle file has no YCbCr Matrix set.\n\n"
@@ -209,7 +222,8 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 				{_("Leave YCbCr Matrix unset"), fmt_tl("Set script's YCbCr Matrix to the video's (\"%s\")", recommended_matrix.to_string().value())},
 				OPT_GET("Video/Last No YCbCr Matrix in Script Choice")->GetInt(),
 				parent,
-				"Video/No YCbCr Matrix in Script"
+				"Video/No YCbCr Matrix in Script",
+				apply_choice
 			);
 
 			if (Choice == -1) {
@@ -259,6 +273,14 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 		//		  As explained above, in the cases where this is necessary the YCbCr Matrix can also be left unchanged, so it's left as a lower priority for now.
 
 		if (action == YCbCrMatrixMismatchAction::Prompt) {
+			auto apply_choice = [file, recommended_matrix](int choice) {
+				if (choice < 0) return;
+				OPT_SET("Video/Last YCbCr Matrix Mismatch Choice")->SetInt(choice);
+				if (choice == static_cast<int>(YCbCrMatrixMismatchFix::Set)) {
+					file->SetScriptInfo("YCbCr Matrix", recommended_matrix.to_string().value());
+					file->Commit(_("change ycbcr matrix"), AssFile::COMMIT_SCRIPTINFO);
+				}
+			};
 			int Choice = prompt_choice_dialog(
 				fmt_tl(
 					"This video's recommended YCbCr Matrix (\"%s\") differs from the subtitle file's YCbCr Matrix (\"%s\").\n\n"
@@ -268,7 +290,9 @@ bool update_ycbcr_matrix(AssFile *file, const AsyncVideoProvider *new_provider, 
 				_("YCbCr Matrix mismatch"),
 				{fmt_tl("Leave script's YCbCr Matrix as it is (\"%s\")", script_matrix.to_string().value()), fmt_tl("Set script's YCbCr Matrix to the video's (\"%s\")", recommended_matrix.to_string().value())},
 				OPT_GET("Video/Last YCbCr Matrix Mismatch Choice")->GetInt(),
-				parent
+				parent,
+				{},
+				apply_choice
 			);
 
 			if (Choice == -1) {
@@ -408,6 +432,19 @@ bool update_layout_res(AssFile *file, const AsyncVideoProvider *new_provider, wx
 		auto action = static_cast<MissingLayoutResAction>(OPT_GET("Video/No LayoutRes in Script")->GetInt());
 
 		if (action == MissingLayoutResAction::Prompt) {
+			auto apply_choice = [file, vx, vy, spx, spy](int choice) {
+				if (choice < 0) return;
+				OPT_SET("Video/Last No LayoutRes in Script Choice")->SetInt(choice);
+				if (choice == static_cast<int>(MissingLayoutResFix::Set)) {
+					file->SetScriptInfo("LayoutResX", std::to_string(vx));
+					file->SetScriptInfo("LayoutResY", std::to_string(vy));
+					file->Commit(_("change layout resolution"), AssFile::COMMIT_SCRIPTINFO);
+				} else if (choice == static_cast<int>(MissingLayoutResFix::SetToPlayRes)) {
+					file->SetScriptInfo("LayoutResX", std::to_string(spx));
+					file->SetScriptInfo("LayoutResY", std::to_string(spy));
+					file->Commit(_("change layout resolution"), AssFile::COMMIT_SCRIPTINFO);
+				}
+			};
 			int Choice = prompt_choice_dialog(
 				fmt_tl(
 					"The current subtitle file has no layout resolution set.\n\n"
@@ -430,7 +467,8 @@ bool update_layout_res(AssFile *file, const AsyncVideoProvider *new_provider, wx
 				 fmt_tl("Set script's layout resolution to its script resolution (%d \u00D7 %d)", spx, spy)},
 				OPT_GET("Video/Last No LayoutRes in Script Choice")->GetInt(),
 				parent,
-				"Video/No LayoutRes in Script"
+				"Video/No LayoutRes in Script",
+				apply_choice
 			);
 
 			if (Choice == -1) {
@@ -503,12 +541,23 @@ bool update_layout_res(AssFile *file, const AsyncVideoProvider *new_provider, wx
 				"Change layout resolution of subtitles to match video?"
 			, vx, vy, sx, sy);
 
+		auto apply_choice = [file, vx, vy](int choice) {
+			if (choice < 0) return;
+			OPT_SET("Video/Last LayoutRes Mismatch Choice")->SetInt(choice);
+			if (static_cast<LayoutResMismatchFix>(choice) == LayoutResMismatchFix::Set) {
+				file->SetScriptInfo("LayoutResX", std::to_string(vx));
+				file->SetScriptInfo("LayoutResY", std::to_string(vy));
+				file->Commit(_("change layout resolution"), AssFile::COMMIT_SCRIPTINFO);
+			}
+		};
 		int Choice = prompt_choice_dialog(
 			prompt,
 			_("Layout resolution mismatch"),
 			{fmt_tl("Leave layout resolution as it is (%d \u00D7 %d)", sx, sy), fmt_tl("Set script's layout resolution to the video's (%d \u00D7 %d)", vx, vy)}, // U+00D7 multiplication sign
 			OPT_GET("Video/Last LayoutRes Mismatch Choice")->GetInt(),
-			parent
+			parent,
+			{},
+			apply_choice
 		);
 
 		if (Choice == -1) {

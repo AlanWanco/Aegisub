@@ -63,6 +63,8 @@ class Project : private agi::signal::ConnectionScope {
 	/// Pending linked-file answer: the paths the script asks for, kept until the
 	/// front end answers the notice.
 	std::unique_ptr<ProjectProperties> pending_linked;
+	/// Answer to the AviSynth trust question: 0 trust, 1 do not load, -1 unasked.
+	int avisynth_answer = -1;
 	void UpdateRelativePaths();
 	void ReloadAudio();
 	void ReloadVideo();
