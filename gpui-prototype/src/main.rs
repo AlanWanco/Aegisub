@@ -878,7 +878,7 @@ impl Bridge {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Panel {
     Subtitles,
     Styles,
@@ -6580,42 +6580,18 @@ impl Workspace {
                     .px_2()
                     .child(content)
                     .on_click(cx.listener(move |view, _, window, cx| {
-                        view.activate_panel(panel, window, cx)
+                        // The workspace window keeps the subtitle editor; every
+                        // tool is its own window, so a tool never replaces the
+                        // editing context the user is working in.
+                        if panel == Panel::Subtitles {
+                            view.activate_panel(panel, window, cx);
+                        } else if let Err(error) =
+                            focus_or_open_panel_window(cx, view.bridge.clone(), panel)
+                        {
+                            eprintln!("Could not open tool window: {error:#}");
+                        }
                     }));
-                let detachable = panel != Panel::Subtitles && !compact;
-                let row = div()
-                    .relative()
-                    .w_full()
-                    .group("sidebar-row")
-                    .child(button)
-                    .when(detachable, |v| {
-                        v.child(
-                            Button::new(format!("panel-window-{}", panel.label()))
-                                .ghost()
-                                .rounded(px(6.))
-                                .absolute()
-                                .right(px(6.))
-                                .top(px(6.))
-                                .h(px(24.))
-                                .w(px(24.))
-                                .p_0()
-                                .opacity(0.45)
-                                .accessibility_label("在单独窗口中打开")
-                                .child(
-                                    Icon::new(IconName::ExternalLink)
-                                        .size(px(12.))
-                                        .text_color(p.muted),
-                                )
-                                .on_click(cx.listener(move |view, _, _, cx| {
-                                    cx.stop_propagation();
-                                    if let Err(error) =
-                                        open_panel_window(cx, view.bridge.clone(), panel)
-                                    {
-                                        eprintln!("Could not open tool window: {error:#}");
-                                    }
-                                })),
-                        )
-                    });
+                let row = div().relative().w_full().child(button);
                 navigation = navigation.child(row);
             }
         }
@@ -8984,6 +8960,34 @@ fn open_panel_window(
     panel: Panel,
 ) -> Result<gpui_kit::WindowHandle<gpui_kit::component::Root>> {
     open_workspace(cx, bridge, None, Some(panel))
+}
+
+thread_local! {
+    /// One window per tool: clicking the same sidebar row twice should raise the
+    /// window that is already open instead of stacking duplicates.
+    static PANEL_WINDOWS: std::cell::RefCell<
+        std::collections::HashMap<Panel, gpui_kit::WindowHandle<gpui_kit::component::Root>>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn focus_or_open_panel_window(
+    cx: &mut App,
+    bridge: Bridge,
+    panel: Panel,
+) -> Result<gpui_kit::WindowHandle<gpui_kit::component::Root>> {
+    if let Some(handle) = PANEL_WINDOWS.with(|windows| windows.borrow().get(&panel).copied()) {
+        // A closed window leaves a dead handle behind; drop it and reopen.
+        if handle
+            .update(cx, |_, window, _| window.activate_window())
+            .is_ok()
+        {
+            return Ok(handle);
+        }
+        PANEL_WINDOWS.with(|windows| windows.borrow_mut().remove(&panel));
+    }
+    let handle = open_panel_window(cx, bridge, panel)?;
+    PANEL_WINDOWS.with(|windows| windows.borrow_mut().insert(panel, handle));
+    Ok(handle)
 }
 
 fn run(endpoint: String, token: String) -> Result<()> {
