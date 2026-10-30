@@ -894,6 +894,11 @@ enum WorkspaceResizeDrag {
         start_x: gpui_kit::Pixels,
         start_width: f32,
     },
+    /// Height of the font preview at the top of the style editor.
+    StylePreview {
+        start_y: gpui_kit::Pixels,
+        start_height: f32,
+    },
     /// Height of the video preview above the line properties.
     VideoPreview {
         start_y: gpui_kit::Pixels,
@@ -926,6 +931,8 @@ struct Workspace {
     audio_page_height: f32,
     column_split: Option<f32>,
     video_preview_height: Option<f32>,
+    /// Height of the font preview at the top of the style editor.
+    style_preview_height: f32,
     /// Width the user dragged the line inspector to; `None` keeps the default.
     properties_rail_width: Option<f32>,
     last_preview_height: std::cell::Cell<f32>,
@@ -1140,8 +1147,8 @@ impl Workspace {
                     if current_line != line_id {
                         return;
                     }
-                    let soft = view
-                        .read_with(cx, |view, _| view.snapshot.appearance.soft_line_break);
+                    let soft =
+                        view.read_with(cx, |view, _| view.snapshot.appearance.soft_line_break);
                     let text = escape_line_breaks(
                         editor.read_with(cx, |state, _| state.value().to_string()),
                         soft,
@@ -1231,6 +1238,7 @@ impl Workspace {
             audio_page_height: 260.,
             column_split: None,
             video_preview_height: None,
+            style_preview_height: 132.,
             properties_rail_width: None,
             last_preview_height: std::cell::Cell::new(220.),
             editor,
@@ -2014,7 +2022,9 @@ impl Workspace {
         let bridge = self.bridge.clone();
         let weak = cx.weak_entity();
         cx.spawn(async move |_, cx| {
-            let faces = bridge.call(json!({"op": "dialog", "action": "fonts"})).await;
+            let faces = bridge
+                .call(json!({"op": "dialog", "action": "fonts"}))
+                .await;
             let state = bridge
                 .call(json!({"op": "dialog", "action": "font_state"}))
                 .await;
@@ -2274,18 +2284,19 @@ impl Workspace {
                     .p(px(8.));
                 for item in items.iter() {
                     let code = item.code.clone();
-                    list = list.child(
-                        crate::page::list_row(
-                            cx,
-                            format!("language-{}", item.code),
-                            item.name.clone(),
-                            &item.code == active,
-                            false,
-                        )
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.apply_language(code.clone(), cx)
-                        })),
-                    );
+                    list =
+                        list.child(
+                            crate::page::list_row(
+                                cx,
+                                format!("language-{}", item.code),
+                                item.name.clone(),
+                                &item.code == active,
+                                false,
+                            )
+                            .on_click(cx.listener(
+                                move |view, _, _, cx| view.apply_language(code.clone(), cx),
+                            )),
+                        );
                 }
                 (
                     "界面语言".into(),
@@ -2294,11 +2305,7 @@ impl Workspace {
                     } else {
                         "选择界面显示语言".into()
                     },
-                    div()
-                        .v_flex()
-                        .gap_2()
-                        .child(list)
-                        .into_any_element(),
+                    div().v_flex().gap_2().child(list).into_any_element(),
                     div().into_any_element(),
                 )
             }
@@ -2309,7 +2316,9 @@ impl Workspace {
             } => {
                 let matching: Vec<&String> = faces
                     .iter()
-                    .filter(|face| font_query.is_empty() || face.to_lowercase().contains(&font_query))
+                    .filter(|face| {
+                        font_query.is_empty() || face.to_lowercase().contains(&font_query)
+                    })
                     .collect();
                 let mut list = div()
                     .id("host-dialog-fonts")
@@ -2488,10 +2497,7 @@ impl Workspace {
                                     .child(div().text_sm().child(name))
                                     .when(!description.is_empty(), |v| {
                                         v.child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(p.muted)
-                                                .child(description),
+                                            div().text_xs().text_color(p.muted).child(description),
                                         )
                                     }),
                             )
@@ -2525,8 +2531,9 @@ impl Workspace {
                                         move |_, _, cx| {
                                             let choice = choice.clone();
                                             let _ = target.update(cx, |view, cx| {
-                                                if let Some(HostDialog::Export { encoding, .. }) =
-                                                    view.host_dialog.as_mut()
+                                                if let Some(HostDialog::Export {
+                                                    encoding, ..
+                                                }) = view.host_dialog.as_mut()
                                                 {
                                                     *encoding = choice;
                                                 }
@@ -2629,7 +2636,10 @@ impl Workspace {
                 busy,
             } => {
                 let busy = *busy;
-                let style_select = |id: &'static str, current: String, target_source: bool, cx: &mut Context<Self>| {
+                let style_select = |id: &'static str,
+                                    current: String,
+                                    target_source: bool,
+                                    cx: &mut Context<Self>| {
                     let options = styles.clone();
                     let weak = cx.weak_entity();
                     let current = if current.is_empty() {
@@ -2647,8 +2657,9 @@ impl Workspace {
                                     move |_, _, cx| {
                                         let choice = choice.clone();
                                         let _ = target.update(cx, |view, cx| {
-                                            if let Some(HostDialog::Kanji { source, dest, .. }) =
-                                                view.host_dialog.as_mut()
+                                            if let Some(HostDialog::Kanji {
+                                                source, dest, ..
+                                            }) = view.host_dialog.as_mut()
                                             {
                                                 if target_source {
                                                     *source = choice;
@@ -2832,54 +2843,66 @@ impl Workspace {
                             .py(px(3.))
                             .on_click(cx.listener(|view, _, _, cx| view.close_host_dialog(cx))),
                     )
-                    .when(matches!(self.host_dialog, Some(HostDialog::Font { .. })), |v| {
-                        v.child(
-                            Button::new("host-dialog-apply-font")
-                                .label("应用字体")
-                                .primary()
-                                .rounded(px(999.))
-                                .small()
-                                .px(px(13.))
-                                .py(px(3.))
-                                .on_click(cx.listener(|view, _, _, cx| view.apply_font(cx))),
-                        )
-                    })
-                    .when(matches!(self.host_dialog, Some(HostDialog::Export { .. })), |v| {
-                        v.child(
-                            Button::new("host-dialog-export")
-                                .label("导出…")
-                                .primary()
-                                .rounded(px(999.))
-                                .small()
-                                .px(px(13.))
-                                .py(px(3.))
-                                .on_click(cx.listener(|view, _, _, cx| view.export_script(cx))),
-                        )
-                    })
-                    .when(matches!(self.host_dialog, Some(HostDialog::Fonts { .. })), |v| {
-                        v.child(
-                            Button::new("host-dialog-copy-fonts")
-                                .label("复制到文件夹…")
-                                .primary()
-                                .rounded(px(999.))
-                                .small()
-                                .px(px(13.))
-                                .py(px(3.))
-                                .on_click(cx.listener(|view, _, _, cx| view.copy_fonts(cx))),
-                        )
-                    })
-                    .when(matches!(self.host_dialog, Some(HostDialog::Kanji { .. })), |v| {
-                        v.child(
-                            Button::new("host-dialog-kanji-apply")
-                                .label("应用打轴")
-                                .primary()
-                                .rounded(px(999.))
-                                .small()
-                                .px(px(13.))
-                                .py(px(3.))
-                                .on_click(cx.listener(|view, _, _, cx| view.apply_kanji(cx))),
-                        )
-                    }),
+                    .when(
+                        matches!(self.host_dialog, Some(HostDialog::Font { .. })),
+                        |v| {
+                            v.child(
+                                Button::new("host-dialog-apply-font")
+                                    .label("应用字体")
+                                    .primary()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .on_click(cx.listener(|view, _, _, cx| view.apply_font(cx))),
+                            )
+                        },
+                    )
+                    .when(
+                        matches!(self.host_dialog, Some(HostDialog::Export { .. })),
+                        |v| {
+                            v.child(
+                                Button::new("host-dialog-export")
+                                    .label("导出…")
+                                    .primary()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .on_click(cx.listener(|view, _, _, cx| view.export_script(cx))),
+                            )
+                        },
+                    )
+                    .when(
+                        matches!(self.host_dialog, Some(HostDialog::Fonts { .. })),
+                        |v| {
+                            v.child(
+                                Button::new("host-dialog-copy-fonts")
+                                    .label("复制到文件夹…")
+                                    .primary()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .on_click(cx.listener(|view, _, _, cx| view.copy_fonts(cx))),
+                            )
+                        },
+                    )
+                    .when(
+                        matches!(self.host_dialog, Some(HostDialog::Kanji { .. })),
+                        |v| {
+                            v.child(
+                                Button::new("host-dialog-kanji-apply")
+                                    .label("应用打轴")
+                                    .primary()
+                                    .rounded(px(999.))
+                                    .small()
+                                    .px(px(13.))
+                                    .py(px(3.))
+                                    .on_click(cx.listener(|view, _, _, cx| view.apply_kanji(cx))),
+                            )
+                        },
+                    ),
             );
 
         let card = div()
@@ -2949,10 +2972,7 @@ impl Workspace {
         self.color_dialog = Some(ColorDialog {
             title,
             hint,
-            pending: Some((
-                format!("#{r:02X}{g:02X}{b:02X}"),
-                percent.to_string(),
-            )),
+            pending: Some((format!("#{r:02X}{g:02X}{b:02X}"), percent.to_string())),
             error: None,
             loading: false,
         });
@@ -3037,9 +3057,8 @@ impl Workspace {
         }
         let (pr, pg, pb, pa) = parse_color(self.color_hex_input.read(cx).value().as_ref())
             .unwrap_or((255, 255, 255, 0));
-        let base = gpui_kit::rgba(
-            u32::from(pr) << 24 | u32::from(pg) << 16 | u32::from(pb) << 8 | 0xFF,
-        );
+        let base =
+            gpui_kit::rgba(u32::from(pr) << 24 | u32::from(pg) << 16 | u32::from(pb) << 8 | 0xFF);
         let base: gpui_kit::Hsla = base.into();
         let current = gpui_kit::hsla(base.h, base.s, base.l, 1. - f32::from(pa) / 255.);
         let opacity = ((1. - f32::from(pa) / 255.) * 100.).round() as i32;
@@ -3049,9 +3068,16 @@ impl Workspace {
         let error = dialog.error.clone();
         let loading = dialog.loading;
         let presets: [(&str, u32); 10] = [
-            ("白", 0xFFFFFF), ("黑", 0x000000), ("红", 0xFF3B30), ("橙", 0xFF9500),
-            ("黄", 0xFFCC00), ("绿", 0x34C759), ("青", 0x32ADE6), ("蓝", 0x0A84FF),
-            ("紫", 0xBF5AF2), ("灰", 0x8E8E93),
+            ("白", 0xFFFFFF),
+            ("黑", 0x000000),
+            ("红", 0xFF3B30),
+            ("橙", 0xFF9500),
+            ("黄", 0xFFCC00),
+            ("绿", 0x34C759),
+            ("青", 0x32ADE6),
+            ("蓝", 0x0A84FF),
+            ("紫", 0xBF5AF2),
+            ("灰", 0x8E8E93),
         ];
         let card = div()
             .id("color-dialog")
@@ -3210,9 +3236,9 @@ impl Workspace {
                                     .small()
                                     .px(px(13.))
                                     .py(px(3.))
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.cancel_color_dialog(cx)
-                                    })),
+                                    .on_click(
+                                        cx.listener(|view, _, _, cx| view.cancel_color_dialog(cx)),
+                                    ),
                             )
                             .child(
                                 Button::new("color-apply")
@@ -3223,9 +3249,9 @@ impl Workspace {
                                     .px(px(13.))
                                     .py(px(3.))
                                     .disabled(loading)
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.apply_color_dialog(cx)
-                                    })),
+                                    .on_click(
+                                        cx.listener(|view, _, _, cx| view.apply_color_dialog(cx)),
+                                    ),
                             ),
                     ),
             );
@@ -3285,10 +3311,12 @@ impl Workspace {
                     self.pick_file("video", cx);
                     return;
                 }
-                Some(name @ ("edit/color/primary"
-                | "edit/color/secondary"
-                | "edit/color/outline"
-                | "edit/color/shadow")) => {
+                Some(
+                    name @ ("edit/color/primary"
+                    | "edit/color/secondary"
+                    | "edit/color/outline"
+                    | "edit/color/shadow"),
+                ) => {
                     let kind = match name {
                         "edit/color/secondary" => "secondary",
                         "edit/color/outline" => "outline",
@@ -7267,7 +7295,6 @@ impl Workspace {
                             // Painting the strip colour keeps a full-cell
                             // hitbox: a bare div only reacts over its text.
                             .bg(header_bg)
-
                             .on_mouse_down(
                                 gpui_kit::MouseButton::Left,
                                 cx.listener(
@@ -7834,6 +7861,14 @@ impl Render for Workspace {
                                     .clamp(40., 600.);
                                 view.set_subtitle_column_width(column, width);
                             }
+                            WorkspaceResizeDrag::StylePreview {
+                                start_y,
+                                start_height,
+                            } => {
+                                view.style_preview_height =
+                                    (start_height + f32::from(event.position.y - start_y))
+                                        .clamp(64., 320.);
+                            }
                             WorkspaceResizeDrag::VideoPreview {
                                 start_y,
                                 start_height,
@@ -8112,7 +8147,7 @@ impl Render for Workspace {
         } else if self.active_panel == Panel::Timing {
             body = body.child(self.timing.render(&self.snapshot, window, cx));
         } else if self.active_panel == Panel::Styles {
-            body = body.child(self.document.render_styles(cx));
+            body = body.child(self.document.render_styles(self.style_preview_height, cx));
         } else {
             body = body.child(self.document.render_project(cx));
         }

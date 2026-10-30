@@ -10,7 +10,8 @@ use gpui_kit::component::{
     scroll::ScrollableElement,
 };
 use gpui_kit::{
-    App, AppContext, Context, Div, Entity, IntoElement, Subscription, Window, div, prelude::*, px,
+    App, AppContext, Context, Div, Entity, IntoElement, MouseButton, MouseDownEvent, Subscription,
+    Window, div, prelude::*, px,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -123,6 +124,77 @@ pub struct LibraryDetails {
     pub catalogs: Vec<String>,
     pub styles: Vec<Fields>,
     pub import_styles: Vec<Fields>,
+}
+
+/// `#RRGGBBAA` with ASS alpha (00 fully opaque).
+fn ass_color(text: &str) -> Option<gpui_kit::Hsla> {
+    let hex = text.trim().trim_start_matches('#');
+    if hex.len() != 8 {
+        return None;
+    }
+    let byte = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
+    let (r, g, b, a) = (byte(0..2)?, byte(2..4)?, byte(4..6)?, byte(6..8)?);
+    let rgb = (r as u32) << 24 | (g as u32) << 16 | (b as u32) << 8 | (255 - a) as u32;
+    Some(gpui_kit::rgba(rgb).into())
+}
+
+/// Live preview of the style being edited: font, size, weight and the outline
+/// and shadow colours, drawn the way ASS stacks them.
+fn style_preview(cx: &App, form: &Form, height: f32, p: &crate::workspace_theme::Palette) -> Div {
+    let value = |key: &str| {
+        form.inputs
+            .get(key)
+            .map(|input| input.read(cx).value().to_string())
+            .unwrap_or_default()
+    };
+    let font = value("font");
+    let size: f32 = value("fontsize").trim().parse().unwrap_or(48.);
+    let scaled = (size * 0.5).clamp(11., 32.);
+    let primary = ass_color(&value("primary")).unwrap_or(p.text);
+    let outline = ass_color(&value("outline")).unwrap_or(p.text);
+    let shadow = ass_color(&value("shadow")).unwrap_or(p.text);
+    let outline_w: f32 = value("outline_w").trim().parse().unwrap_or(0.);
+    let shadow_w: f32 = value("shadow_w").trim().parse().unwrap_or(0.);
+    let bold = value("bold").trim() == "1";
+    let italic = value("italic").trim() == "1";
+
+    let layer = |color: gpui_kit::Hsla, dx: f32, dy: f32| {
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .relative()
+                    .left(px(dx))
+                    .top(px(dy))
+                    .font_family(font.clone())
+                    .text_size(px(scaled))
+                    .text_color(color)
+                    .when(bold, |this| this.font_semibold())
+                    .when(italic, |this| this.italic())
+                    .child("风停下来 ABC 123"),
+            )
+    };
+
+    let mut stage = div()
+        .relative()
+        .w_full()
+        .h(px(height))
+        .rounded(px(crate::workspace_theme::RADIUS_MD))
+        .bg(p.inset)
+        .overflow_hidden();
+    if shadow_w > 0. {
+        stage = stage.child(layer(shadow, shadow_w * 0.6, shadow_w * 0.6));
+    }
+    if outline_w > 0. {
+        for (dx, dy) in [(-1., 0.), (1., 0.), (0., -1.), (0., 1.)] {
+            stage = stage.child(layer(outline, dx * outline_w * 0.6, dy * outline_w * 0.6));
+        }
+    }
+    stage.child(layer(primary, 0., 0.))
 }
 
 pub struct Form {
@@ -277,7 +349,11 @@ impl DocumentPanels {
         self.script_form.sync(&self.details.info, window, cx);
     }
 
-    pub fn render_styles(&self, cx: &mut Context<Workspace>) -> impl IntoElement {
+    pub fn render_styles(
+        &self,
+        style_preview_height: f32,
+        cx: &mut Context<Workspace>,
+    ) -> impl IntoElement {
         let muted = Theme::global(cx).muted_foreground;
         let p = crate::workspace_theme::Palette::current(cx);
         let mut list = div()
@@ -373,6 +449,7 @@ impl DocumentPanels {
         } else {
             &self.style
         };
+        let preview = style_preview(cx, &self.style_form, style_preview_height, &p);
         let mut editor = div().id("document-style-form").v_flex().flex_1().min_w_0().min_h_0().gap_3().p_3().overflow_y_scrollbar()
             .child(div().h_flex().flex_wrap().gap_2()
                 .child(Button::new("apply-style-fields").icon(IconName::Check).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("应用样式修改").primary()
@@ -383,6 +460,24 @@ impl DocumentPanels {
                     .on_click(cx.listener(|view, _, _, cx| view.duplicate_style(cx))))
                 .child(Button::new("delete-document-style").icon(IconName::Delete).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("删除…").danger()
                     .on_click(cx.listener(|view, _, _, cx| { view.document.confirm_delete = true; cx.notify(); }))))
+            .child(preview)
+            .child(
+                div()
+                    .id("style-preview-handle")
+                    .h(px(9.))
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .cursor_row_resize()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|view, event: &MouseDownEvent, _, cx| {
+                        view.layout_drag = Some(crate::WorkspaceResizeDrag::StylePreview {
+                            start_y: event.position.y,
+                            start_height: view.style_preview_height,
+                        });
+                        cx.notify();
+                    }))
+                    .child(div().h(px(1.)).w_full().bg(p.divider)),
+            )
             .child(div().text_xs().text_color(muted).child("颜色格式 #RRGGBBAA，AA 沿用 ASS 透明度（00 不透明）。重命名同步更新行样式及 \\r 引用。"));
         if self.confirm_delete && self.editing_library {
             let source = self.library_style.clone();

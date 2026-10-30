@@ -109,7 +109,9 @@ impl VideoTimeline {
                     .when(!id.starts_with("line-"), |button| {
                         button.child(gpui_kit::component::Icon::new(icon).size(gpui_kit::px(15.)))
                     })
-                    .when(id.starts_with("line-"), |button| button.icon(icon).label(label))
+                    .when(id.starts_with("line-"), |button| {
+                        button.icon(icon).label(label)
+                    })
                     .accessibility_label(label)
                     .tooltip(label)
                     .ghost()
