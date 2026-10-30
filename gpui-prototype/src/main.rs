@@ -628,6 +628,53 @@ fn pretty_key(key: &str) -> String {
     out
 }
 
+/// Style, actor, layer and effect sit under the edit box, where Aegisub puts
+/// them: they describe the line being typed, not its timing.
+fn line_field_row(
+    cx: &mut Context<Workspace>,
+    view: &Workspace,
+    p: &crate::workspace_theme::Palette,
+) -> gpui_kit::Div {
+    let mut row = div().h_flex().items_start().gap_2().w_full().min_w_0();
+    for (key, label, weight) in [
+        ("style", "样式", 1.7),
+        ("actor", "角色", 1.3),
+        ("layer", "图层", 0.7),
+        ("effect", "效果", 1.1),
+    ] {
+        row = row.child(
+            div()
+                .v_flex()
+                .flex_basis(gpui_kit::px(0.))
+                .flex_grow(weight)
+                .flex_shrink(1.)
+                .min_w_0()
+                .gap_1()
+                .child(div().text_size(px(11.)).text_color(p.muted).child(label))
+                .child(
+                    Input::new(&view.property_inputs[key])
+                        .id(format!("editor-{key}"))
+                        .aria_label(label)
+                        .h(px(28.))
+                        .w_full(),
+                ),
+        );
+    }
+    row.child(
+        Button::new("apply-editor-fields")
+            .rounded(gpui_kit::px(999.))
+            .small()
+            .px(gpui_kit::px(13.))
+            .py(gpui_kit::px(3.))
+            .child(Icon::new(IconName::Check).size(px(15.)))
+            .accessibility_label("应用样式与角色")
+            .tooltip("应用样式、角色、图层、效果")
+            .ghost()
+            .disabled(view.selected_line < 0 || !view.properties_dirty)
+            .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))),
+    )
+}
+
 fn escape_line_breaks(text: String, soft: bool) -> String {
     if !text.contains('\n') {
         return text;
@@ -1171,7 +1218,7 @@ impl Workspace {
             video_epoch: 0,
             list_scroll_handle: gpui_kit::UniformListScrollHandle::new(),
             subtitle_filter_cache: None,
-            subtitle_editor_height: 210.,
+            subtitle_editor_height: 252.,
             subtitle_columns: vec![
                 SubtitleColumn::IdLayer,
                 SubtitleColumn::Time,
@@ -5907,19 +5954,6 @@ impl Workspace {
                     ]],
                 ),
                 group(
-                    "字幕",
-                    vec![
-                        vec![
-                            cell("style", "样式").into_any_element(),
-                            cell("actor", "角色").into_any_element(),
-                        ],
-                        vec![
-                            cell("layer", "图层").into_any_element(),
-                            cell("effect", "效果").into_any_element(),
-                        ],
-                    ],
-                ),
-                group(
                     "边距",
                     vec![vec![
                         cell("margin_left", "左").into_any_element(),
@@ -5935,15 +5969,6 @@ impl Workspace {
                     vec![vec![
                         cell("start", "开始").into_any_element(),
                         cell("end", "结束").into_any_element(),
-                    ]],
-                ),
-                group(
-                    "字幕",
-                    vec![vec![
-                        cell("style", "样式").into_any_element(),
-                        cell("actor", "角色").into_any_element(),
-                        cell("layer", "图层").into_any_element(),
-                        cell("effect", "效果").into_any_element(),
                     ]],
                 ),
                 group(
@@ -7084,16 +7109,6 @@ impl Workspace {
                             )
                             .child(div().flex_1())
                             .child(
-                                div()
-                                    .flex_shrink_1()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .text_size(px(11.))
-                                    .text_color(muted)
-                                    .child(format!("已选 {} 行", self.snapshot.selected.len())),
-                            )
-                            .child(
                                 Button::new("shrink-subtitle-editor").rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.))
                                     .child(Icon::new(IconName::ChevronUp).size(px(15.)))
                                     .accessibility_label("缩小字幕编辑区")
@@ -7102,7 +7117,7 @@ impl Workspace {
 
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.subtitle_editor_height =
-                                            (view.subtitle_editor_height - 24.).max(165.);
+                                            (view.subtitle_editor_height - 24.).max(210.);
                                         cx.notify();
                                     })),
                             )
@@ -7115,7 +7130,7 @@ impl Workspace {
 
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.subtitle_editor_height =
-                                            (view.subtitle_editor_height + 24.).min(360.);
+                                            (view.subtitle_editor_height + 24.).min(420.);
                                         cx.notify();
                                     })),
                             )
@@ -7133,7 +7148,8 @@ impl Workspace {
                             ),
                     )
                     .child(format_toolbar)
-                    .child(editor.flex_1().min_h(px(40.)));
+                    .child(editor.flex_1().min_h(px(40.)))
+                    .child(line_field_row(cx, self, &p));
         let editor_section = div()
             .id("subtitle-editor-section")
             .flex_shrink_0()
@@ -7770,7 +7786,7 @@ impl Render for Workspace {
                             } => {
                                 view.subtitle_editor_height = (start_height
                                     + f32::from(event.position.y - start_y))
-                                    .clamp(165., 360.);
+                                    .clamp(210., 420.);
                             }
                             WorkspaceResizeDrag::AudioPanel {
                                 start_y,
