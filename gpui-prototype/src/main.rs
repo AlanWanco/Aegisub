@@ -628,6 +628,13 @@ fn pretty_key(key: &str) -> String {
     out
 }
 
+fn escape_line_breaks(text: String, soft: bool) -> String {
+    if !text.contains('\n') {
+        return text;
+    }
+    text.replace('\n', if soft { "\\n" } else { "\\N" })
+}
+
 fn hotkey_key(key: &str) -> String {
     match key {
         "backspace" => "Backspace".into(),
@@ -985,6 +992,7 @@ impl Workspace {
             }));
         }
         let editor = cx.new(|cx| TextareaState::new(window, cx));
+        editor.update(cx, |state, cx| state.set_submit_on_enter(true, cx));
         let editor_for_events = editor.clone();
         let search = cx.new(|cx| {
             InputState::new(window, cx)
@@ -1045,6 +1053,21 @@ impl Workspace {
             let bridge = bridge.clone();
             let pending_edits = pending_edits.clone();
             move |this, _, event: &InputEvent, cx| {
+                if let InputEvent::PressEnter { shift, .. } = event {
+                    // Enter commits the edit box and steps to the next line,
+                    // creating one at the end of the script (Aegisub's default
+                    // binding for the Subtitle Edit Box context).
+                    if *shift {
+                        return;
+                    }
+                    let text = this.editor_text(cx);
+                    let id = this.selected_line;
+                    let ids = this.snapshot.selected.clone();
+                    this.editor_dirty_line = id;
+                    this.invoke(json!({"op":"edit", "id":id, "ids":ids, "text":text}), cx);
+                    this.invoke(json!({"op":"command", "name":"grid/line/next/create"}), cx);
+                    return;
+                }
                 if !matches!(event, InputEvent::Change) {
                     return;
                 }
@@ -1070,7 +1093,12 @@ impl Workspace {
                     if current_line != line_id {
                         return;
                     }
-                    let text = editor.read_with(cx, |state, _| state.value().to_string());
+                    let soft = view
+                        .read_with(cx, |view, _| view.snapshot.appearance.soft_line_break);
+                    let text = escape_line_breaks(
+                        editor.read_with(cx, |state, _| state.value().to_string()),
+                        soft,
+                    );
                     match bridge
                         .call(json!({"op":"edit", "id":line_id, "ids":selected_ids, "text":text}))
                         .await
@@ -5181,6 +5209,13 @@ impl Workspace {
         }).detach();
     }
 
+    /// Aegisub stores line breaks as `\N` (or `\n` for soft breaks); a literal
+    /// newline inside a Dialogue field would corrupt the file.
+    fn editor_text(&self, cx: &mut Context<Self>) -> String {
+        let raw = self.editor.read(cx).value().to_string();
+        escape_line_breaks(raw, self.snapshot.appearance.soft_line_break)
+    }
+
     fn handle_key(
         &mut self,
         event: &gpui_kit::KeyDownEvent,
@@ -7092,7 +7127,7 @@ impl Workspace {
 
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         let id = this.selected_line;
-                                        let text = this.editor.read(cx).value().to_string();
+                                        let text = this.editor_text(cx);
                                         this.invoke(json!({"op":"edit", "id":id, "ids":this.snapshot.selected, "text":text}), cx);
                                     })),
                             ),
