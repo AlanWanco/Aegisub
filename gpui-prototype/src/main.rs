@@ -772,6 +772,32 @@ fn hotkey_key(key: &str) -> String {
     }
 }
 
+/// Aegisub spells keypad keys `KP_*`, but gpui reports the character the key
+/// types, so a keypad 1 and a main-row 1 are the same keystroke. Binding a
+/// keypad key therefore records the plain name; looking one up still has to try
+/// the keypad spelling, or every existing `KP_*` binding stays dead.
+fn keypad_name(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "0" => "KP_0",
+        "1" => "KP_1",
+        "2" => "KP_2",
+        "3" => "KP_3",
+        "4" => "KP_4",
+        "5" => "KP_5",
+        "6" => "KP_6",
+        "7" => "KP_7",
+        "8" => "KP_8",
+        "9" => "KP_9",
+        "." => "KP_Decimal",
+        "+" => "KP_Add",
+        "-" => "KP_Subtract",
+        "*" => "KP_Multiply",
+        "/" => "KP_Divide",
+        "enter" => "KP_Enter",
+        _ => return None,
+    })
+}
+
 fn default_true() -> bool {
     true
 }
@@ -5839,13 +5865,20 @@ impl Workspace {
         if key.modifiers.shift {
             combo.push_str("Shift-");
         }
-        combo.push_str(&hotkey_key(&key.key));
+        let name = hotkey_key(&key.key);
+        combo.push_str(&name);
         let context = if command_search_focused {
             "Subtitle Grid"
         } else {
             self.key_context(window, cx)
         };
-        if let Some(command) = self.catalog.shortcut(context, &combo) {
+        let command = self.catalog.shortcut(context, &combo).or_else(|| {
+            let keypad = keypad_name(&key.key)?;
+            let alternate = combo.strip_suffix(&name)?;
+            self.catalog
+                .shortcut(context, &format!("{alternate}{keypad}"))
+        });
+        if let Some(command) = command {
             let name = command.name.clone();
             self.invoke(json!({"op":"command", "name":name}), cx);
             cx.stop_propagation();

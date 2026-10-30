@@ -287,7 +287,13 @@ impl HotkeyPanel {
                 cx,
                 "绑定",
                 None,
-                crate::page::section_body().child(form).child(actions),
+                crate::page::section_body()
+                    .child(form)
+                    .child(actions)
+                    .child(crate::page::hint(
+                        cx,
+                        "小键盘按键和主键区在窗口系统里是同一个键：录小键盘 1 会得到 1。要单独绑定小键盘，直接在组合键框里输入 KP_1、KP_Decimal、KP_Add、KP_Enter 这类名字。",
+                    )),
             ))
             .child(div().text_sm().text_color(Theme::global(cx).muted_foreground).child("常用上下文：Default、Subtitle Grid、Subtitle Edit Box、Video、Audio、Translation Assistant、Styling Assistant、Always。"));
         if !conflicts.is_empty() {
