@@ -5373,7 +5373,6 @@ impl Workspace {
     fn refresh_style_preview(&mut self, cx: &mut Context<Self>) {
         const PREVIEW_WIDTH: u32 = 900;
         const PREVIEW_HEIGHT: u32 = 150;
-        const PREVIEW_TEXT: &str = "风停下来 ABC 123";
         if self.document.preview_pending {
             return;
         }
@@ -5408,7 +5407,6 @@ impl Workspace {
                 .call(json!({
                     "op": "style_preview",
                     "fields": fields,
-                    "text": PREVIEW_TEXT,
                     "width": PREVIEW_WIDTH.to_string(),
                     "height": PREVIEW_HEIGHT.to_string(),
                 }))
@@ -5417,7 +5415,17 @@ impl Workspace {
                 serde_json::from_value::<StylePreviewReply>(value)
                     .map_err(|error| anyhow::anyhow!(error.to_string()))
             }) {
-                Ok(reply) => reply.image,
+                Ok(reply) => {
+                    if let Some(error) = reply.error {
+                        let _ = view.update(cx, |view, cx| {
+                            view.document.preview_pending = false;
+                            view.status = format!("样式预览失败：{error}");
+                            cx.notify();
+                        });
+                        return;
+                    }
+                    reply.image
+                }
                 Err(error) => {
                     let _ = view.update(cx, |view, cx| {
                         view.document.preview_pending = false;

@@ -156,7 +156,8 @@ std::string style_preview(agi::Context *context, json::Object const& request) {
 
 	int const width = parse_integer(static_cast<std::string const&>(request.at("width")), 16, 4096);
 	int const height = parse_integer(static_cast<std::string const&>(request.at("height")), 16, 1024);
-	std::string const& text = request.at("text");
+	// Same preview text the wx style editor uses, so both show one string.
+	std::string const text = OPT_GET("Tool/Style Editor/Preview Text")->GetString();
 
 	AssFile file;
 	file.Styles.clear();
@@ -175,7 +176,9 @@ std::string style_preview(agi::Context *context, json::Object const& request) {
 	if (!provider) provider = SubtitlesProviderFactory::GetProvider(nullptr);
 	provider->LoadSubtitles(&file);
 
-	agi::Color const background(0x20, 0x20, 0x24, 0);
+	// The preview keeps the style editor's own background colour rather than the
+	// workspace theme: light text has to stay readable on a light theme.
+	agi::Color background = OPT_GET("Colour/Style Editor/Background/Preview")->GetColor();
 	DummyVideoProvider video(agi::vfr::Framerate(), 10, width, height, background, false);
 	VideoFrame frame;
 	video.GetFrame(0, frame);

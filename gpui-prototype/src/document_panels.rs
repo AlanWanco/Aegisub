@@ -126,18 +126,6 @@ pub struct LibraryDetails {
     pub import_styles: Vec<Fields>,
 }
 
-/// `#RRGGBBAA` with ASS alpha (00 fully opaque).
-fn ass_color(text: &str) -> Option<gpui_kit::Hsla> {
-    let hex = text.trim().trim_start_matches('#');
-    if hex.len() != 8 {
-        return None;
-    }
-    let byte = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
-    let (r, g, b, a) = (byte(0..2)?, byte(2..4)?, byte(4..6)?, byte(6..8)?);
-    let rgb = (r as u32) << 24 | (g as u32) << 16 | (b as u32) << 8 | (255 - a) as u32;
-    Some(gpui_kit::rgba(rgb).into())
-}
-
 /// Live preview of the style being edited, rendered by the host with the real
 /// subtitles provider: font lookup, outline stacking and shadow offsets are all
 /// libass behaviour that cannot be reproduced by drawing text in the frontend.
