@@ -105,6 +105,8 @@ struct Audio::Impl {
 		result["autoscroll"] = OPT_GET("Audio/Auto/Scroll")->GetBool();
 		result["snap"] = OPT_GET("Audio/Snap/Enable")->GetBool();
 		result["spectrum"] = OPT_GET("Audio/Spectrum")->GetBool();
+		result["medusa"] = OPT_GET("Audio/Medusa Timing Hotkeys")->GetBool();
+		result["medusa"] = OPT_GET("Audio/Medusa Timing Hotkeys")->GetBool();
 		result["karaoke"] = context->karaoke->IsEnabled();
 		json::Array syllables;
 		if (context->karaoke->IsEnabled()) {

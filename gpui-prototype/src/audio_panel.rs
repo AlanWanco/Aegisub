@@ -65,6 +65,8 @@ pub struct AudioState {
     #[serde(default)]
     pub spectrum: bool,
     #[serde(default)]
+    pub medusa: bool,
+    #[serde(default)]
     pub karaoke: bool,
     #[serde(default)]
     pub pending_splits: bool,
@@ -351,6 +353,17 @@ impl AudioPanel {
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(
                         json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}),
+                        cx,
+                    )
+                })),
+        );
+        controls = controls.child(
+            crate::page::toggle_chip(cx, "audio-medusa", "美杜莎", state.medusa, false)
+                .on_click(cx.listener(|view, _, _, cx| {
+                    // Medusa mode swaps the global timing hotkeys for the
+                    // audio-editing ones; the app command owns that option.
+                    view.invoke(
+                        json!({"op":"command", "name":"app/toggle/global_hotkeys"}),
                         cx,
                     )
                 })),
@@ -654,7 +667,6 @@ impl AudioPanel {
         ] {
             rates = rates.child(
                 Button::new(id)
-                    .icon(IconName::Play)
                     .rounded(gpui_kit::px(999.))
                     .small()
                     .px(gpui_kit::px(13.))
@@ -1010,7 +1022,8 @@ impl AudioPanel {
                 );
             panel = panel
                 .child(compact_viewport)
-                .child(sound.when(state.karaoke, |row| row.child(karaoke)));
+                .child(sound.when(state.karaoke, |row| row.child(karaoke)))
+                .child(controls);
             panel.into_any_element()
         }
     }

@@ -340,8 +340,11 @@ pub fn toggle_chip(
     disabled: bool,
 ) -> gpui_kit::Stateful<gpui_kit::Div> {
     let p = Palette::current(cx);
+    let label: gpui_kit::SharedString = label.into();
     div()
         .id(id)
+        .role(gpui_kit::Role::Button)
+        .aria_label(label.clone())
         .h(px(28.))
         .px_3()
         .h_flex()
@@ -375,7 +378,7 @@ pub fn toggle_chip(
             .when(on, |icon| icon.text_color(p.accent))
             .when(!on, |icon| icon.text_color(p.muted)),
         )
-        .child(label.into())
+        .child(label)
 }
 
 /// Dropdown trigger that reads like a select: value on the left, caret on the
