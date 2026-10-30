@@ -914,6 +914,10 @@ struct Workspace {
     snapshot: Snapshot,
     frame_image: Option<Arc<gpui_kit::RenderImage>>,
     frame_image_frame: i64,
+    /// Document revision the current image was rendered from. The frame bakes
+    /// in the subtitle, so an edit with an unchanged frame number still needs a
+    /// refetch — tracked per revision so a stale reply never clears the need.
+    frame_image_revision: u64,
     frame_request_inflight: bool,
     frame_request_generation: u64,
     video_epoch: u64,
@@ -992,11 +996,18 @@ impl Workspace {
     fn clear_frame_image(&mut self, _cx: &mut Context<Self>) {
         self.frame_image.take();
         self.frame_image_frame = -1;
+        self.frame_image_revision = u64::MAX;
     }
 
-    fn replace_frame_image(&mut self, image: Arc<gpui_kit::RenderImage>, frame: i64) {
+    fn replace_frame_image(
+        &mut self,
+        image: Arc<gpui_kit::RenderImage>,
+        frame: i64,
+        revision: u64,
+    ) {
         self.frame_image = Some(image);
         self.frame_image_frame = frame;
+        self.frame_image_revision = revision;
     }
 
     fn clear_audio_image(&mut self, cx: &mut Context<Self>) {
@@ -1220,6 +1231,7 @@ impl Workspace {
             },
             frame_image: None,
             frame_image_frame: -1,
+            frame_image_revision: u64::MAX,
             frame_request_inflight: false,
             frame_request_generation: 0,
             video_epoch: 0,
@@ -1375,7 +1387,7 @@ impl Workspace {
         if snapshot.revision != self.snapshot.revision {
             self.subtitle_filter_cache = None;
         }
-        if media_changed || snapshot.revision != self.snapshot.revision {
+        if media_changed {
             self.clear_frame_image(cx);
             self.frame_request_generation += 1;
             self.frame_request_inflight = false;
@@ -5168,7 +5180,12 @@ impl Workspace {
             self.frame_request_generation += 1;
             return;
         }
-        if self.frame_request_inflight || self.frame_image_frame == self.snapshot.frame {
+        // Keeping the previous image up while the replacement is fetched stops
+        // visual drags from flashing the placeholder on every step.
+        if self.frame_request_inflight
+            || (self.frame_image_frame == self.snapshot.frame
+                && self.frame_image_revision == self.snapshot.revision)
+        {
             return;
         }
         self.frame_request_inflight = true;
@@ -5176,6 +5193,7 @@ impl Workspace {
         let generation = self.frame_request_generation;
         let request_frame = self.snapshot.frame;
         let request_epoch = self.video_epoch;
+        let request_revision = self.snapshot.revision;
         let bridge = self.bridge.clone();
         let weak = cx.weak_entity();
         cx.spawn(async move |_, cx| {
@@ -5269,7 +5287,7 @@ impl Workspace {
                             if view.snapshot.video && view.video_epoch == request_epoch
                                 && (view.snapshot.frame == frame
                                     || (view.snapshot.playing && frame >= view.frame_image_frame)) {
-                                view.replace_frame_image(image, frame);
+                                view.replace_frame_image(image, frame, request_revision);
                                 cx.notify();
                             } else {
                                 view.refresh_frame(cx);
