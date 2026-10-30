@@ -7638,7 +7638,7 @@ impl Workspace {
                 div()
                     .id("subtitle-editor-list-resize-handle")
                     .aria_label("调整字幕编辑区高度")
-                    .h(px(8.))
+                    .h(px(6.))
                     .w_full()
                     .flex_shrink_0()
                     .h_flex()
@@ -8137,14 +8137,14 @@ impl Render for Workspace {
                 .id("audio-panel-resize-handle")
                 .aria_label("调整音频波形高度")
                 .role(gpui_kit::Role::Splitter)
-                .h(px(6.))
+                .h(px(4.))
                 .w_full()
                 .flex_shrink_0()
                 .h_flex()
                 .items_center()
                 .justify_center()
                 .cursor_row_resize()
-                .child(div().w(px(48.)).h(px(2.)).rounded(px(1.)).bg(grip))
+                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(grip))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
                     cx.listener(|view, event: &gpui_kit::MouseDownEvent, _, cx| {
@@ -8160,14 +8160,14 @@ impl Render for Workspace {
                 .id("workspace-column-resize-handle")
                 .aria_label("调整视频与字幕列表宽度")
                 .role(gpui_kit::Role::Splitter)
-                .w(px(6.))
+                .w(px(4.))
                 .h_full()
                 .flex_shrink_0()
                 .v_flex()
                 .items_center()
                 .justify_center()
                 .cursor_col_resize()
-                .child(div().h(px(48.)).w(px(2.)).rounded(px(1.)).bg(grip))
+                .child(div().h(px(48.)).w(px(3.)).rounded(px(2.)).bg(grip))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
                     cx.listener(move |view, event: &gpui_kit::MouseDownEvent, _, cx| {
@@ -8183,14 +8183,14 @@ impl Render for Workspace {
                 .id("video-preview-resize-handle")
                 .aria_label("调整视频预览高度")
                 .role(gpui_kit::Role::Splitter)
-                .h(px(6.))
+                .h(px(4.))
                 .w_full()
                 .flex_shrink_0()
                 .h_flex()
                 .items_center()
                 .justify_center()
                 .cursor_row_resize()
-                .child(div().w(px(48.)).h(px(2.)).rounded(px(1.)).bg(grip))
+                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(grip))
                 .on_mouse_down(
                     gpui_kit::MouseButton::Left,
                     cx.listener(|view, event: &gpui_kit::MouseDownEvent, window, cx| {
@@ -8214,7 +8214,7 @@ impl Render for Workspace {
                 .flex_1()
                 .min_w_0()
                 .min_h_0()
-                .gap_2()
+                .gap_1()
                 .child(
                     div()
                         .v_flex()
@@ -8223,7 +8223,7 @@ impl Render for Workspace {
                         .flex_shrink_0()
                         .min_w_0()
                         .min_h_0()
-                        .gap_1()
+                        .gap_0p5()
                         .child(self.render_player(
                             window,
                             side_by_side,
@@ -8261,8 +8261,8 @@ impl Render for Workspace {
                     .min_w_0()
                     .min_h_0()
                     .overflow_hidden()
-                    .gap_2()
-                    .p_4()
+                    .gap_1()
+                    .p_2()
                     .child(self.audio.render_compact(
                         &self.snapshot.audio,
                         self.snapshot.video,
