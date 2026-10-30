@@ -1388,7 +1388,9 @@ impl Workspace {
         if media_changed || snapshot.video_window_zoom != self.snapshot.video_window_zoom {
             self.cancel_visual_drag(cx);
             self.visual.reset_zoom();
-            self.visual.fit_video = false;
+            // Fitting the preview to its pane is the default for every newly
+            // loaded video; zooming away from it is a deliberate act.
+            self.visual.fit_video = true;
         }
         if active_changed {
             self.cancel_visual_drag(cx);
@@ -6693,15 +6695,22 @@ impl Workspace {
                     .small()
                     .px(gpui_kit::px(13.))
                     .py(gpui_kit::px(3.))
-                    .child(Icon::new(IconName::Maximize).size(px(15.)))
-                    .accessibility_label("适应窗口")
-                    .tooltip("适应窗口")
+                    .icon(IconName::Maximize)
+                    .label("适应窗口")
+                    .tooltip(if fit {
+                        "适应窗口：画面随预览区缩放（点击关闭）"
+                    } else {
+                        "适应窗口：画面随预览区缩放"
+                    })
                     .ghost()
                     .selected(fit)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.cancel_visual_drag(cx);
-                        view.visual.fit_video = true;
-                        view.visual.reset_zoom();
+                        let fit = !view.visual.fit_video;
+                        view.visual.fit_video = fit;
+                        if fit {
+                            view.visual.reset_zoom();
+                        }
                         cx.notify();
                     })),
             )
@@ -7422,13 +7431,12 @@ impl Workspace {
                     .h(px(32.))
                     .flex_shrink_0()
                     .px_3()
+                    // Rows inset their text by the selection bar's 2px; the
+                    // header needs the same inset or its labels sit 2px off.
+                    .pl(px(14.))
                     .items_center()
-                    .rounded_t(px(crate::workspace_theme::RADIUS_LG - 1.))
                     .bg(header_bg)
                     .border_b_1()
-                    // Rows reserve 2px on the left for the active-line accent;
-                    // the header needs the same inset or its labels sit 2px off.
-                    .border_l_2()
                     .border_color(border)
                     .children(columns.iter().map(|(column, width)| {
                         let column = *column;
@@ -7532,15 +7540,30 @@ impl Workspace {
                                         .when(!grid_font.is_empty(), |row| {
                                             row.font_family(grid_font.clone())
                                         })
+                                        .relative()
                                         .w_full()
                                         .h_flex()
                                         .items_center()
                                         .px_3()
+                                        .pl(px(14.))
                                         .bg(row_bg)
                                         .border_b_1()
                                         .border_color(border)
-                                        .border_l_2()
-                                        .border_color(if is_active { p.accent } else { border })
+                                        .when(is_active, |row| {
+                                            // The selection accent is its own bar:
+                                            // a left border shares one colour with
+                                            // the divider, which also turned the
+                                            // row's bottom line blue.
+                                            row.child(
+                                                div()
+                                                    .ml(px(-14.))
+                                                    .mr(px(12.))
+                                                    .h_full()
+                                                    .w(px(2.))
+                                                    .flex_shrink_0()
+                                                    .bg(accent),
+                                            )
+                                        })
                                         .cursor_pointer()
                                         .on_mouse_down(gpui_kit::MouseButton::Left, {
                                             let weak = weak.clone();

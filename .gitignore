@@ -1,5 +1,5 @@
 # Meson
-build*/
+build*
 /subprojects/*
 !/subprojects/*.wrap
 !/subprojects/packagefiles
@@ -8,4 +8,4 @@ build*/
 !/subprojects/luabins
 
 # Rust build artifacts
-gpui-prototype/target/
+gpui-prototype/target
