@@ -20,6 +20,12 @@
 #include "style_renamer.h"
 #include "selection_controller.h"
 #include "video_controller.h"
+#include "video_frame.h"
+#include "video_provider_dummy.h"
+#include "include/aegisub/subtitles_provider.h"
+
+#include <wx/base64.h>
+#include <wx/mstream.h>
 
 #include <libaegisub/cajun/writer.h>
 #include <libaegisub/audio/provider.h>
@@ -132,6 +138,61 @@ void set_style_field(AssStyle& style, std::string const& key, std::string const&
 	else if (key == "margin_right") style.Margin[1] = parse_integer(value, -9999, 99999);
 	else if (key == "margin_vertical") style.Margin[2] = parse_integer(value, -9999, 99999);
 	else throw std::invalid_argument("unknown style field");
+}
+
+/// Renders the style being edited through the real subtitles provider so the
+/// preview matches what the video will show. Drawing it in the frontend cannot
+/// reproduce libass: the font lookup, the outline stacking and the shadow
+/// offsets are all provider behaviour.
+std::string style_preview(agi::Context *context, json::Object const& request) {
+	AssStyle style;
+	auto const& fields = static_cast<json::Object const&>(request.at("fields"));
+	for (auto const& [key, value] : fields) set_style_field(style, key, static_cast<std::string const&>(value));
+	style.name = "Default";
+	// Centred with no margins: the preview shows the style, not the layout.
+	style.alignment = 5;
+	std::fill(style.Margin.begin(), style.Margin.end(), 0);
+	style.UpdateData();
+
+	int const width = parse_integer(static_cast<std::string const&>(request.at("width")), 16, 4096);
+	int const height = parse_integer(static_cast<std::string const&>(request.at("height")), 16, 1024);
+	std::string const& text = request.at("text");
+
+	AssFile file;
+	file.Styles.clear();
+	file.Events.clear();
+	file.Styles.push_back(*new AssStyle(style));
+	auto line = new AssDialogue;
+	line->Style = style.name;
+	line->Text = "{\\q2}" + text;
+	file.Events.push_back(*line);
+	file.SetScriptInfo("PlayResX", std::to_string(width));
+	file.SetScriptInfo("PlayResY", std::to_string(height));
+
+	// The provider is expensive to create and holds the loaded font face, so it
+	// outlives a single preview.
+	static std::unique_ptr<SubtitlesProvider> provider;
+	if (!provider) provider = SubtitlesProviderFactory::GetProvider(nullptr);
+	provider->LoadSubtitles(&file);
+
+	agi::Color const background(0x20, 0x20, 0x24, 0);
+	DummyVideoProvider video(agi::vfr::Framerate(), 10, width, height, background, false);
+	VideoFrame frame;
+	video.GetFrame(0, frame);
+	provider->DrawSubtitles(frame, 0.1);
+
+	wxImage image = GetImage(frame);
+	wxMemoryOutputStream stream;
+	if (!image.SaveFile(stream, wxBITMAP_TYPE_PNG)) throw std::runtime_error("could not encode the style preview");
+	std::vector<unsigned char> bytes(stream.GetSize());
+	stream.CopyTo(bytes.data(), bytes.size());
+
+	json::Object result;
+	result["ok"] = true;
+	result["width"] = std::to_string(width);
+	result["height"] = std::to_string(height);
+	result["image"] = std::string(wxBase64Encode(bytes.data(), bytes.size()).utf8_str());
+	return encode(std::move(result));
 }
 
 json::Object describe_style(AssStyle const& style) {
@@ -407,6 +468,10 @@ std::string EditScriptInfo(agi::Context *context, json::Object const& request) {
 	}
 	if (changed) context->ass->Commit(_("property changes"), AssFile::COMMIT_SCRIPTINFO);
 	return changed ? R"({"ok":true})" : R"({"ok":true,"unchanged":true})";
+}
+
+std::string StylePreview(agi::Context *context, json::Object const& request) {
+	return style_preview(context, request);
 }
 
 std::string EditStyle(agi::Context *context, json::Object const& request) {

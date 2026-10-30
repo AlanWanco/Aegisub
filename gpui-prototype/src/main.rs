@@ -777,6 +777,14 @@ fn no_active_line() -> i64 {
     -1
 }
 
+#[derive(serde::Deserialize)]
+struct StylePreviewReply {
+    #[serde(default)]
+    image: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct FrameReply {
     frame: Option<i64>,
@@ -5359,6 +5367,110 @@ impl Workspace {
         );
     }
 
+    /// Asks the host to render the style being edited with its subtitles
+    /// provider. The request is debounced because every keystroke in the font
+    /// or size field changes the signature.
+    fn refresh_style_preview(&mut self, cx: &mut Context<Self>) {
+        const PREVIEW_WIDTH: u32 = 900;
+        const PREVIEW_HEIGHT: u32 = 150;
+        const PREVIEW_TEXT: &str = "风停下来 ABC 123";
+        if self.document.preview_pending {
+            return;
+        }
+        let fields = self.document.style_form.values(cx);
+        let key = format!("{PREVIEW_WIDTH}x{PREVIEW_HEIGHT}{}", json!(fields));
+        if key == self.document.preview_key {
+            return;
+        }
+        self.document.preview_pending = true;
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(140))
+                .await;
+            let Some(view) = weak.upgrade() else { return; };
+            let current = view.read_with(cx, |view, cx| {
+                format!(
+                    "{PREVIEW_WIDTH}x{PREVIEW_HEIGHT}{}",
+                    json!(view.document.style_form.values(cx))
+                )
+            });
+            if current != key {
+                // Still typing: let the next render queue the newest values.
+                let _ = view.update(cx, |view, cx| {
+                    view.document.preview_pending = false;
+                    cx.notify();
+                });
+                return;
+            }
+            let reply = bridge
+                .call(json!({
+                    "op": "style_preview",
+                    "fields": fields,
+                    "text": PREVIEW_TEXT,
+                    "width": PREVIEW_WIDTH.to_string(),
+                    "height": PREVIEW_HEIGHT.to_string(),
+                }))
+                .await;
+            let encoded = match reply.and_then(|value| {
+                serde_json::from_value::<StylePreviewReply>(value)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))
+            }) {
+                Ok(reply) => reply.image,
+                Err(error) => {
+                    let _ = view.update(cx, |view, cx| {
+                        view.document.preview_pending = false;
+                        view.status = format!("样式预览失败：{error}");
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
+            let Some(encoded) = encoded else {
+                let _ = view.update(cx, |view, cx| {
+                    view.document.preview_pending = false;
+                    cx.notify();
+                });
+                return;
+            };
+            let decoded = cx
+                .background_executor()
+                .spawn(async move {
+                    let bytes = base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        encoded,
+                    )?;
+                    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+                        .with_guessed_format()?;
+                    let rgba = image::DynamicImage::from_decoder(reader.into_decoder()?)?.into_rgba8();
+                    let (width, height) = rgba.dimensions();
+                    let mut bgra = rgba.into_raw();
+                    for pixel in bgra.chunks_exact_mut(4) {
+                        pixel.swap(0, 2);
+                    }
+                    let image = image::RgbaImage::from_raw(width, height, bgra)
+                        .context("style preview dimensions do not match its pixel data")?;
+                    Ok::<_, anyhow::Error>(std::sync::Arc::new(gpui_kit::RenderImage::new(vec![
+                        VideoImageFrame::new(image),
+                    ])))
+                })
+                .await;
+            let _ = view.update(cx, |view, cx| {
+                view.document.preview_pending = false;
+                match decoded {
+                    Ok(image) => {
+                        view.document.preview_image = Some(image);
+                        view.document.preview_key = key;
+                    }
+                    Err(error) => view.status = format!("样式预览解码失败：{error}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn refresh_frame(&mut self, cx: &mut Context<Self>) {
         if !self.snapshot.video {
             self.clear_frame_image(cx);
@@ -8389,6 +8501,7 @@ impl Render for Workspace {
         } else if self.active_panel == Panel::Timing {
             body = body.child(self.timing.render(&self.snapshot, cx));
         } else if self.active_panel == Panel::Styles {
+            self.refresh_style_preview(cx);
             body = body.child(self.document.render_styles(self.style_preview_height, cx));
         } else {
             body = body.child(self.document.render_project(cx));

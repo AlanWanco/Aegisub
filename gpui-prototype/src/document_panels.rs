@@ -10,8 +10,8 @@ use gpui_kit::component::{
     scroll::ScrollableElement,
 };
 use gpui_kit::{
-    App, AppContext, Context, Div, Entity, IntoElement, MouseButton, MouseDownEvent, Subscription,
-    Window, div, prelude::*, px,
+    App, AppContext, Context, Div, Entity, IntoElement, MouseButton, MouseDownEvent, ObjectFit,
+    Subscription, Window, div, img, prelude::*, px,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -138,47 +138,15 @@ fn ass_color(text: &str) -> Option<gpui_kit::Hsla> {
     Some(gpui_kit::rgba(rgb).into())
 }
 
-/// Live preview of the style being edited: font, size, weight and the outline
-/// and shadow colours, drawn the way ASS stacks them.
-fn style_preview(cx: &App, form: &Form, height: f32, p: &crate::workspace_theme::Palette) -> Div {
-    let value = |key: &str| {
-        form.inputs
-            .get(key)
-            .map(|input| input.read(cx).value().to_string())
-            .unwrap_or_default()
-    };
-    let font = value("font");
-    let size: f32 = value("fontsize").trim().parse().unwrap_or(48.);
-    let scaled = (size * 0.5).clamp(11., 32.);
-    let primary = ass_color(&value("primary")).unwrap_or(p.text);
-    let outline = ass_color(&value("outline")).unwrap_or(p.text);
-    let shadow = ass_color(&value("shadow")).unwrap_or(p.text);
-    let outline_w: f32 = value("outline_w").trim().parse().unwrap_or(0.);
-    let shadow_w: f32 = value("shadow_w").trim().parse().unwrap_or(0.);
-    let bold = value("bold").trim() == "1";
-    let italic = value("italic").trim() == "1";
-
-    let layer = |color: gpui_kit::Hsla, dx: f32, dy: f32| {
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                div()
-                    .relative()
-                    .left(px(dx))
-                    .top(px(dy))
-                    .font_family(font.clone())
-                    .text_size(px(scaled))
-                    .text_color(color)
-                    .when(bold, |this| this.font_semibold())
-                    .when(italic, |this| this.italic())
-                    .child("风停下来 ABC 123"),
-            )
-    };
-
+/// Live preview of the style being edited, rendered by the host with the real
+/// subtitles provider: font lookup, outline stacking and shadow offsets are all
+/// libass behaviour that cannot be reproduced by drawing text in the frontend.
+fn style_preview(
+    _cx: &App,
+    image: Option<&std::sync::Arc<gpui_kit::RenderImage>>,
+    height: f32,
+    p: &crate::workspace_theme::Palette,
+) -> Div {
     let mut stage = div()
         .relative()
         .w_full()
@@ -186,15 +154,26 @@ fn style_preview(cx: &App, form: &Form, height: f32, p: &crate::workspace_theme:
         .rounded(px(crate::workspace_theme::RADIUS_MD))
         .bg(p.inset)
         .overflow_hidden();
-    if shadow_w > 0. {
-        stage = stage.child(layer(shadow, shadow_w * 0.6, shadow_w * 0.6));
-    }
-    if outline_w > 0. {
-        for (dx, dy) in [(-1., 0.), (1., 0.), (0., -1.), (0., 1.)] {
-            stage = stage.child(layer(outline, dx * outline_w * 0.6, dy * outline_w * 0.6));
-        }
-    }
-    stage.child(layer(primary, 0., 0.))
+    stage = match image {
+        Some(image) => stage.child(
+            img(image.clone())
+                .absolute()
+                .size_full()
+                .object_fit(ObjectFit::Contain),
+        ),
+        None => stage.child(
+            div()
+                .absolute()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .text_color(p.muted)
+                .child("正在渲染样式预览…"),
+        ),
+    };
+    stage
 }
 
 pub struct Form {
@@ -204,6 +183,19 @@ pub struct Form {
 }
 
 impl Form {
+    /// Every field value as JSON, keyed by the ASS field name the host expects.
+    pub fn values(&self, cx: &App) -> serde_json::Map<String, serde_json::Value> {
+        self.inputs
+            .iter()
+            .map(|(key, input)| {
+                (
+                    (*key).to_owned(),
+                    serde_json::Value::String(input.read(cx).value().to_string()),
+                )
+            })
+            .collect()
+    }
+
     fn new(
         fields: &'static [(&'static str, &'static str)],
         style: bool,
@@ -289,6 +281,10 @@ pub struct DocumentPanels {
     pub import_path: String,
     pub import_styles: Vec<Fields>,
     pub selected_import: BTreeSet<String>,
+    /// Style preview rendered by the host's subtitles provider.
+    pub preview_image: Option<std::sync::Arc<gpui_kit::RenderImage>>,
+    pub preview_key: String,
+    pub preview_pending: bool,
 }
 
 impl DocumentPanels {
@@ -311,6 +307,9 @@ impl DocumentPanels {
             import_path: String::new(),
             import_styles: vec![],
             selected_import: BTreeSet::new(),
+            preview_image: None,
+            preview_key: String::new(),
+            preview_pending: false,
         }
     }
 
@@ -449,7 +448,7 @@ impl DocumentPanels {
         } else {
             &self.style
         };
-        let preview = style_preview(cx, &self.style_form, style_preview_height, &p);
+        let preview = style_preview(cx, self.preview_image.as_ref(), style_preview_height, &p);
         let mut editor = div().id("document-style-form").v_flex().flex_1().min_w_0().min_h_0().gap_3().p_3().overflow_y_scrollbar()
             .child(div().h_flex().flex_wrap().gap_2()
                 .child(Button::new("apply-style-fields").icon(IconName::Check).rounded(gpui_kit::px(999.)).small().px(gpui_kit::px(13.)).py(gpui_kit::px(3.)).label("应用样式修改").primary()

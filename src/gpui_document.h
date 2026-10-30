@@ -18,6 +18,7 @@ std::string SaveMedia(agi::Context *context, json::Object const& request);
 std::string DocumentDetails(agi::Context *context);
 std::string EditScriptInfo(agi::Context *context, json::Object const& request);
 std::string EditStyle(agi::Context *context, json::Object const& request);
+std::string StylePreview(agi::Context *context, json::Object const& request);
 std::string StyleLibrary(agi::Context *context, json::Object const& request);
 std::string Styling(agi::Context *context, json::Object const& request);
 std::string Resample(agi::Context *context, json::Object const& request);

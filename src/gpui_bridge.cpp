@@ -494,6 +494,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "document") { BeginResponse(socket, client, gpui::DocumentDetails(context)); return; }
 		if (op == "script_info") { BeginResponse(socket, client, gpui::EditScriptInfo(context, object)); return; }
 		if (op == "style") { BeginResponse(socket, client, gpui::EditStyle(context, object)); return; }
+		if (op == "style_preview") { BeginResponse(socket, client, gpui::StylePreview(context, object)); return; }
 		if (op == "styling") { BeginResponse(socket, client, gpui::Styling(context, object)); return; }
 		if (op == "style_library") { BeginResponse(socket, client, gpui::StyleLibrary(context, object)); return; }
 		if (op == "translation") { BeginResponse(socket, client, gpui::Translation(context, object)); return; }
