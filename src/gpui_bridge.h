@@ -19,6 +19,8 @@ void PushNotice(std::string title, std::string body);
 /// Same, but the front end offers a "do not show again" switch that writes
 /// `suppress_option` (set to 0, the enum's "ignore") when it is ticked.
 void PushNotice(std::string title, std::string body, std::string suppress_option);
+/// Notice that carries an action row; `kind` names which one the front end draws.
+void PushNotice(std::string title, std::string body, std::string suppress_option, std::string kind);
 /// Runs a command on the front end instead of opening the host's own dialog.
 /// Commands the front end owns (the colour pickers today) use this so Lua and
 /// the legacy menus do not pop a wx window over the GPUI frame.

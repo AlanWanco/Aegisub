@@ -77,6 +77,8 @@ struct PendingNotice {
 	std::string body;
 	/// Option that turns this warning off; empty when the notice is one-shot.
 	std::string suppress;
+	/// Tells the front end which action row to draw; empty for a plain notice.
+	std::string kind;
 };
 std::vector<PendingNotice> pending_notices;
 std::vector<std::string> pending_commands;
@@ -179,13 +181,19 @@ bool gpui::FrontendAttached() {
 void gpui::PushNotice(std::string title, std::string body) {
 	std::lock_guard<std::mutex> lock(notice_mutex);
 	if (attached_clients == 0) return;
-	pending_notices.push_back({std::move(title), std::move(body), {}});
+	pending_notices.push_back({std::move(title), std::move(body), {}, {}});
 }
 
 void gpui::PushNotice(std::string title, std::string body, std::string suppress_option) {
 	std::lock_guard<std::mutex> lock(notice_mutex);
 	if (attached_clients == 0) return;
-	pending_notices.push_back({std::move(title), std::move(body), std::move(suppress_option)});
+	pending_notices.push_back({std::move(title), std::move(body), std::move(suppress_option), {}});
+}
+
+void gpui::PushNotice(std::string title, std::string body, std::string suppress_option, std::string kind) {
+	std::lock_guard<std::mutex> lock(notice_mutex);
+	if (attached_clients == 0) return;
+	pending_notices.push_back({std::move(title), std::move(body), std::move(suppress_option), std::move(kind)});
 }
 
 void gpui::PushCommand(std::string name) {
@@ -534,6 +542,18 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (op == "edit") { BeginResponse(socket, client, Edit(object)); return; }
 		if (op == "line_fields") { BeginResponse(socket, client, LineFields(object)); return; }
 		if (op == "seek") { BeginResponse(socket, client, Seek(object)); return; }
+		if (op == "notice_discard") {
+			// The user answered "don't save": put the document back to what is on
+			// disk so nothing is lost silently. An untitled document has no file to
+			// fall back to, so it becomes a blank one, which is what wx does when
+			// the caller replaces it anyway.
+			if (context->subsController->HasFile())
+				context->project->LoadSubtitles(context->subsController->Filename());
+			else
+				context->subsController->Close();
+			BeginResponse(socket, client, R"({"ok":true})");
+			return;
+		}
 		if (op == "notice_suppress") {
 			// Only the warnings that offer the switch may be silenced here; the
 			// socket is not a licence to write arbitrary preferences.
@@ -638,6 +658,8 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 					<< ",\"body\":" << quote_json(notice.body);
 				if (!notice.suppress.empty())
 					out << ",\"suppress\":" << quote_json(notice.suppress);
+				if (!notice.kind.empty())
+					out << ",\"kind\":" << quote_json(notice.kind);
 				out << '}';
 			}
 			pending_notices.clear();

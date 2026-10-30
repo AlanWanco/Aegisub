@@ -95,6 +95,9 @@ public:
 	/// Does the file have unsaved changes?
 	bool IsModified() const { return commit_id != saved_commit_id; };
 
+	/// Does this document correspond to a file on disk?
+	bool HasFile() const { return !filename.empty(); }
+
 	/// @brief Load from a file
 	/// @param file File name
 	/// @param charset Character set of file

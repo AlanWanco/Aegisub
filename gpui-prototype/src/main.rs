@@ -420,6 +420,9 @@ struct Notice {
     /// Preference that silences this warning; empty for one-off notices.
     #[serde(default)]
     suppress: String,
+    /// Host-selected button row; "unsaved" asks the user to resolve edits.
+    #[serde(default)]
+    kind: String,
 }
 
 /// Host-drawn dialogs the front end renders itself: about, log, language and
@@ -8755,7 +8758,63 @@ impl Render for Workspace {
                             .h_flex()
                             .items_center()
                             .gap_2()
-                            .when(!notice.suppress.is_empty(), |row| {
+                            .when(notice.kind == "unsaved", |row| {
+                                row.child(
+                                    Button::new("notice-save")
+                                        .label("保存")
+                                        .primary()
+                                        .rounded(px(999.))
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.invoke(
+                                                json!({"op":"command","name":"subtitle/save"}),
+                                                cx,
+                                            );
+                                            view.notice_suppress = false;
+                                            if !view.notices.is_empty() {
+                                                view.notices.remove(0);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("notice-save-as")
+                                        .label("另存为")
+                                        .rounded(px(999.))
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .ghost()
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.invoke(
+                                                json!({"op":"command","name":"subtitle/save/as"}),
+                                                cx,
+                                            );
+                                            view.notice_suppress = false;
+                                            if !view.notices.is_empty() {
+                                                view.notices.remove(0);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("notice-discard")
+                                        .label("不保存")
+                                        .rounded(px(999.))
+                                        .px(px(13.))
+                                        .py(px(3.))
+                                        .ghost()
+                                        .on_click(cx.listener(|view, _, _, cx| {
+                                            view.invoke(json!({"op":"notice_discard"}), cx);
+                                            view.notice_suppress = false;
+                                            if !view.notices.is_empty() {
+                                                view.notices.remove(0);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                            })
+                            .when(notice.kind != "unsaved" && !notice.suppress.is_empty(), |row| {
                                 let key = notice.suppress.clone();
                                 row.child(
                                     Button::new("host-notice-suppress")
@@ -8794,7 +8853,7 @@ impl Render for Workspace {
                                         })),
                                 )
                             })
-                            .when(notice.suppress.is_empty(), |row| {
+                            .when(notice.kind != "unsaved" && notice.suppress.is_empty(), |row| {
                                 row.child(
                                     Button::new("dismiss-host-notice")
                                         .label("知道了")

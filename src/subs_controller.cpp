@@ -248,8 +248,9 @@ int SubsController::TryToClose(bool allow_cancel) const {
 		// The front end asked for this over the bridge, so a modal dialog would
 		// deadlock it. Refuse the switch and let the user save first.
 		gpui::PushNotice(from_wx(_("Unsaved changes")),
-			from_wx(fmt_tl("Do you want to save changes to %s?", Filename())) + "\n\n" +
-			from_wx(_("Save the subtitles before switching files.")));
+			from_wx(fmt_tl("Do you want to save changes to %s?", Filename())),
+			{},
+			"unsaved");
 		return wxCANCEL;
 	}
 	int result = wxMessageBox(fmt_tl("Do you want to save changes to %s?", Filename()), _("Unsaved changes"), flags, context->parent);
