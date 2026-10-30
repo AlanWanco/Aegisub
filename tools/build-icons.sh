@@ -53,5 +53,36 @@ magick "$TMP"/win-256.png "$TMP"/win-128.png "$TMP"/win-64.png "$TMP"/win-48.png
     "$TMP"/win-32.png "$TMP"/win-24.png "$TMP"/win-16.png \
     src/bitmaps/windows/icon.ico
 cp src/bitmaps/windows/icon.ico packages/win_installer/portable/icon.ico
+# Legacy loose copies next to the hicolor directories.
+cp packages/desktop/16x16/aegisub.png packages/desktop/16x16.png
+cp packages/desktop/32x32/aegisub.png packages/desktop/32x32.png
+
+echo "==> wx About dialog splash and Inno Setup branding"
+logo="$TMP/wordmark.png"
+rsvg-convert -w 300 docs/art-sources/aegisub-logo.svg -o "$logo"
+render 1024 "$TMP/icon.png"
+magick -size 420x240 xc:white \( "$TMP/icon.png" -resize 380x380 \) \
+    -gravity northwest -geometry +20+55 -composite "$logo" \
+    -gravity center -geometry +0-8 -composite -depth 8 -strip \
+    PNG24:src/bitmaps/misc/splash.png
+
+# The installer's wizard images: wordmark on top, icon bleeding off the bottom.
+brand() { # name width height icon-size x y
+    rsvg-convert -w $(($2 - 24)) docs/art-sources/aegisub-logo.svg -o "$TMP/wm-$1.png"
+    magick -size "$2x$3" xc:white "$TMP/wm-$1.png" -gravity northwest \
+        -geometry +10+8 -composite \( "$TMP/icon.png" -resize "$4x$4" \) \
+        -gravity northwest -geometry "$5+$6" -composite -depth 8 \
+        -type TrueColor BMP3:packages/win_installer/$1.bmp
+}
+brand welcome-large 219 386 400 -90 130
+brand welcome 164 314 300 -68 100
+
+badge() { # name width height
+    side=$(( $2 < $3 ? $2 : $3 ))
+    magick -size "$2x$3" xc:white \( "$TMP/icon.png" -resize $((side-4))x$((side-4)) \) \
+        -gravity center -composite -depth 8 -type TrueColor BMP3:packages/win_installer/$1.bmp
+}
+badge aegisub-large 73 71
+badge aegisub 55 58
 
 echo "done"
