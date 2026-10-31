@@ -35,7 +35,7 @@ std::string_view CommandSurface(std::string_view name) {
 	};
 	static const std::set<std::string_view> wx_controls = {
 		"app/bring_to_front", "app/hide", "app/hide_others", "app/maximize", "app/minimize", "app/show_all",
-		"subtitle/close", "app/display/audio_subs", "app/display/full", "app/display/subs", "app/display/video_subs",
+		"subtitle/close",
 		"video/copy_coordinates", "video/detach", "video/focus_seek",
 		"edit/line/paste/over"
 	};
@@ -61,7 +61,7 @@ std::string_view CommandSurface(std::string_view name) {
 	if (dialogs.count(name)) return "dialog";
 	if (name.starts_with("video/zoom/") ||
 		name.starts_with("audio/go_to") || name.starts_with("audio/scroll/") ||
-		name.starts_with("app/display/") || name.starts_with("grid/tags/") || name == "grid/tag/cycle_hiding" ||
+		name.starts_with("grid/tags/") || name == "grid/tag/cycle_hiding" ||
 		name.starts_with("tool/translation_assistant/") || name.starts_with("tool/styling_assistant/"))
 		return "wx-control";
 	if (name.starts_with("automation/lua/")) return "automation";
@@ -86,6 +86,9 @@ std::string CommandCatalog(agi::Context *context, Visual const& visual) {
 		entry["surface"] = CommandSurface(name);
 		bool enabled = command->Validate(context);
 		if (name.starts_with("tool/translation_assistant/") || name.starts_with("tool/styling_assistant/")) enabled = context->selectionController->GetActiveLine() != nullptr;
+		// The GPUI workspace owns these toggles now; the wx frame's own state
+		// would otherwise disable the mode that is not currently active.
+		if (name.starts_with("app/display/")) enabled = true;
 		if (name.starts_with("recent/")) {
 			auto const last_slash = name.rfind('/');
 			if (last_slash == 6) enabled = false; // submenu group, not an operation

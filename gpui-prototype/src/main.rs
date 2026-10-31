@@ -1077,6 +1077,9 @@ struct Workspace {
     properties_dirty: bool,
     /// 边距/图层/效果 这一排低频字段是否展开。
     properties_more: bool,
+    /// 视图菜单里的容器开关：字幕区始终在，音频条和视频预览各自可选。
+    show_audio: bool,
+    show_video: bool,
     properties_line_id: i64,
     _property_events: Vec<Subscription>,
     _command_search_events: Subscription,
@@ -1399,6 +1402,8 @@ impl Workspace {
             property_inputs,
             properties_dirty: false,
             properties_more: false,
+            show_audio: true,
+            show_video: true,
             properties_line_id: -1,
             _property_events: property_events,
             _command_search_events: command_search_events,
@@ -3687,6 +3692,20 @@ impl Workspace {
                 Some("subtitle/save") if !self.snapshot.can_save => {
                     self.save_file_as(cx);
                     return;
+                }
+                Some(
+                    name @ ("app/display/subs"
+                    | "app/display/video_subs"
+                    | "app/display/audio_subs"
+                    | "app/display/full"),
+                ) => {
+                    // Which containers the workspace shows. Falls through so the
+                    // host still runs the command and its menu check stays right.
+                    self.show_audio =
+                        matches!(name, "app/display/audio_subs" | "app/display/full");
+                    self.show_video =
+                        matches!(name, "app/display/video_subs" | "app/display/full");
+                    cx.notify();
                 }
                 Some(name)
                     if name.starts_with("audio/go_to") || name.starts_with("audio/scroll/") =>
@@ -8615,49 +8634,56 @@ impl Render for Workspace {
                         cx.notify();
                     }),
                 );
+            // Audio and video share the left column; the view commands hide
+            // either container, and hiding both hands the full width to the text.
+            let audio_strip = self.audio.render_compact(
+                &self.snapshot.audio,
+                self.snapshot.video,
+                &self.snapshot.appearance,
+                self.audio_panel_height,
+                focus_area == KeyFocus::Audio,
+                cx,
+            ).into_any_element();
+            let player = self.render_player(
+                window,
+                side_by_side,
+                side_by_side,
+                focus_area == KeyFocus::Video,
+                cx,
+            ).into_any_element();
             let mut columns = div()
                 .h_flex()
                 .items_stretch()
                 .flex_1()
                 .min_w_0()
                 .min_h_0()
-                .gap_1()
-                .child(
-                    div()
-                        .v_flex()
-                        .when(side_by_side, |column| column.w(px(column_width)).h_full())
-                        .when(!side_by_side, |column| column.flex_1())
-                        .flex_shrink_0()
-                        .min_w_0()
-                        .min_h_0()
-                        .gap_0p5()
-                        // Audio and video share the left column: the text editor
-                        // and the subtitle list own the right one.
-                        .child(self.audio.render_compact(
-                            &self.snapshot.audio,
-                            self.snapshot.video,
-                            &self.snapshot.appearance,
-                            self.audio_panel_height,
-                            focus_area == KeyFocus::Audio,
-                            cx,
-                        ))
-                        .child(audio_handle)
-                        .child(self.render_player(
-                            window,
-                            side_by_side,
-                            side_by_side,
-                            focus_area == KeyFocus::Video,
-                            cx,
-                        ))
-                        // The stacked layout has no spare height to trade
-                        // between the preview and the properties.
-                        .when(side_by_side && properties_rail.is_none(), |column| {
-                            column.child(video_handle)
-                        })
-                        ,
-                )
-                .when(side_by_side, |row| row.child(column_handle))
-                .child({
+                .gap_1();
+            if self.show_audio || self.show_video {
+                let mut left = div()
+                    .v_flex()
+                    .when(side_by_side, |column| column.w(px(column_width)).h_full())
+                    .when(!side_by_side, |column| column.flex_1())
+                    .flex_shrink_0()
+                    .min_w_0()
+                    .min_h_0()
+                    .gap_0p5();
+                if self.show_audio {
+                    left = left.child(audio_strip).child(audio_handle);
+                }
+                if self.show_video {
+                    left = left.child(player);
+                    // The stacked layout has no spare height to trade between
+                    // the preview and the properties.
+                    if side_by_side && properties_rail.is_none() {
+                        left = left.child(video_handle);
+                    }
+                }
+                columns = columns.child(left);
+                if side_by_side {
+                    columns = columns.child(column_handle);
+                }
+            }
+            columns = columns.child({
                     // The editor and the subtitle list are one region: they share
                     // a single outline so the highlight says which area owns the
                     // keyboard, not which card was clicked last.
@@ -8673,7 +8699,7 @@ impl Render for Workspace {
                         .border_1()
                         .border_color(if focused { p.accent } else { p.border })
                         .child(self.render_subtitle_panel(properties_rail, focused, cx))
-                });
+            });
             if !side_by_side {
                 columns = columns.flex_col();
             }
