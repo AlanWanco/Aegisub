@@ -690,6 +690,9 @@ fn line_field_row(
                     let disabled = view.selected_line < 0;
                     let label = current.clone();
                     page::select_trigger(cx, "editor-style-select", label, disabled)
+                        // The style picker sits next to plain inputs, so it has to
+                        // match their height instead of the compact button size.
+                        .h(px(32.))
                         .accessibility_label("样式")
                         .dropdown_menu(move |mut menu, _, _| {
                             for name in options.iter() {
