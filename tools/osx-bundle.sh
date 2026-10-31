@@ -77,6 +77,14 @@ echo "---- Copying Aegisub locale files ----"
 # internal so we don't need an aegisub.mo file.
 mkdir -vp "${PKG_DIR}/Contents/Resources/en.lproj"
 
+# gettext catalogs; wxWidgets looks them up under Contents/Resources/<lang>/LC_MESSAGES.
+for mo in "${BUILD_DIR}"/po/*/LC_MESSAGES/*.mo; do
+  [ -e "${mo}" ] || continue
+  lang="$(basename "$(dirname "$(dirname "${mo}")")")"
+  mkdir -vp "${PKG_DIR}/Contents/Resources/${lang}/LC_MESSAGES"
+  cp -v "${mo}" "${PKG_DIR}/Contents/Resources/${lang}/LC_MESSAGES/"
+done
+
 # FIXME
 # 10.8 wants sr_YU rather than sr_RS
 #mv "${PKG_DIR}/Contents/Resources/sr_RS.lproj" "${PKG_DIR}/Contents/Resources/sr_YU.lproj"
