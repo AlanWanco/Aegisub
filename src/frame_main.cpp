@@ -414,6 +414,15 @@ void FrameMain::OnCloseWindow(wxCloseEvent &event) {
 	context->videoController->Stop();
 	context->audioController->Stop();
 
+#ifdef WITH_GPUI_DEFAULT
+	// Once the GPUI window is gone there is nobody left to answer a modal, and
+	// this frame is hidden anyway: keep the edits in an autosave file instead of
+	// blocking on a dialog the user cannot see.
+	if (!gpui::FrontendAttached() && context->subsController->IsModified()) {
+		context->subsController->AutoSave();
+	}
+	else
+#endif
 	// Ask user if he wants to save first
 	if (context->subsController->TryToClose(event.CanVeto()) == wxCANCEL) {
 		event.Veto();

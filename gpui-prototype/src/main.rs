@@ -1122,6 +1122,9 @@ struct Workspace {
     properties_dirty: bool,
     /// 边距/图层/效果 这一排低频字段是否展开。
     properties_more: bool,
+    /// Set when the user answered "save" on the unsaved-changes card: quit as
+    /// soon as the document comes back clean.
+    quit_after_save: bool,
     /// 视图菜单里的容器开关：字幕区始终在，音频条和视频预览各自可选。
     show_audio: bool,
     show_video: bool,
@@ -1447,6 +1450,7 @@ impl Workspace {
             property_inputs,
             properties_dirty: false,
             properties_more: false,
+            quit_after_save: false,
             show_audio: true,
             show_video: true,
             properties_line_id: -1,
@@ -1478,6 +1482,13 @@ impl Workspace {
     }
 
     fn apply_snapshot(&mut self, snapshot: Snapshot, cx: &mut Context<Self>) {
+        // "保存" on the unsaved-changes card only deferred the quit until the
+        // host confirms the document is clean again.
+        if self.quit_after_save && !snapshot.modified {
+            self.quit_after_save = false;
+            cx.quit();
+            return;
+        }
         if !snapshot.notices.is_empty() {
             self.notices.extend(snapshot.notices.iter().cloned());
         }
@@ -9202,6 +9213,7 @@ impl Render for Workspace {
                                                 json!({"op":"command","name":"subtitle/save"}),
                                                 cx,
                                             );
+                                            view.quit_after_save = true;
                                             view.notice_suppress = false;
                                             if !view.notices.is_empty() {
                                                 view.notices.remove(0);
@@ -9238,6 +9250,11 @@ impl Render for Workspace {
                                         .on_click(cx.listener(|view, _, _, cx| {
                                             view.invoke(json!({"op":"notice_discard"}), cx);
                                             view.notice_suppress = false;
+                                            // Quitting here would race the bridge
+                                            // call: the host would still consider
+                                            // the file dirty and prompt a hidden
+                                            // wx dialog. Quit once it reports clean.
+                                            view.quit_after_save = true;
                                             if !view.notices.is_empty() {
                                                 view.notices.remove(0);
                                             }
@@ -9449,6 +9466,36 @@ fn open_workspace(
                     view.activate_panel(panel, window, cx);
                 }
                 view
+            });
+            // The wx frame used to ask this itself, but by the time the GPUI
+            // window is gone the host has no client to talk to and falls back to
+            // a native modal. Ask here instead, while the card can still render.
+            let close_target = workspace.downgrade();
+            window.on_window_should_close(cx, move |_, cx| {
+                let Some(view) = close_target.upgrade() else {
+                    return true;
+                };
+                view.update(cx, |view, cx| {
+                    if view.detached.is_some() || !view.snapshot.modified {
+                        return true;
+                    }
+                    if view.notices.iter().any(|notice| notice.kind == "unsaved") {
+                        return false;
+                    }
+                    let name = std::path::Path::new(&view.snapshot.file)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "无标题".to_owned());
+                    view.notices.push(Notice {
+                        title: "未保存的更改".to_owned(),
+                        body: format!("{name} 有未保存的修改。"),
+                        suppress: String::new(),
+                        kind: "unsaved".to_owned(),
+                        choices: Vec::new(),
+                    });
+                    cx.notify();
+                    false
+                })
             });
             let menu_target = workspace.downgrade();
             cx.on_action(move |action: &RunCommand, cx| {

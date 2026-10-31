@@ -71,8 +71,6 @@ class SubsController : private agi::signal::ConnectionScope {
 	/// Set the filename, updating things like the MRU and last used path
 	void SetFileName(agi::fs::path const& file);
 
-	/// Autosave the file if there have been any chances since the last autosave
-	void AutoSave();
 
 	void OnCommit(AssFileCommit c);
 	void OnActiveLineChanged();
@@ -91,6 +89,12 @@ public:
 
 	/// The file's path and filename if any, or platform-appropriate "untitled"
 	agi::fs::path Filename() const;
+
+	/// Autosave the file if there have been any changes since the last autosave.
+	///
+	/// Public because the frame uses it when a GPUI front end has already exited:
+	/// there is no window left to ask, so the edits go to a recovery file.
+	void AutoSave();
 
 	/// Does the file have unsaved changes?
 	bool IsModified() const { return commit_id != saved_commit_id; };
