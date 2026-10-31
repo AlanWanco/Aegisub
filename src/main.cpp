@@ -257,16 +257,18 @@ bool AegisubApp::OnInit() {
 
 		// Set locale
 		auto lang = OPT_GET("App/Language")->GetString();
-		if (lang.empty() || (lang != "en_US" && !locale.HasLanguage(lang))) {
 #ifdef WITH_GPUI_DEFAULT
-			// The GPUI workspace ships Chinese interface strings; keep the legacy
-			// wxWidgets dialogs in the same language instead of mixing locales.
-			lang = "zh_CN";
+		// The GPUI workspace only ships Chinese strings, so the legacy wxWidgets
+		// dialogs follow it. A profile that still stores en_US from an older build
+		// would otherwise leave the app half translated.
+		lang = "zh_CN";
+		OPT_SET("App/Language")->SetString(lang);
 #else
+		if (lang.empty() || (lang != "en_US" && !locale.HasLanguage(lang))) {
 			lang = locale.PickLanguage();
-#endif
 			OPT_SET("App/Language")->SetString(lang);
 		}
+#endif
 		locale.Init(lang);
 
 #ifdef __APPLE__

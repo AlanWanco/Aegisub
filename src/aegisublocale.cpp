@@ -43,6 +43,8 @@
 
 #include <algorithm>
 #include <clocale>
+#include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <wx/intl.h>
 #include <wx/choicdlg.h> // Keep this last so wxUSE_CHOICEDLG is set.
@@ -55,6 +57,14 @@ wxTranslations *AegisubLocale::GetTranslations() {
 	wxTranslations *translations = wxTranslations::Get();
 	if (!translations) {
 		wxTranslations::Set(translations = new wxTranslations);
+		// A dev build keeps its compiled catalogs in the build tree, so let the
+		// launcher point at them; without this every wx string falls back to
+		// English while the GPUI workspace is Chinese.
+		if (char const *override_dir = std::getenv("AEGISUB_LOCALE_DIR")) {
+			if (*override_dir) {
+				wxFileTranslationsLoader::AddCatalogLookupPathPrefix(to_wx(override_dir));
+			}
+		}
 		wxFileTranslationsLoader::AddCatalogLookupPathPrefix(config::path->Decode("?data/locale/").wstring());
 #if !defined(_WIN32) && !defined(__APPLE__) && !defined(APPIMAGE_BUILD)
 		wxFileTranslationsLoader::AddCatalogLookupPathPrefix(P_LOCALE);
@@ -66,7 +76,8 @@ wxTranslations *AegisubLocale::GetTranslations() {
 void AegisubLocale::Init(std::string const& language) {
 	wxTranslations *translations = GetTranslations();
 	translations->SetLanguage(to_wx(language));
-	translations->AddCatalog(AEGISUB_CATALOG);
+	bool loaded = translations->AddCatalog(AEGISUB_CATALOG);
+	std::fprintf(stderr, "[locale] %s catalog %s\n", language.c_str(), loaded ? "loaded" : "MISSING");
 	translations->AddStdCatalog();
 
 	setlocale(LC_NUMERIC, "C");
