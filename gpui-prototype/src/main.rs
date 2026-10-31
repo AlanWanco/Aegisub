@@ -8572,21 +8572,23 @@ impl Render for Workspace {
                         }),
                 )
                 .when(side_by_side, |row| row.child(column_handle))
-                .child(
+                .child({
+                    // The editor and the subtitle list are one region: they share
+                    // a single outline so the highlight says which area owns the
+                    // keyboard, not which card was clicked last.
+                    let p = crate::workspace_theme::Palette::current(cx);
+                    let focused = focus_area == KeyFocus::Grid;
                     div()
                         .v_flex()
                         .flex_1()
                         .min_w_0()
                         .min_h_0()
                         .overflow_hidden()
-                        .child(
-                            self.render_subtitle_panel(
-                                properties_rail,
-                                focus_area == KeyFocus::Grid,
-                                cx,
-                            ),
-                        ),
-                );
+                        .rounded(px(crate::workspace_theme::RADIUS_LG))
+                        .border_1()
+                        .border_color(if focused { p.accent } else { p.border })
+                        .child(self.render_subtitle_panel(properties_rail, focused, cx))
+                });
             if !side_by_side {
                 columns = columns.flex_col();
             }
