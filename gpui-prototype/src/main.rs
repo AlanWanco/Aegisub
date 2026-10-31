@@ -8874,6 +8874,9 @@ impl Render for Workspace {
                     .when(self.snapshot.show_toolbar && !detached, |v| {
                         v.child(self.render_toolbar(cx))
                     })
+                    // A detached window has no chrome around the page, so the
+                    // page's own padding is all that keeps content off the edge.
+                    .when(detached, |v| v.p_3())
                     .child(body),
             );
         let mut layered = div().relative().size_full().child(workspace);
