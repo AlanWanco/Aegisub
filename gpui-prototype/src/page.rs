@@ -368,15 +368,14 @@ pub fn toggle_chip(
         })
         .when(disabled, |chip| chip.opacity(0.45))
         .when(!disabled, |chip| chip.cursor_pointer())
-        .child(
-            Icon::new(if on {
-                IconName::Check
-            } else {
-                IconName::Circle
-            })
-            .size(px(13.))
-            .when(on, |icon| icon.text_color(p.accent))
-            .when(!on, |icon| icon.text_color(p.muted)),
+        // Only a selected chip gets a leading mark; an unselected one reserves no
+        // room for it, so the label sits centred instead of shifted right.
+        .children(
+            on.then(|| {
+                Icon::new(IconName::Check)
+                    .size(px(13.))
+                    .text_color(p.accent)
+            }),
         )
         .child(label)
 }
