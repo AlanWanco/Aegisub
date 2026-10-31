@@ -114,6 +114,11 @@ void DetachClient() {
 	if (attached_clients > 0) --attached_clients;
 }
 constexpr size_t max_message_size = 2 * 1024 * 1024;
+/// How long a frame request may wait before the poll timer re-requests it.
+constexpr auto frame_retry_interval = std::chrono::milliseconds(1500);
+/// Re-requests before the bridge answers with an explicit timeout error.
+constexpr int max_frame_retries = 3;
+
 
 std::string make_token() {
 	std::array<unsigned char, 32> bytes{};
@@ -267,6 +272,11 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		uint64_t request_id = 0;
 		uint64_t video_epoch = 0;
 		AsyncVideoProvider *provider = nullptr;
+		/// When the current request started waiting. The poll timer uses it to
+		/// re-request frames the provider dropped instead of leaving the
+		/// preview on the loading placeholder forever.
+		std::chrono::steady_clock::time_point waiting_since{};
+		int frame_retries = 0;
 	};
 
 	agi::Context *context;
@@ -350,6 +360,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 				auto it = clients.find(socket);
 				if (it != clients.end()) {
 					it->second.waiting_for_frame = false;
+					it->second.frame_retries = 0;
 					BeginResponse(socket, it->second, "{\"ok\":true,\"video\":false,\"frame\":-1,\"request\":" + std::to_string(it->second.request_id) + ",\"image\":null}");
 				}
 			}
@@ -357,14 +368,45 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		}
 
 		int const frame_number = context->videoController->GetFrameN();
+		bool const playing = context->videoController->IsPlaying();
+		auto const now = std::chrono::steady_clock::now();
+		std::vector<wxSocketBase *> timed_out;
 		for (auto& [socket, client] : clients) {
-			if (!client.waiting_for_frame || (client.requested_frame == frame_number && client.video_epoch == video_epoch && client.provider == provider_now)) continue;
-			client.requested_frame = frame_number;
-			client.video_epoch = video_epoch;
-			client.provider = provider_now;
-			client.awaiting_current = true;
-			if (!context->videoController->IsPlaying())
+			if (!client.waiting_for_frame) continue;
+			bool const current_request = client.requested_frame == frame_number
+				&& client.video_epoch == video_epoch
+				&& client.provider == provider_now;
+			if (!current_request) {
+				client.requested_frame = frame_number;
+				client.video_epoch = video_epoch;
+				client.provider = provider_now;
+				client.awaiting_current = true;
+				client.waiting_since = now;
+				client.frame_retries = 0;
+				if (!playing)
+					provider_now->RequestFrame(frame_number, context->videoController->TimeAtFrame(frame_number));
+				continue;
+			}
+			// A subtitle update can supersede the request (ProcAsync drops
+			// older versions) without emitting a frame, and a render error
+			// never reaches OnFrameReady; retry so the preview does not stay
+			// on the loading placeholder forever.
+			if (now - client.waiting_since < frame_retry_interval) continue;
+			if (client.frame_retries >= max_frame_retries) {
+				timed_out.push_back(socket);
+				continue;
+			}
+			++client.frame_retries;
+			client.waiting_since = now;
+			if (!playing)
 				provider_now->RequestFrame(frame_number, context->videoController->TimeAtFrame(frame_number));
+		}
+		for (auto socket : timed_out) {
+			auto it = clients.find(socket);
+			if (it == clients.end()) continue;
+			it->second.waiting_for_frame = false;
+			it->second.frame_retries = 0;
+			BeginResponse(socket, it->second, R"({"ok":false,"error":"video frame request timed out"})");
 		}
 	}
 
@@ -456,6 +498,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			auto it = clients.find(socket);
 			if (it == clients.end()) continue;
 			it->second.waiting_for_frame = false;
+			it->second.frame_retries = 0;
 			it->second.awaiting_current = false;
 			it->second.provider = nullptr;
 			std::string encoded = to_base64_jpeg(*event.frame, context->videoController->GetAspectRatioValue(), it->second.max_width);
@@ -807,6 +850,8 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		if (auto width_it = object.find("max_width"); width_it != object.end())
 			client.max_width = static_cast<int>(static_cast<json::Integer const&>(width_it->second));
 		client.waiting_for_frame = true;
+		client.waiting_since = std::chrono::steady_clock::now();
+		client.frame_retries = 0;
 		client.awaiting_current = frame_number != context->videoController->GetFrameN();
 		client.requested_frame = frame_number;
 		client.request_id = request_id;

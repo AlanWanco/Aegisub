@@ -5781,7 +5781,16 @@ impl Workspace {
         let weak = cx.weak_entity();
         let max_width = self.preview_width_px.get().round() as i64;
         cx.spawn(async move |_, cx| {
-            match bridge.call(json!({"op":"frame", "frame":request_frame, "request":generation, "epoch":request_epoch, "max_width":max_width})).await {
+            let request = bridge.call(json!({"op":"frame", "frame":request_frame, "request":generation, "epoch":request_epoch, "max_width":max_width}));
+            let timeout = cx.background_executor().timer(Duration::from_secs(8));
+            let response = futures_lite::future::or(
+                async move { request.await },
+                async move {
+                    timeout.await;
+                    Err::<Value, _>(anyhow!("Aegisub 视频帧请求超时"))
+                },
+            ).await;
+            match response {
                 Ok(value) => {
                     let reply: FrameReply = match serde_json::from_value(value) {
                         Ok(reply) => reply,
