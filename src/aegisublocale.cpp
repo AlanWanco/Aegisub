@@ -47,6 +47,7 @@
 #include <cstdlib>
 #include <functional>
 #include <wx/intl.h>
+#include <wx/stdpaths.h>
 #include <wx/choicdlg.h> // Keep this last so wxUSE_CHOICEDLG is set.
 
 #ifndef AEGISUB_CATALOG
@@ -68,6 +69,12 @@ wxTranslations *AegisubLocale::GetTranslations() {
 		wxFileTranslationsLoader::AddCatalogLookupPathPrefix(config::path->Decode("?data/locale/").wstring());
 #if !defined(_WIN32) && !defined(__APPLE__) && !defined(APPIMAGE_BUILD)
 		wxFileTranslationsLoader::AddCatalogLookupPathPrefix(P_LOCALE);
+#endif
+#if defined(__APPLE__)
+		// A .app bundle installs its catalogs under Contents/Resources, which is
+		// neither ?data/locale nor the P_LOCALE prefix.
+		wxFileTranslationsLoader::AddCatalogLookupPathPrefix(
+			wxStandardPaths::Get().GetResourcesDir());
 #endif
 	}
 	return translations;
