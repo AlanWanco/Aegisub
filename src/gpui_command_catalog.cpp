@@ -13,8 +13,11 @@
 #include "options.h"
 #include "selection_controller.h"
 
+#include <libaegisub/cajun/reader.h>
 #include <libaegisub/cajun/writer.h>
 #include <libaegisub/hotkey.h>
+
+#include <wx/intl.h>
 
 #include <algorithm>
 #include <set>
@@ -123,9 +126,32 @@ std::string CommandCatalog(agi::Context *context, Visual const& visual) {
 	}
 	result["bindings"] = std::move(bindings);
 	result["always_hotkeys"] = OPT_GET("Audio/Medusa Timing Hotkeys")->GetBool();
-	// This is the same merged platform/user configuration used by wx menus.
+	// This is the same merged platform/user configuration used by wx menus,
+	// but wx translates the labels while building its menu bar. Without the
+	// same step here the GPUI menu shows raw English entries like "Appearance".
+	// json::UnknownElement is move-only, so the translated copy is rebuilt
+	// field by field (menu entries only ever hold strings).
+	json::Object menu_config;
+	for (auto const& [name, value] : menu::GetConfig()) {
+		json::Array items;
+		for (auto const& item : static_cast<json::Array const&>(value)) {
+			auto const& object = static_cast<json::Object const&>(item);
+			wxString context;
+			if (auto ctx = object.find("context"); ctx != object.end())
+				context = to_wx(static_cast<json::String const&>(ctx->second));
+			json::Object entry;
+			for (auto const& [key, field] : object) {
+				auto text = static_cast<json::String const&>(field);
+				if (key == "text")
+					text = from_wx(wxGetTranslation(to_wx(text), wxString(), context));
+				entry[key] = json::String(std::move(text));
+			}
+			items.emplace_back(std::move(entry));
+		}
+		menu_config[name] = std::move(items);
+	}
 	std::ostringstream menus;
-	agi::JsonWriter::Write(menu::GetConfig(), menus);
+	agi::JsonWriter::Write(menu_config, menus);
 	std::ostringstream out;
 	agi::JsonWriter::Write(result, out);
 	std::string response = out.str();

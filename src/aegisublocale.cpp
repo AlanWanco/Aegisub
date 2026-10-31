@@ -83,9 +83,12 @@ wxTranslations *AegisubLocale::GetTranslations() {
 void AegisubLocale::Init(std::string const& language) {
 	wxTranslations *translations = GetTranslations();
 	translations->SetLanguage(to_wx(language));
+	// wx searches the catalogs in reverse order of addition, so the standard
+	// one has to go first: its "Light" (a font weight) would otherwise win
+	// over ours (the light theme).
+	translations->AddStdCatalog();
 	bool loaded = translations->AddCatalog(AEGISUB_CATALOG);
 	std::fprintf(stderr, "[locale] %s catalog %s\n", language.c_str(), loaded ? "loaded" : "MISSING");
-	translations->AddStdCatalog();
 
 	setlocale(LC_NUMERIC, "C");
 	setlocale(LC_CTYPE, "C");
