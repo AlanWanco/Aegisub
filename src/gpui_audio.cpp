@@ -106,7 +106,6 @@ struct Audio::Impl {
 		result["snap"] = OPT_GET("Audio/Snap/Enable")->GetBool();
 		result["spectrum"] = OPT_GET("Audio/Spectrum")->GetBool();
 		result["medusa"] = OPT_GET("Audio/Medusa Timing Hotkeys")->GetBool();
-		result["medusa"] = OPT_GET("Audio/Medusa Timing Hotkeys")->GetBool();
 		result["karaoke"] = context->karaoke->IsEnabled();
 		json::Array syllables;
 		if (context->karaoke->IsEnabled()) {
@@ -201,7 +200,7 @@ std::string Audio::Interact(json::Object const& request) {
 	if (action == "down") {
 		int const ms = integer(request, "ms", 0, std::numeric_limits<int>::max() - 1);
 		int const sensitivity = integer(request, "sensitivity", 0, 10000);
-		int const snap = OPT_GET("Audio/Snap/Enable")->GetBool() ? integer(request, "snap", 0, 10000) : 0;
+		int const snap = integer(request, "snap", 0, 10000);
 		bool const right = flag(request, "right");
 		impl->dragging = right ? timing->OnRightClick(ms, flag(request, "control"), sensitivity, snap)
 			: timing->OnLeftClick(ms, flag(request, "control"), flag(request, "alt"), sensitivity, snap);
@@ -211,11 +210,11 @@ std::string Audio::Interact(json::Object const& request) {
 		uint64_t const gesture = static_cast<json::Integer const&>(request.at("gesture"));
 		if (gesture != impl->gesture) throw std::invalid_argument("audio selection changed during this gesture");
 		int const ms = integer(request, "ms", 0, std::numeric_limits<int>::max() - 1);
-		int const snap = OPT_GET("Audio/Snap/Enable")->GetBool() ? integer(request, "snap", 0, 10000) : 0;
+		int const snap = integer(request, "snap", 0, 10000);
 		// A click that did not land on a marker returns an empty marker list.
 		// The karaoke timing controller indexes m[0] unconditionally, so passing
 		// the empty list through aborts the whole application.
-		if (!impl->dragging.empty())
+		if (!impl->dragging.empty() && (action == "drag" || flag(request, "dragged")))
 			timing->OnMarkerDrag(impl->dragging, ms, snap);
 		if (action == "up") impl->dragging.clear();
 	}

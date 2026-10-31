@@ -883,8 +883,6 @@ struct FrameReply {
     frame: Option<i64>,
     request: Option<u64>,
     video: Option<bool>,
-    width: Option<u32>,
-    height: Option<u32>,
     image: Option<String>,
     error: Option<String>,
 }
@@ -1067,6 +1065,7 @@ struct Workspace {
     /// in the subtitle, so an edit with an unchanged frame number still needs a
     /// refetch — tracked per revision so a stale reply never clears the need.
     frame_image_revision: u64,
+    frame_image_generation: u64,
     /// Width in physical pixels the preview paints at, so the host can ship a
     /// frame sized for the box instead of the full source resolution.
     preview_width_px: std::cell::Cell<f32>,
@@ -1261,6 +1260,9 @@ impl Workspace {
                     view.properties_dirty = true;
                     cx.notify();
                 }
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    view.commit_properties(cx);
+                }
             }));
             property_inputs.insert(key, input);
         }
@@ -1399,6 +1401,7 @@ impl Workspace {
             frame_image: None,
             frame_image_frame: -1,
             frame_image_revision: u64::MAX,
+            frame_image_generation: 0,
             preview_width_px: std::cell::Cell::new(0.),
             frame_request_inflight: false,
             frame_request_generation: 0,
@@ -1631,14 +1634,20 @@ impl Workspace {
             return;
         }
         let frame = self.snapshot.frame;
+        let playing = self.snapshot.playing;
+        let audio_playing = self.snapshot.audio.playing;
+        let audio_position = self.snapshot.audio.position;
         self.snapshot.frame = playback.frame;
         self.snapshot.video_time = playback.video_time;
         self.snapshot.playing = playback.playing;
         self.snapshot.audio.playing = playback.audio_playing;
         self.snapshot.audio.position = playback.audio_position;
-        // The poll runs many times per frame; repainting the whole workspace on
-        // every tick costs more than the video decode it is waiting for.
-        if self.snapshot.frame != frame {
+        // Repaint only when a visible playback value changes.
+        if self.snapshot.frame != frame
+            || self.snapshot.playing != playing
+            || self.snapshot.audio.playing != audio_playing
+            || self.snapshot.audio.position != audio_position
+        {
             cx.notify();
         }
     }
@@ -4296,12 +4305,13 @@ impl Workspace {
         }
         self.audio.dragging = true;
         self.audio.finish_drag = false;
+        self.audio.drag_moved = false;
         self.audio.pending_ms = None;
         self.audio.drag_loading = true;
         let sensitivity = (self.audio.span * self.snapshot.audio.drag_sensitivity
             / f32::from(self.audio.bounds.borrow().size.width).max(1.) as i64)
             .clamp(1, 10000);
-        let snap = if self.snapshot.audio.snap {
+        let snap = if self.snapshot.audio.snap != self.audio.snap_inverted {
             (self.audio.span * self.snapshot.audio.snap_distance
                 / f32::from(self.audio.bounds.borrow().size.width).max(1.) as i64)
                 .clamp(0, 10000)
@@ -4336,12 +4346,13 @@ impl Workspace {
         };
         self.audio.drag_loading = true;
         let finished = self.audio.finish_drag;
+        let dragged = self.audio.drag_moved;
         if finished {
             self.audio.dragging = false;
         }
         let bridge = self.bridge.clone();
         let weak = cx.weak_entity();
-        let snap = if self.snapshot.audio.snap {
+        let snap = if self.snapshot.audio.snap != self.audio.snap_inverted {
             (self.audio.span * self.snapshot.audio.snap_distance
                 / f32::from(self.audio.bounds.borrow().size.width).max(1.) as i64)
                 .clamp(0, 10000)
@@ -4349,7 +4360,7 @@ impl Workspace {
             0
         };
         cx.spawn(async move |_, cx| {
-            let result = bridge.call(json!({"op":"audio_action", "action":if finished {"up"} else {"drag"}, "ms":ms, "gesture":gesture, "snap":snap})).await;
+            let result = bridge.call(json!({"op":"audio_action", "action":if finished {"up"} else {"drag"}, "ms":ms, "gesture":gesture, "snap":snap, "dragged":dragged})).await;
             let _ = weak.update(cx, |view, cx| {
                 view.audio.drag_loading = false;
                 match result {
@@ -5810,8 +5821,7 @@ impl Workspace {
                         }
                         return;
                     }
-                    let width = reply.width.unwrap_or(0);
-                    let height = reply.height.unwrap_or(0);
+                    // JPEG dimensions are authoritative, including scaled previews.
                     let frame = reply.frame.unwrap_or(-1);
                     let video_gone = reply.video == Some(false);
                     let error = reply.error;
@@ -5872,6 +5882,7 @@ impl Workspace {
                         )
                         .into_decoder()?;
                         let rgba = image::DynamicImage::from_decoder(decoder)?.into_rgba8();
+                        let (width, height) = rgba.dimensions();
                         let mut bgra = rgba.into_raw();
                         for pixel in bgra.chunks_exact_mut(4) {
                             pixel.swap(0, 2);
@@ -5897,10 +5908,12 @@ impl Workspace {
                     if let Some(view) = weak.upgrade() {
                         let _ = view.update(cx, |view, cx| {
                             if !view.snapshot.video || view.video_epoch != request_epoch { return; }
-                            // Another request is already in flight, so this image
-                            // can arrive after a newer one: never paint backwards
-                            // unless it is the frame the document is sitting on.
-                            if frame < view.frame_image_frame && view.snapshot.frame != frame { return; }
+                            // Request order remains monotonic across backward seeks.
+                            // Frame numbers do not: rejecting a smaller frame freezes
+                            // resumed playback until it catches the previous position.
+                            if generation < view.frame_image_generation { return; }
+                            if !view.snapshot.playing && frame != view.snapshot.frame { return; }
+                            view.frame_image_generation = generation;
                             view.replace_frame_image(image, frame, request_revision);
                             cx.notify();
                         });
@@ -7715,7 +7728,7 @@ impl Workspace {
         // the current line used to require moving the pointer to the video panel.
         let mut playback_toolbar = div().h_flex().flex_wrap().gap_1().items_center();
         for (id, label, icon, name) in [
-            ("editor-play", "播放/暂停", IconName::Play, "video/play"),
+            ("editor-play", "播放/暂停", if self.snapshot.playing { IconName::Pause } else { IconName::Play }, "video/play"),
             (
                 "editor-prev-frame",
                 "上一帧",
@@ -8565,8 +8578,23 @@ impl Render for Workspace {
             if self.properties_line_id != line.id || !self.properties_dirty {
                 for (key, input) in &self.property_inputs {
                     let value = match *key {
-                        "start" => format_time(line.start),
-                        "end" => format_time(line.end),
+                        "start" | "end" => {
+                            let ms = if self.snapshot.audio.loaded {
+                                if *key == "start" { self.snapshot.audio.start } else { self.snapshot.audio.end }
+                            } else if *key == "start" {
+                                line.start
+                            } else {
+                                line.end
+                            };
+                            if self.time_in_frames {
+                                self.snapshot.fps.filter(|fps| *fps > 0.)
+                                    .map(|fps| (ms as f64 * fps / 1000.).round() as i64)
+                                    .map(|frame| frame.to_string())
+                                    .unwrap_or_else(|| format_time(ms))
+                            } else {
+                                format_time(ms)
+                            }
+                        },
                         "layer" => line.layer.to_string(),
                         "style" => line.style.clone(),
                         "actor" => line.actor.clone(),

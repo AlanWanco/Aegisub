@@ -156,7 +156,7 @@ std::string quote_json(std::string_view value) {
 	return out.str();
 }
 
-std::string to_base64_jpeg(VideoFrame const& frame, double aspect, int max_width) {
+std::string to_base64_jpeg(VideoFrame const& frame, double aspect, int max_width, int& width, int& height) {
 	wxImage image = GetImage(frame);
 	int display_width = std::max(1, static_cast<int>(std::round(image.GetHeight() * aspect)));
 	// The preview is a few hundred pixels wide, so shipping a full 1080p frame
@@ -169,6 +169,8 @@ std::string to_base64_jpeg(VideoFrame const& frame, double aspect, int max_width
 	else if (display_width != image.GetWidth()) {
 		image.Rescale(display_width, image.GetHeight(), wxIMAGE_QUALITY_HIGH);
 	}
+	width = image.GetWidth();
+	height = image.GetHeight();
 	image.SetOption(wxIMAGE_OPTION_QUALITY, 82);
 	wxMemoryOutputStream stream;
 	if (!image.SaveFile(stream, wxBITMAP_TYPE_JPEG))
@@ -501,7 +503,9 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			it->second.frame_retries = 0;
 			it->second.awaiting_current = false;
 			it->second.provider = nullptr;
-			std::string encoded = to_base64_jpeg(*event.frame, context->videoController->GetAspectRatioValue(), it->second.max_width);
+			int width = 0;
+			int height = 0;
+			std::string encoded = to_base64_jpeg(*event.frame, context->videoController->GetAspectRatioValue(), it->second.max_width, width, height);
 			if (encoded.empty()) {
 				BeginResponse(socket, it->second, R"({"ok":false,"error":"could not encode preview frame"})");
 				continue;
@@ -509,7 +513,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			std::ostringstream out;
 			out << "{\"ok\":true,\"video\":true,\"frame\":" << frame_number
 			    << ",\"request\":" << it->second.request_id
-			    << ",\"width\":" << static_cast<int>(std::round(event.frame->height * context->videoController->GetAspectRatioValue())) << ",\"height\":" << event.frame->height
+			    << ",\"width\":" << width << ",\"height\":" << height
 			    << ",\"image\":" << quote_json(encoded) << '}';
 			BeginResponse(socket, it->second, out.str());
 		}

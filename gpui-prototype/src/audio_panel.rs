@@ -99,6 +99,9 @@ pub struct AudioPanel {
     pub pending_ms: Option<i64>,
     pub drag_loading: bool,
     pub finish_drag: bool,
+    pub drag_button: Option<MouseButton>,
+    pub drag_moved: bool,
+    pub snap_inverted: bool,
 }
 
 impl AudioPanel {
@@ -117,6 +120,9 @@ impl AudioPanel {
             pending_ms: None,
             drag_loading: false,
             finish_drag: false,
+            drag_button: None,
+            drag_moved: false,
+            snap_inverted: false,
         }
     }
 
@@ -128,22 +134,6 @@ impl AudioPanel {
             .clamp(0, state.duration.max(0))
     }
 
-    /// 距离 `x` 最近、且在 `px` 像素以内的 marker 时间。
-    ///
-    /// 宿主只在点击落在 sensitivity 窗口内时才发起 marker 拖拽，而缩得很宽时
-    /// 一个 marker 只有一两个像素宽，靠手点几乎必然落到缝隙里变成"选音节"。
-    pub fn marker_near(&self, x: Pixels, state: &AudioState, px: f32) -> Option<i64> {
-        let bounds = *self.bounds.borrow();
-        let width = f32::from(bounds.size.width).max(1.);
-        let per_px = self.span as f32 / width;
-        let ms = self.time_at(x, state);
-        state
-            .markers
-            .iter()
-            .copied()
-            .filter(|marker| ((*marker - ms) as f32).abs() <= px * per_px)
-            .min_by_key(|marker| (*marker - ms).abs())
-    }
 
     pub fn render(
         &self,
@@ -531,18 +521,16 @@ impl AudioPanel {
             .on_any_mouse_down(
                 cx.listener(|view, event: &gpui_kit::MouseDownEvent, window, cx| {
                     if !view.snapshot.audio.loaded
+                        || view.audio.drag_loading
                         || !matches!(event.button, MouseButton::Left | MouseButton::Right)
                     {
                         return;
                     }
                     view.key_focus = crate::KeyFocus::Audio;
                     view.focus_handle.focus(window, cx);
-                    let ms = view
-                        .audio
-                        .marker_near(event.position.x, &view.snapshot.audio, 6.)
-                        .unwrap_or_else(|| {
-                            view.audio.time_at(event.position.x, &view.snapshot.audio)
-                        });
+                    let ms = view.audio.time_at(event.position.x, &view.snapshot.audio);
+                    view.audio.snap_inverted = event.modifiers.shift;
+                    view.audio.drag_button = Some(event.button);
                     view.begin_audio_drag(
                         ms,
                         event.button == MouseButton::Right,
@@ -554,18 +542,21 @@ impl AudioPanel {
             )
             .on_mouse_move(
                 cx.listener(|view, event: &gpui_kit::MouseMoveEvent, _, cx| {
-                    if !view.audio.dragging {
+                    if !view.audio.dragging || event.pressed_button != view.audio.drag_button {
                         return;
                     }
+                    view.audio.drag_moved = true;
+                    view.audio.snap_inverted = event.modifiers.shift;
                     view.audio.pending_ms =
                         Some(view.audio.time_at(event.position.x, &view.snapshot.audio));
                     view.flush_audio_drag(cx);
                 }),
             )
             .capture_any_mouse_up(cx.listener(|view, event: &gpui_kit::MouseUpEvent, _, cx| {
-                if !view.audio.dragging {
+                if !view.audio.dragging || Some(event.button) != view.audio.drag_button {
                     return;
                 }
+                view.audio.snap_inverted = event.modifiers.shift;
                 view.audio.pending_ms =
                     Some(view.audio.time_at(event.position.x, &view.snapshot.audio));
                 view.audio.finish_drag = true;
@@ -574,9 +565,10 @@ impl AudioPanel {
             .on_mouse_up_out(
                 MouseButton::Left,
                 cx.listener(|view, event: &gpui_kit::MouseUpEvent, _, cx| {
-                    if !view.audio.dragging {
+                    if !view.audio.dragging || view.audio.drag_button != Some(MouseButton::Left) {
                         return;
                     }
+                    view.audio.snap_inverted = event.modifiers.shift;
                     view.audio.pending_ms =
                         Some(view.audio.time_at(event.position.x, &view.snapshot.audio));
                     view.audio.finish_drag = true;
@@ -586,9 +578,10 @@ impl AudioPanel {
             .on_mouse_up_out(
                 MouseButton::Right,
                 cx.listener(|view, event: &gpui_kit::MouseUpEvent, _, cx| {
-                    if !view.audio.dragging {
+                    if !view.audio.dragging || view.audio.drag_button != Some(MouseButton::Right) {
                         return;
                     }
+                    view.audio.snap_inverted = event.modifiers.shift;
                     view.audio.pending_ms =
                         Some(view.audio.time_at(event.position.x, &view.snapshot.audio));
                     view.audio.finish_drag = true;
