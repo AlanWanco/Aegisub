@@ -7469,7 +7469,7 @@ impl Workspace {
                 "edit/line/split/preserve",
             ),
             ("copy-lines", "复制行", IconName::Copy, "edit/line/copy"),
-            ("cut-lines", "剪切行", IconName::Scissors, "edit/line/cut"),
+            ("cut-lines", "剪切行", IconName::ClipboardPaste, "edit/line/cut"),
             ("paste-lines", "粘贴行", IconName::Copy, "edit/line/paste"),
         ] {
             let enabled = self

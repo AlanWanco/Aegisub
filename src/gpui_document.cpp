@@ -3,6 +3,8 @@
 
 #include "gpui_document.h"
 
+#include <wx/image.h>
+
 #include "ass_file.h"
 #include "autosave.h"
 #include "ass_attachment.h"

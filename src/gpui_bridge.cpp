@@ -68,6 +68,7 @@
 #include <random>
 #include <sstream>
 #include <string_view>
+#include <deque>
 #include <vector>
 
 namespace {

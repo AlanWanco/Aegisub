@@ -591,8 +591,10 @@ impl DocumentPanels {
                 .flex_1()
                 .min_h_0()
                 .gap_4()
-                .child(style_card)
+                // The library is the place styles come from, so it sits on the
+                // left; the script's own styles stay next to the editor.
                 .child(self.render_library(cx))
+                .child(style_card)
                 .child(editor_card),
         )
     }
