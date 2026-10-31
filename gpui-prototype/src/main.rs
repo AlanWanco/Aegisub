@@ -665,23 +665,37 @@ fn line_field_row(
     view: &Workspace,
     p: &crate::workspace_theme::Palette,
 ) -> gpui_kit::Div {
-    let mut row = div().h_flex().items_start().gap_2().w_full().min_w_0();
+    let mut row = div().h_flex().items_center().gap_2().w_full().min_w_0();
     for (key, label, weight) in [
-        ("style", "样式", 1.7),
-        ("actor", "角色", 1.3),
-        ("start", "开始", 1.4),
-        ("end", "结束", 1.4),
+        ("style", "样式", 1.5),
+        ("actor", "角色", 0.8),
+        // The time fields carry the widest fixed content, so they get the room.
+        ("start", "始", 1.6),
+        ("end", "终", 1.6),
     ] {
         row = row.child(
             div()
-                .v_flex()
+                .h_flex()
+                .items_center()
+                .gap_1p5()
                 .flex_basis(gpui_kit::px(0.))
                 .flex_grow(weight)
                 .flex_shrink(1.)
                 .min_w_0()
-                .gap_1()
-                .child(div().text_size(px(11.)).text_color(p.muted).child(label))
-                .child(if key == "style" {
+                // The label rides beside the field, not above it: a stacked label
+                // cost a whole text line per row and doubled the panel height.
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(px(12.))
+                        .text_color(p.muted)
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(if key == "style" {
                     // Style names come from the script, so a text box only ever
                     // produced typos: pick one of the styles that exist.
                     let options = view.snapshot.styles.clone();
@@ -690,8 +704,6 @@ fn line_field_row(
                     let disabled = view.selected_line < 0;
                     let label = current.clone();
                     page::select_trigger(cx, "editor-style-select", label, disabled)
-                        // The style picker sits next to plain inputs, so it has to
-                        // match their height instead of the compact button size.
                         .h(px(32.))
                         .accessibility_label("样式")
                         .dropdown_menu(move |mut menu, _, _| {
@@ -721,14 +733,15 @@ fn line_field_row(
                     Input::new(&view.property_inputs[key])
                         .id(format!("editor-{key}"))
                         .aria_label(label)
-                        .h(px(28.))
+                        .h(px(32.))
                         .w_full()
                         .into_any_element()
                 }),
+                ),
         );
     }
-    // No apply button here: the panel's own 应用修改 button commits the same
-    // fields, and two checkmarks for one action is just a second way to be wrong.
+    // No apply button here: the panel's own button commits the same fields, and
+    // two checkmarks for one action is just a second way to be wrong.
     row
 }
 
@@ -1059,6 +1072,8 @@ struct Workspace {
     spelling: SpellingPanel,
     property_inputs: BTreeMap<&'static str, Entity<InputState>>,
     properties_dirty: bool,
+    /// 边距/图层/效果 这一排低频字段是否展开。
+    properties_more: bool,
     properties_line_id: i64,
     _property_events: Vec<Subscription>,
     _command_search_events: Subscription,
@@ -1379,6 +1394,7 @@ impl Workspace {
             spelling,
             property_inputs,
             properties_dirty: false,
+            properties_more: false,
             properties_line_id: -1,
             _property_events: property_events,
             _command_search_events: command_search_events,
@@ -6284,49 +6300,40 @@ impl Workspace {
 
     /// Line inspector. `rail` is the copy that lives beside the text editor:
     /// narrower, no card chrome, and its own scroll.
+    /// Height the stacked properties card reserves inside the editor section.
+    fn properties_height(&self) -> f32 {
+        if self.properties_more { 92. } else { 56. }
+    }
+
     fn render_properties(&self, rail: Option<f32>, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Palette::current(cx);
-        let cell = |key: &'static str, label: &'static str| {
+        // Inline label + field. The label above each box cost a full text line
+        // per row, which is what made this panel four rows tall.
+        let inline = |key: &'static str, label: &'static str, grow: f32| {
             div()
-                .v_flex()
-                .flex_1()
+                .h_flex()
+                .items_center()
+                .gap_1p5()
+                .flex_basis(gpui_kit::px(0.))
+                .flex_grow(grow)
+                .flex_shrink(1.)
                 .min_w_0()
-                .gap_1()
-                .child(div().text_size(px(11.)).text_color(p.muted).child(label))
-                .child(
-                    Input::new(&self.property_inputs[key])
-                        .id(format!("property-{key}"))
-                        .aria_label(label)
-                        .h(px(28.))
-                        .w_full(),
-                )
-        };
-        let group = |title: &'static str, rows: Vec<Vec<gpui_kit::AnyElement>>| {
-            let mut body = div().v_flex().w_full().min_w_0().gap_1();
-            for row in rows {
-                body = body.child(
-                    div()
-                        .h_flex()
-                        .items_start()
-                        .w_full()
-                        .min_w_0()
-                        .gap_2()
-                        .children(row),
-                );
-            }
-            div()
-                .v_flex()
-                .w_full()
-                .min_w_0()
-                .gap_1()
                 .child(
                     div()
-                        .text_size(px(11.))
-                        .font_semibold()
+                        .flex_shrink_0()
+                        .text_size(px(12.))
                         .text_color(p.muted)
-                        .child(title),
+                        .child(label),
                 )
-                .child(body)
+                .child(
+                    div().flex_1().min_w_0().child(
+                        Input::new(&self.property_inputs[key])
+                            .id(format!("property-{key}"))
+                            .aria_label(label)
+                            .h(px(32.))
+                            .w_full(),
+                    ),
+                )
         };
         let commented = self
             .snapshot
@@ -6334,91 +6341,69 @@ impl Workspace {
             .iter()
             .find(|line| line.id == self.selected_line)
             .is_some_and(|line| line.comment);
-        let toggle_comment = Button::new("toggle-comment")
-            .icon(IconName::Captions)
+        let more = self.properties_more;
+        // Margins, layer and effect are used on maybe one line in twenty, so they
+        // hide behind one toggle instead of holding a permanent row.
+        let more_button = Button::new("properties-more")
             .rounded(gpui_kit::px(999.))
-            .small()
-            .px(gpui_kit::px(13.))
-            .py(gpui_kit::px(3.))
-            .when(rail.is_some(), |button| {
-                button.tooltip(if commented { "改为对白" } else { "改为注释" })
-            })
-            .when(rail.is_none(), |button| {
-                button.label(if commented { "改为对白" } else { "改为注释" })
-            })
+            .px(gpui_kit::px(9.))
+            .py(gpui_kit::px(5.))
+            .child(Icon::new(IconName::Settings2).size(px(15.)))
+            .accessibility_label(if more { "收起边距与图层" } else { "展开边距与图层" })
+            .tooltip(if more { "收起边距与图层" } else { "展开边距与图层" })
+            .when(more, |button| button.bg(p.selected).text_color(p.accent))
+            .ghost()
+            .on_click(cx.listener(|view, _, _, cx| {
+                view.properties_more = !view.properties_more;
+                cx.notify();
+            }));
+        let toggle_comment = Button::new("toggle-comment")
+            .rounded(gpui_kit::px(999.))
+            .px(gpui_kit::px(9.))
+            .py(gpui_kit::px(5.))
+            .child(Icon::new(IconName::Captions).size(px(15.)))
+            .accessibility_label(if commented { "改为对白" } else { "改为注释" })
+            .tooltip(if commented { "改为对白" } else { "改为注释" })
+            .when(commented, |button| button.bg(p.selected).text_color(p.accent))
             .ghost()
             .disabled(self.selected_line < 0)
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.invoke(json!({"op": "line_fields", "ids": view.snapshot.selected, "fields": {"comment": !commented}}), cx);
             }));
-        let save_as = Button::new("save-as")
-            .rounded(gpui_kit::px(999.))
-            .small()
-            .px(gpui_kit::px(13.))
-            .py(gpui_kit::px(3.))
-            .child(Icon::new(IconName::Save).size(px(15.)))
-            .accessibility_label("另存为")
-            .tooltip("另存为…")
-            .ghost()
-            .on_click(cx.listener(|view, _, _, cx| {
-                view.invoke(json!({"op":"command", "name":"subtitle/save/as"}), cx)
-            }));
+        // Enter commits while typing, so this stays an icon rather than a pill.
         let apply = Button::new("apply-line-fields")
             .rounded(gpui_kit::px(999.))
-            .small()
-            .px(gpui_kit::px(13.))
-            .py(gpui_kit::px(3.))
-            .when(rail.is_some(), |button| {
-                // The rail is too narrow for a label, so it shows the check only.
-                button
-                    .child(Icon::new(IconName::Check).size(px(15.)))
-                    .accessibility_label("应用修改")
-                    .tooltip("应用修改")
-            })
-            .when(rail.is_none(), |button| {
-                button.icon(IconName::Check).label("应用修改")
-            })
+            .px(gpui_kit::px(9.))
+            .py(gpui_kit::px(5.))
+            .child(Icon::new(IconName::Check).size(px(15.)))
+            .accessibility_label("应用修改")
+            .tooltip("应用修改")
             .primary()
             .disabled(self.selected_line < 0 || !self.properties_dirty)
             .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx)));
-        // No title and no icon: the fields are the panel, and the actions sit at
-        // the end of the first row so the whole panel is two rows tall.
-        let header = div()
+        let core = div()
             .h_flex()
             .items_center()
-            .gap_2()
-            .flex_shrink_0()
+            .gap_1p5()
+            .w_full()
+            .min_w_0()
+            .child(div().flex_1().min_w_0().child(line_field_row(cx, self, &p)))
+            .child(more_button)
             .child(toggle_comment)
-            .child(save_as)
             .child(apply);
-
-        let groups = if rail.is_some() {
-            vec![
-                group(
-                    "",
-                    vec![vec![
-                        cell("margin_left", "左").into_any_element(),
-                        cell("margin_right", "右").into_any_element(),
-                        cell("margin_vertical", "垂直").into_any_element(),
-                        cell("layer", "图层").into_any_element(),
-                        cell("effect", "效果").into_any_element(),
-                    ]],
-                ),
-            ]
-        } else {
-            vec![
-                group(
-                    "",
-                    vec![vec![
-                        cell("margin_left", "左").into_any_element(),
-                        cell("margin_right", "右").into_any_element(),
-                        cell("margin_vertical", "垂直").into_any_element(),
-                        cell("layer", "图层").into_any_element(),
-                        cell("effect", "效果").into_any_element(),
-                    ]],
-                ),
-            ]
-        };
+        let more_row = more.then(|| {
+            div()
+                .h_flex()
+                .items_center()
+                .gap_2()
+                .w_full()
+                .min_w_0()
+                .child(inline("margin_left", "左", 1.))
+                .child(inline("margin_right", "右", 1.))
+                .child(inline("margin_vertical", "垂直", 1.))
+                .child(inline("layer", "图层", 1.))
+                .child(inline("effect", "效果", 2.))
+        });
         div()
             .id("line-properties")
             .v_flex()
@@ -6436,33 +6421,20 @@ impl Workspace {
             })
             .when(rail.is_none(), |panel| {
                 panel
-                    // The panel sizes to its fields: letting it flex made it lose
-                    // the fight with the editor and the list, so its lower half
-                    // was clipped away.
+                    // The panel sizes to its fields; letting it flex made it lose
+                    // the fight with the editor and the list.
                     .flex_none()
-                    .h(px(150.))
+                    .h(px(self.properties_height()))
                     .rounded(px(crate::workspace_theme::RADIUS_MD))
                     .border_1()
                     .border_color(p.border)
                     .bg(p.surface)
                     .shadow(crate::page::card_shadow(Theme::global(cx).is_dark()))
                     .p_2()
-                    .gap_0p5()
+                    .gap_1()
             })
-            // Style, actor, timing and the three actions share the first row;
-            // margins, layer and effect share the second.
-            .child(
-                div()
-                    .h_flex()
-                    .items_end()
-                    .gap_2()
-                    .w_full()
-                    .min_w_0()
-                    .child(div().flex_1().min_w_0().child(line_field_row(cx, self, &p)))
-                    .child(header),
-            )
-            .children(groups)
-            .overflow_y_scrollbar()
+            .child(core)
+            .children(more_row)
     }
 
     fn activate_panel(&mut self, panel: Panel, window: &mut Window, cx: &mut Context<Self>) {
@@ -8044,7 +8016,7 @@ impl Workspace {
             // the editor's toolbars and clips them.
             .child(
                 editor_section
-                    .h(px(editor_height + if rail.is_none() { 150. } else { 0. }))
+                    .h(px(editor_height + if rail.is_none() { self.properties_height() } else { 0. }))
                     .flex_shrink_0(),
             )
             .child(
