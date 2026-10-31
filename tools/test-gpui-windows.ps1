@@ -204,8 +204,10 @@ try {
     if ([Math]::Abs($afterBounds.Y - $initialBounds.Y) -gt 1) { throw 'History scrolling moved the parameter input' }
     Save-Screenshot 'timing-history-scrolled'
 
-    Switch-ToMainWindow
+    # Each iteration ends focused on the tool window, so the sidebar click has to
+    # come after switching back, not once before the loop.
     foreach ($name in @('时间后处理', '重采样', '查找替换', '样式管理')) {
+        Switch-ToMainWindow
         Press-Control $name
         Switch-ToToolWindow "Aegisub · $name"
         Save-Screenshot ("tool-" + $name)
