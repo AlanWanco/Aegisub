@@ -6461,7 +6461,9 @@ impl Workspace {
                     // the fight with the editor and the list.
                     .flex_none()
                     .h(px(self.properties_height()))
-                    .rounded(px(crate::workspace_theme::RADIUS_MD))
+                    // The properties strip reads as a band across the editor, not
+                    // as a card of its own, so it keeps square corners.
+                    .rounded(px(0.))
                     .border_1()
                     .border_color(p.border)
                     .bg(p.surface)
