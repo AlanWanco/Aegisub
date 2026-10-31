@@ -669,8 +669,8 @@ fn line_field_row(
     for (key, label, weight) in [
         ("style", "样式", 1.7),
         ("actor", "角色", 1.3),
-        ("layer", "图层", 0.7),
-        ("effect", "效果", 1.1),
+        ("start", "开始", 1.4),
+        ("end", "结束", 1.4),
     ] {
         row = row.child(
             div()
@@ -6399,58 +6399,40 @@ impl Workspace {
             .text_size(px(11.))
             .text_color(p.muted)
             .child(format!("{} 行", self.snapshot.selected.len()));
-        let header = if rail.is_some() {
-            div()
-                .h_flex()
-                .items_center()
-                .gap_2()
-                .child(
-                    Icon::new(IconName::Settings2)
-                        .size(px(15.))
-                        .text_color(p.muted),
-                )
-                .child(div().text_sm().font_semibold().flex_1().child("行属性"))
-                .child(toggle_comment)
-                .child(apply)
-        } else {
-            div()
-                .h_flex()
-                .items_center()
-                .gap_2()
-                .child(
-                    Icon::new(IconName::Settings2)
-                        .size(px(15.))
-                        .text_color(p.muted),
-                )
-                .child(div().text_sm().font_semibold().flex_1().child("行属性"))
-                .child(count)
-                .child(toggle_comment)
-                .child(save_as)
-                .child(apply)
-        };
+        // No title and no icon: the fields are the panel, and the actions sit at
+        // the end of the first row so the whole panel is two rows tall.
+        let header = div()
+            .h_flex()
+            .items_center()
+            .gap_2()
+            .flex_shrink_0()
+            .child(toggle_comment)
+            .child(save_as)
+            .child(apply);
+
         let groups = if rail.is_some() {
             vec![
                 group(
-                    "时间与边距",
+                    "",
                     vec![vec![
-                        cell("start", "开始").into_any_element(),
-                        cell("end", "结束").into_any_element(),
                         cell("margin_left", "左").into_any_element(),
                         cell("margin_right", "右").into_any_element(),
                         cell("margin_vertical", "垂直").into_any_element(),
+                        cell("layer", "图层").into_any_element(),
+                        cell("effect", "效果").into_any_element(),
                     ]],
                 ),
             ]
         } else {
             vec![
                 group(
-                    "时间与边距",
+                    "",
                     vec![vec![
-                        cell("start", "开始").into_any_element(),
-                        cell("end", "结束").into_any_element(),
                         cell("margin_left", "左").into_any_element(),
                         cell("margin_right", "右").into_any_element(),
                         cell("margin_vertical", "垂直").into_any_element(),
+                        cell("layer", "图层").into_any_element(),
+                        cell("effect", "效果").into_any_element(),
                     ]],
                 ),
             ]
@@ -6476,6 +6458,7 @@ impl Workspace {
                     // the fight with the editor and the list, so its lower half
                     // was clipped away.
                     .flex_none()
+                    .h(px(150.))
                     .rounded(px(crate::workspace_theme::RADIUS_MD))
                     .border_1()
                     .border_color(p.border)
@@ -6484,10 +6467,18 @@ impl Workspace {
                     .p_2()
                     .gap_0p5()
             })
-            .child(header)
-            // Style, actor, layer and effect belong to the line, so they live in
-            // the line's own panel instead of floating above it as a loose row.
-            .when(rail.is_none(), |panel| panel.child(line_field_row(cx, self, &p)))
+            // Style, actor, timing and the three actions share the first row;
+            // margins, layer and effect share the second.
+            .child(
+                div()
+                    .h_flex()
+                    .items_end()
+                    .gap_2()
+                    .w_full()
+                    .min_w_0()
+                    .child(div().flex_1().min_w_0().child(line_field_row(cx, self, &p)))
+                    .child(header),
+            )
             .children(groups)
             .overflow_y_scrollbar()
     }
