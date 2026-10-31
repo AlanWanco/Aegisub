@@ -945,6 +945,7 @@ impl AudioPanel {
         } else {
             let compact_viewport = div()
                 .h_flex()
+                .flex_wrap()
                 .gap_2()
                 .items_center()
                 .child(
