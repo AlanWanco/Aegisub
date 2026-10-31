@@ -8935,6 +8935,33 @@ impl Render for Workspace {
                             .map(|line| div().child(line.to_owned())),
                     ),
             )
+            // Long option labels (the YCbCr matrix ones run past 40 characters)
+            // cannot share one footer row with the actions, so they stack.
+            .when(!notice.choices.is_empty(), |card| {
+                let labels = notice.choices.clone();
+                let mut list = div().v_flex().w_full().gap_2().px(px(20.)).pb(px(4.));
+                for (index, label) in labels.iter().enumerate() {
+                    list = list.child(
+                        Button::new(format!("notice-choice-{index}"))
+                            .label(label.clone())
+                            .w_full()
+                            .whitespace_normal()
+                            .rounded(px(10.))
+                            .px(px(13.))
+                            .py(px(8.))
+                            .when(index == 0, |button| button.ghost())
+                            .when(index > 0, |button| button.primary())
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                view.invoke(json!({"op":"notice_choice","index":index}), cx);
+                                if !view.notices.is_empty() {
+                                    view.notices.remove(0);
+                                }
+                                cx.notify();
+                            })),
+                    );
+                }
+                card.child(list)
+            })
             .child(
                 div()
                     .h_flex()
@@ -9048,30 +9075,7 @@ impl Render for Workspace {
                                     )
                             })
                             .when(!notice.choices.is_empty(), |row| {
-                                let labels = notice.choices.clone();
-                                let mut buttons = row.child(div().flex_1());
-                                for (index, label) in labels.iter().enumerate() {
-                                    buttons = buttons.child(
-                                        Button::new(format!("notice-choice-{index}"))
-                                            .label(label.clone())
-                                            .rounded(px(999.))
-                                            .px(px(13.))
-                                            .py(px(3.))
-                                            .when(index == 0, |button| button.ghost())
-                                            .when(index > 0, |button| button.primary())
-                                            .on_click(cx.listener(move |view, _, _, cx| {
-                                                view.invoke(
-                                                    json!({"op":"notice_choice","index":index}),
-                                                    cx,
-                                                );
-                                                if !view.notices.is_empty() {
-                                                    view.notices.remove(0);
-                                                }
-                                                cx.notify();
-                                            })),
-                                    );
-                                }
-                                buttons.child(
+                                row.child(
                                     Button::new("notice-choice-cancel")
                                         .label("取消")
                                         .rounded(px(999.))
