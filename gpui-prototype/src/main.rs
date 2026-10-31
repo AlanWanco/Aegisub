@@ -522,6 +522,9 @@ struct ColorDialog {
     pending: Option<(String, String)>,
     error: Option<String>,
     loading: bool,
+    /// Recently applied colours, newest first. The host keeps the list in the
+    /// same option the wx picker uses, so both dialogs share one history.
+    recent: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -3092,7 +3095,16 @@ impl Workspace {
             let _ = weak.update(cx, |view, cx| match result {
                 Ok(value) => {
                     let hex = value["color"].as_str().unwrap_or("#FFFFFF").to_owned();
-                    view.open_color_dialog(kind, &hex, cx);
+                    let recent = value["recent"]
+                        .as_array()
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|item| item.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    view.open_color_dialog(kind, &hex, recent, cx);
                 }
                 Err(error) => {
                     view.status = format!("无法读取颜色：{error}");
@@ -3103,7 +3115,13 @@ impl Workspace {
         .detach();
     }
 
-    fn open_color_dialog(&mut self, kind: &'static str, hex: &str, cx: &mut Context<Self>) {
+    fn open_color_dialog(
+        &mut self,
+        kind: &'static str,
+        hex: &str,
+        recent: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
         let (title, hint) = match kind {
             "secondary" => ("次色", "设置当前位置的 \\2c 卡拉 OK 颜色"),
             "outline" => ("描边色", "设置当前位置的 \\3c 描边颜色"),
@@ -3119,6 +3137,7 @@ impl Workspace {
             pending: Some((format!("#{r:02X}{g:02X}{b:02X}"), percent.to_string())),
             error: None,
             loading: false,
+            recent,
         });
         cx.notify();
     }
@@ -3329,6 +3348,7 @@ impl Workspace {
         let hint = dialog.hint;
         let error = dialog.error.clone();
         let loading = dialog.loading;
+        let recent = dialog.recent.clone();
         let presets: [(&str, u32); 10] = [
             ("白", 0xFFFFFF),
             ("黑", 0x000000),
@@ -3435,6 +3455,50 @@ impl Workspace {
                                     .child(Input::new(&self.color_alpha_input)),
                             ),
                     )
+                    .when(!recent.is_empty(), |card| {
+                        card.child(
+                            div()
+                                .v_flex()
+                                .gap_2()
+                                .child(crate::page::field_label(cx, "最近使用"))
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .gap_2()
+                                        .flex_wrap()
+                                        .children(recent.iter().map(|hex| {
+                                            let digits = hex.trim_start_matches('#');
+                                            let rgb = u32::from_str_radix(
+                                                digits.get(0..6).unwrap_or("FFFFFF"),
+                                                16,
+                                            )
+                                            .unwrap_or(0xFFFFFF);
+                                            let value = hex.clone();
+                                            let input = self.color_hex_input.clone();
+                                            Button::new(format!("color-recent-{hex}"))
+                                                .ghost()
+                                                .rounded(px(999.))
+                                                .small()
+                                                .px(px(8.))
+                                                .py(px(3.))
+                                                .tooltip(hex.clone())
+                                                .child(
+                                                    div()
+                                                        .size(px(18.))
+                                                        .rounded(px(6.))
+                                                        .border_1()
+                                                        .border_color(p.border)
+                                                        .bg(gpui_kit::rgba((rgb << 8) | 0xFF)),
+                                                )
+                                                .on_click(cx.listener(move |_, _, window, cx| {
+                                                    input.update(cx, |state, cx| {
+                                                        state.set_value(value.clone(), window, cx)
+                                                    });
+                                                }))
+                                        })),
+                                ),
+                        )
+                    })
                     .child(
                         div()
                             .h_flex()

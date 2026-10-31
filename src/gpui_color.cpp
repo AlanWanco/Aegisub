@@ -5,9 +5,11 @@
 
 #include "command/edit.h"
 #include "include/aegisub/context.h"
+#include "options.h"
 
 #include <libaegisub/cajun/writer.h>
 #include <libaegisub/color.h>
+#include <libaegisub/option.h>
 
 #include <algorithm>
 #include <sstream>
@@ -23,9 +25,24 @@ std::string ColorPanel(agi::Context *context, json::Object const& request) {
 		if (!color)
 			throw std::runtime_error("select a line before picking a colour");
 		result["color"] = color->GetHexFormatted(true);
+		// The wx picker writes the same option, so both dialogs share one history.
+		json::Array recent;
+		for (auto const& entry : OPT_GET("Tool/Colour Picker/Recent Colours")->GetListColor())
+			recent.emplace_back(entry.GetHexFormatted(true));
+		result["recent"] = std::move(recent);
 	}
-	else if (action == "apply")
-		cmd::ApplyColorPick(context, agi::Color(static_cast<std::string const&>(request.at("color"))));
+	else if (action == "apply") {
+		agi::Color const picked(static_cast<std::string const&>(request.at("color")));
+		cmd::ApplyColorPick(context, picked);
+		auto recent = OPT_GET("Tool/Colour Picker/Recent Colours")->GetListColor();
+		recent.erase(std::remove_if(recent.begin(), recent.end(), [&](agi::Color const& entry) {
+			return entry.r == picked.r && entry.g == picked.g && entry.b == picked.b;
+		}), recent.end());
+		recent.insert(recent.begin(), picked);
+		if (recent.size() > 16)
+			recent.resize(16);
+		OPT_SET("Tool/Colour Picker/Recent Colours")->SetListColor(recent);
+	}
 	else if (action == "cancel")
 		cmd::CancelColorPick(context);
 	else
