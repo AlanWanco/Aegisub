@@ -327,7 +327,7 @@ impl SubtitleColumn {
     fn min_width(self) -> f32 {
         match self {
             Self::IdLayer => 44.,
-            Self::Time => 150.,
+            Self::Time => 172.,
             Self::StyleActor => 64.,
             Self::Layer => 32.,
             Self::Effect => 52.,
@@ -747,6 +747,54 @@ fn line_field_row(
     // No apply button here: the panel's own button commits the same fields, and
     // two checkmarks for one action is just a second way to be wrong.
     row
+}
+
+/// Karaoke timing tags: `\k`, `\kf`, `\ko` in either case.
+fn has_karaoke_tag(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes
+        .windows(2)
+        .any(|pair| pair[0] == b'\\' && (pair[1] == b'k' || pair[1] == b'K'))
+}
+
+/// Tags that make a line move, animate, fade or draw: `\t`, `\move`, `\pos`,
+/// `\clip`, `\fad`, `\org` and the `\p` drawing mode.
+fn has_effect_tag(text: &str) -> bool {
+    const TAGS: [&str; 9] = [
+        "\\t(", "\\t (", "\\move(", "\\pos(", "\\clip(", "\\iclip(", "\\fad(", "\\fade(", "\\org(",
+    ];
+    TAGS.iter().any(|tag| text.contains(tag)) || text.contains("\\p1") || text.contains("\\p2")
+}
+
+/// A 16px rounded chip holding one 11px icon.
+fn tag_text_badge(text: &'static str, color: gpui_kit::Hsla) -> gpui_kit::Div {
+    div()
+        .h(px(16.))
+        .px(px(3.))
+        .rounded(px(3.))
+        .h_flex()
+        .items_center()
+        .bg(color.opacity(0.16))
+        .child(
+            div()
+                .text_size(px(9.))
+                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                .text_color(color)
+                .child(text),
+        )
+}
+
+fn tag_badge(icon: gpui_kit::assets::IconName, color: gpui_kit::Hsla) -> gpui_kit::Div {
+    div()
+        .h_flex()
+        .items_center()
+        .justify_center()
+        .w(px(16.))
+        .h(px(16.))
+        .flex_shrink_0()
+        .rounded(px(3.))
+        .bg(color.opacity(0.16))
+        .child(Icon::new(icon).size(px(11.)).text_color(color))
 }
 
 fn escape_line_breaks(text: String, soft: bool) -> String {
@@ -8079,6 +8127,19 @@ impl Workspace {
                                         .bg(row_bg)
                                         .border_b_1()
                                         .border_color(border)
+                                        .when(!is_active && line.comment, |row| {
+                                            // Comments get their own stripe so the
+                                            // tinted background is not the only cue.
+                                            row.child(
+                                                div()
+                                                    .ml(px(-14.))
+                                                    .mr(px(12.))
+                                                    .h_full()
+                                                    .w(px(2.))
+                                                    .flex_shrink_0()
+                                                    .bg(p.warning.opacity(0.75)),
+                                            )
+                                        })
                                         .when(is_active, |row| {
                                             // The selection accent is its own bar:
                                             // a left border shares one colour with
@@ -8126,6 +8187,29 @@ impl Workspace {
                                                 accent,
                                             )
                                         }))
+                                        .children({
+                                            // A glyph per special tag, parked at the row's
+                                            // right edge so it never squeezes the columns.
+                                            let mut badges =
+                                                div().h_flex().items_center().gap_1().flex_shrink_0();
+                                            let mut any = false;
+                                            if line.comment {
+                                                badges = badges
+                                                    .child(tag_badge(IconName::Captions, p.warning));
+                                                any = true;
+                                            }
+                                            if has_karaoke_tag(&line.text) {
+                                                badges =
+                                                    badges.child(tag_badge(IconName::AudioLines, accent));
+                                                any = true;
+                                            }
+                                            if has_effect_tag(&line.text) {
+                                                badges =
+                                                    badges.child(tag_text_badge("FX", accent));
+                                                any = true;
+                                            }
+                                            any.then_some(div().pl(px(8.)).flex_shrink_0().child(badges))
+                                        })
                                         .child(
                                             div()
                                                 .flex_1()
@@ -8214,6 +8298,9 @@ fn subtitle_cell(
         div()
             .w(px(width))
             .flex_shrink_0()
+            // Fixed-width columns overflowed into the next one when the grid
+            // font grew; clip instead of letting the time run under the style.
+            .overflow_hidden()
             .mr(px(COLUMN_GAP))
             .text_size(px(secondary_size))
     };
