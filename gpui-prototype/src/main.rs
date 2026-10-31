@@ -1037,6 +1037,9 @@ struct Workspace {
     style_preview_height: f32,
     /// Width the user dragged the line inspector to; `None` keeps the default.
     properties_rail_width: Option<f32>,
+    time_in_frames: bool,
+    show_original: bool,
+    editor_original: String,
     last_preview_height: std::cell::Cell<f32>,
     editor: Entity<TextareaState>,
     search: Entity<InputState>,
@@ -1354,6 +1357,9 @@ impl Workspace {
             video_preview_height: None,
             style_preview_height: 132.,
             properties_rail_width: None,
+            time_in_frames: false,
+            show_original: false,
+            editor_original: String::new(),
             last_preview_height: std::cell::Cell::new(220.),
             editor,
             search,
@@ -5385,7 +5391,22 @@ impl Workspace {
         for (key, input) in &self.property_inputs {
             let value = input.read(cx).value().to_string();
             let parsed: Result<Value> = match *key {
-                "start" | "end" => parse_time(&value).map(Value::from),
+                "start" | "end" => {
+                    if self.time_in_frames {
+                        let fps = self.snapshot.fps.unwrap_or(0.);
+                        if fps <= 0. {
+                            Err(anyhow::anyhow!("没有视频帧率，无法按帧输入"))
+                        } else {
+                            value
+                                .trim()
+                                .parse::<i64>()
+                                .map(|frame| Value::from((frame as f64 * 1000. / fps).round() as i64))
+                                .context("请输入帧号")
+                        }
+                    } else {
+                        parse_time(&value).map(Value::from)
+                    }
+                }
                 "layer" | "margin_left" | "margin_right" | "margin_vertical" => {
                     value.parse::<i64>().map(Value::from).context("请输入整数")
                 }
@@ -7686,6 +7707,65 @@ impl Workspace {
                     )
                     .child(format_toolbar)
                     .child(playback_toolbar)
+                    .child({
+                        let frame_mode = self.time_in_frames;
+                        let show_original = self.show_original;
+                        let original = self.editor_original.clone();
+                        div()
+                            .h_flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                crate::page::toggle_chip(cx, "editor-frame-mode", "按帧显示", frame_mode, false)
+                                    .on_click(cx.listener(|view, _, window, cx| {
+                                        view.time_in_frames = !view.time_in_frames;
+                                        let fps = view.snapshot.fps.unwrap_or(0.);
+                                        if fps > 0. {
+                                            for key in ["start", "end"] {
+                                                let text = view.property_inputs[key].read(cx).value().to_string();
+                                                let ms = if view.time_in_frames {
+                                                    parse_time(&text).ok()
+                                                } else {
+                                                    text.trim()
+                                                        .parse::<f64>()
+                                                        .ok()
+                                                        .map(|frame| (frame * 1000. / fps).round() as i64)
+                                                };
+                                                if let Some(ms) = ms {
+                                                    let shown = if view.time_in_frames {
+                                                        format!("{}", (ms as f64 * fps / 1000.).round() as i64)
+                                                    } else {
+                                                        let centis = (ms as f64 / 10.).round() as i64;
+                                                        format!("{}:{:02}.{:02}", centis / 6000, (centis / 100) % 60, centis % 100)
+                                                    };
+                                                    view.property_inputs[key]
+                                                        .update(cx, |state, cx| state.set_value(shown, window, cx));
+                                                }
+                                            }
+                                        }
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                crate::page::toggle_chip(cx, "editor-show-original", "显示原始字幕", show_original, false)
+                                    .on_click(cx.listener(|view, _, _, cx| {
+                                        view.show_original = !view.show_original;
+                                        cx.notify();
+                                    })),
+                            )
+                            .when(show_original, |row| {
+                                row.child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .text_sm()
+                                        .text_color(p.muted)
+                                        .child(original),
+                                )
+                            })
+                    })
                     .child(editor.flex_1().min_h(px(40.)));
         let editor_section = div()
             .id("subtitle-editor-section")
@@ -8233,6 +8313,9 @@ impl Render for Workspace {
             .find(|line| line.id == self.selected_line)
         {
             if self.editor_line_id != line.id {
+                // "Show original" means the text this line had when it was picked,
+                // so it is captured on selection rather than every frame.
+                self.editor_original = line.text.clone();
                 let text = line.text.clone();
                 self.editor
                     .update(cx, |state, cx| state.set_value(text, window, cx));
