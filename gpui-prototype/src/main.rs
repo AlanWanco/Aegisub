@@ -6469,7 +6469,10 @@ impl Workspace {
             })
             .when(rail.is_none(), |panel| {
                 panel
-                    .flex_1()
+                    // The panel sizes to its fields: letting it flex made it lose
+                    // the fight with the editor and the list, so its lower half
+                    // was clipped away.
+                    .flex_none()
                     .rounded(px(crate::workspace_theme::RADIUS_MD))
                     .border_1()
                     .border_color(p.border)
