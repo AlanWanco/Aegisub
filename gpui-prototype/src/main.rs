@@ -1004,13 +1004,6 @@ enum WorkspaceResizeDrag {
         start_y: gpui_kit::Pixels,
         start_height: f32,
     },
-    /// Height of the video preview above the line properties.
-    VideoPreview {
-        start_y: gpui_kit::Pixels,
-        start_height: f32,
-        /// Keeps the properties card from being squeezed out of the column.
-        max_height: f32,
-    },
 }
 
 struct Workspace {
@@ -8492,16 +8485,6 @@ impl Render for Workspace {
                                     (start_height + f32::from(event.position.y - start_y))
                                         .clamp(64., 320.);
                             }
-                            WorkspaceResizeDrag::VideoPreview {
-                                start_y,
-                                start_height,
-                                max_height,
-                            } => {
-                                view.video_preview_height = Some(
-                                    (start_height + f32::from(event.position.y - start_y))
-                                        .clamp(120., max_height),
-                                );
-                            }
                         }
                         cx.notify();
                     } else {
@@ -8608,52 +8591,28 @@ impl Render for Workspace {
                         cx.notify();
                     }),
                 );
-            let video_handle = div()
-                .id("video-preview-resize-handle")
-                .aria_label("调整视频预览高度")
-                .role(gpui_kit::Role::Splitter)
-                .h(px(4.))
-                .w_full()
-                .flex_shrink_0()
-                .h_flex()
-                .items_center()
-                .justify_center()
-                .cursor_row_resize()
-                .child(div().w(px(48.)).h(px(3.)).rounded(px(2.)).bg(grip))
-                .on_mouse_down(
-                    gpui_kit::MouseButton::Left,
-                    cx.listener(|view, event: &gpui_kit::MouseDownEvent, window, cx| {
-                        let current = view
-                            .video_preview_height
-                            .unwrap_or_else(|| view.last_preview_height.get());
-                        let max_height =
-                            (f32::from(window.viewport_size().height) - 620.).max(140.);
-                        view.layout_drag = Some(WorkspaceResizeDrag::VideoPreview {
-                            start_y: event.position.y,
-                            start_height: current,
-                            max_height,
-                        });
-                        cx.stop_propagation();
-                        cx.notify();
-                    }),
-                );
             // Audio and video share the left column; the view commands hide
             // either container, and hiding both hands the full width to the text.
-            let audio_strip = self.audio.render_compact(
-                &self.snapshot.audio,
-                self.snapshot.video,
-                &self.snapshot.appearance,
-                self.audio_panel_height,
-                focus_area == KeyFocus::Audio,
-                cx,
-            ).into_any_element();
-            let player = self.render_player(
-                window,
-                side_by_side,
-                side_by_side,
-                focus_area == KeyFocus::Video,
-                cx,
-            ).into_any_element();
+            let audio_strip = self
+                .audio
+                .render_compact(
+                    &self.snapshot.audio,
+                    self.snapshot.video,
+                    &self.snapshot.appearance,
+                    self.audio_panel_height,
+                    focus_area == KeyFocus::Audio,
+                    cx,
+                )
+                .into_any_element();
+            let player = self
+                .render_player(
+                    window,
+                    side_by_side,
+                    side_by_side,
+                    focus_area == KeyFocus::Video,
+                    cx,
+                )
+                .into_any_element();
             let mut columns = div()
                 .h_flex()
                 .items_stretch()
@@ -8674,12 +8633,9 @@ impl Render for Workspace {
                     left = left.child(audio_strip).child(audio_handle);
                 }
                 if self.show_video {
+                    // No handle under the preview: it already fills whatever the
+                    // audio strip leaves, so there is no height to trade.
                     left = left.child(player);
-                    // The stacked layout has no spare height to trade between
-                    // the preview and the properties.
-                    if side_by_side && properties_rail.is_none() {
-                        left = left.child(video_handle);
-                    }
                 }
                 columns = columns.child(left);
                 if side_by_side {
