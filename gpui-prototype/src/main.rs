@@ -7566,6 +7566,71 @@ impl Workspace {
                     })),
             );
         }
+        // These two toggles ride at the end of the playback row: on their own row
+        // they held a whole line for two chips and left the rest of it empty.
+        playback_toolbar = playback_toolbar
+            .child(div().mx_1().h(px(16.)).w(px(1.)).bg(p.divider))
+            .child(crate::page::with_tooltip(
+                crate::page::toggle_chip(
+                    cx,
+                    "editor-frame-mode",
+                    // The playback row is shared with the other toggles, so the
+                    // disabled state gets a short label; the tooltip explains it.
+                    if self.snapshot.fps.is_some() {
+                        "按帧显示"
+                    } else {
+                        "按帧"
+                    },
+                    self.time_in_frames,
+                    self.snapshot.fps.is_none(),
+                )
+                .on_click(cx.listener(|view, _, window, cx| {
+                    view.time_in_frames = !view.time_in_frames;
+                    let fps = view.snapshot.fps.unwrap_or(0.);
+                    if fps > 0. {
+                        for key in ["start", "end"] {
+                            let text = view.property_inputs[key].read(cx).value().to_string();
+                            let ms = if view.time_in_frames {
+                                parse_time(&text).ok()
+                            } else {
+                                text.trim()
+                                    .parse::<f64>()
+                                    .ok()
+                                    .map(|frame| (frame * 1000. / fps).round() as i64)
+                            };
+                            if let Some(ms) = ms {
+                                let shown = if view.time_in_frames {
+                                    format!("{}", (ms as f64 * fps / 1000.).round() as i64)
+                                } else {
+                                    let centis = (ms as f64 / 10.).round() as i64;
+                                    format!("{}:{:02}.{:02}", centis / 6000, (centis / 100) % 60, centis % 100)
+                                };
+                                view.property_inputs[key]
+                                    .update(cx, |state, cx| state.set_value(shown, window, cx));
+                            }
+                        }
+                    }
+                    cx.notify();
+                })),
+                if self.snapshot.fps.is_some() {
+                    "时间按帧号显示，而不是时间码"
+                } else {
+                    "没有视频帧率，无法按帧输入"
+                },
+            ))
+            .child(
+                crate::page::toggle_chip(
+                    cx,
+                    "editor-show-original",
+                    "显示原始字幕",
+                    self.show_original,
+                    false,
+                )
+                .on_click(cx.listener(|view, _, _, cx| {
+                    view.show_original = !view.show_original;
+                    cx.notify();
+                })),
+            );
         let row_count = visible.len();
         let properties_rail =
             rail.map(|width| self.render_properties(Some(width), cx).into_any_element());
@@ -7666,74 +7731,15 @@ impl Workspace {
                     )
                     .child(format_toolbar)
                     .child(playback_toolbar)
-                    .child({
-                        let frame_mode = self.time_in_frames;
-                        let show_original = self.show_original;
-                        let original = self.editor_original.clone();
-                        div()
-                            .h_flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                crate::page::toggle_chip(
-                                    cx,
-                                    "editor-frame-mode",
-                                    if self.snapshot.fps.is_some() {
-                                        "按帧显示"
-                                    } else {
-                                        "按帧显示（需视频）"
-                                    },
-                                    frame_mode,
-                                    self.snapshot.fps.is_none(),
-                                )
-                                    .on_click(cx.listener(|view, _, window, cx| {
-                                        view.time_in_frames = !view.time_in_frames;
-                                        let fps = view.snapshot.fps.unwrap_or(0.);
-                                        if fps > 0. {
-                                            for key in ["start", "end"] {
-                                                let text = view.property_inputs[key].read(cx).value().to_string();
-                                                let ms = if view.time_in_frames {
-                                                    parse_time(&text).ok()
-                                                } else {
-                                                    text.trim()
-                                                        .parse::<f64>()
-                                                        .ok()
-                                                        .map(|frame| (frame * 1000. / fps).round() as i64)
-                                                };
-                                                if let Some(ms) = ms {
-                                                    let shown = if view.time_in_frames {
-                                                        format!("{}", (ms as f64 * fps / 1000.).round() as i64)
-                                                    } else {
-                                                        let centis = (ms as f64 / 10.).round() as i64;
-                                                        format!("{}:{:02}.{:02}", centis / 6000, (centis / 100) % 60, centis % 100)
-                                                    };
-                                                    view.property_inputs[key]
-                                                        .update(cx, |state, cx| state.set_value(shown, window, cx));
-                                                }
-                                            }
-                                        }
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                crate::page::toggle_chip(cx, "editor-show-original", "显示原始字幕", show_original, false)
-                                    .on_click(cx.listener(|view, _, _, cx| {
-                                        view.show_original = !view.show_original;
-                                        cx.notify();
-                                    })),
-                            )
-                            .when(show_original, |row| {
-                                row.child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .truncate()
-                                        .text_sm()
-                                        .text_color(p.muted)
-                                        .child(original),
-                                )
-                            })
+                    .when(self.show_original, |col| {
+                        col.child(
+                            div()
+                                .flex_shrink_0()
+                                .truncate()
+                                .text_sm()
+                                .text_color(p.muted)
+                                .child(self.editor_original.clone()),
+                        )
                     })
                     .child(editor.flex_1().min_h(px(40.)));
         let editor_section = div()
