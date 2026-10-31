@@ -6428,15 +6428,10 @@ impl Workspace {
         let groups = if rail.is_some() {
             vec![
                 group(
-                    "时间",
+                    "时间与边距",
                     vec![vec![
                         cell("start", "开始").into_any_element(),
                         cell("end", "结束").into_any_element(),
-                    ]],
-                ),
-                group(
-                    "边距",
-                    vec![vec![
                         cell("margin_left", "左").into_any_element(),
                         cell("margin_right", "右").into_any_element(),
                         cell("margin_vertical", "垂直").into_any_element(),
@@ -6446,15 +6441,10 @@ impl Workspace {
         } else {
             vec![
                 group(
-                    "时间",
+                    "时间与边距",
                     vec![vec![
                         cell("start", "开始").into_any_element(),
                         cell("end", "结束").into_any_element(),
-                    ]],
-                ),
-                group(
-                    "边距",
-                    vec![vec![
                         cell("margin_left", "左").into_any_element(),
                         cell("margin_right", "右").into_any_element(),
                         cell("margin_vertical", "垂直").into_any_element(),
