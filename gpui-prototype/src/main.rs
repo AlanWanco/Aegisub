@@ -3691,7 +3691,9 @@ impl Workspace {
                 Some(name)
                     if name.starts_with("audio/go_to") || name.starts_with("audio/scroll/") =>
                 {
-                    self.active_panel = Panel::Audio;
+                    // These only move the waveform view. Jumping to the audio page
+                    // as well meant a stray "A" in the grid threw the workspace
+                    // over to 音频调时.
                     let state = &self.snapshot.audio;
                     let start = match name {
                         "audio/go_to/start" => state.start - self.audio.span / 2,
