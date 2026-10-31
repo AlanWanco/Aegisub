@@ -293,7 +293,8 @@ impl AudioPanel {
                 .into_any_element(),
         ]);
         let mut controls = div().h_flex().flex_wrap().gap_2().items_center();
-        controls = controls.child(crate::page::segmented(
+        // 波形/频谱 是视图控件，紧凑条把它挪到第一行；完整页保持原顺序。
+        let mut mode_seg = Some(crate::page::segmented(
             cx,
             [
                 ("waveform", "波形", self.mode == "waveform", false),
@@ -314,22 +315,30 @@ impl AudioPanel {
                 cx.notify();
             },
         ));
+        if full_controls {
+            controls = controls.child(mode_seg.take().unwrap());
+        }
+        // The workspace strip is one dense toolbar, so it gets the short labels;
+        // the full 音频调时 page keeps the descriptive ones.
+        let short = |long: &'static str, brief: &'static str| {
+            if full_controls { long } else { brief }
+        };
         for (id, label, command, active) in [
             (
                 "audio-auto-commit",
-                "自动提交",
+                short("自动提交", "自动"),
                 "audio/opt/autocommit",
                 state.autocommit,
             ),
             (
                 "audio-auto-next",
-                "提交后前进",
+                short("提交后前进", "前进"),
                 "audio/opt/autonext",
                 state.autonext,
             ),
             (
                 "audio-auto-scroll",
-                "跟随当前句",
+                short("跟随当前句", "跟随"),
                 "audio/opt/autoscroll",
                 state.autoscroll,
             ),
@@ -351,7 +360,13 @@ impl AudioPanel {
             ),
         );
         controls = controls.child(
-            crate::page::toggle_chip(cx, "audio-karaoke-mode", "卡拉 OK", state.karaoke, !state.loaded)
+            crate::page::toggle_chip(
+            cx,
+            "audio-karaoke-mode",
+            short("卡拉 OK", "OK"),
+            state.karaoke,
+            !state.loaded,
+        )
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.invoke(
                         json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}),
@@ -661,12 +676,42 @@ impl AudioPanel {
             .p_0p5()
             .rounded_full()
             .bg(p.muted);
-        for (id, label, rate) in [
+        let rate_steps = [
             ("audio-rate-50", "0.5×", 50),
             ("audio-rate-100", "1×", 100),
             ("audio-rate-150", "1.5×", 150),
             ("audio-rate-200", "2×", 200),
-        ] {
+        ];
+        // Four chips cost a third of the strip; the workspace cycles one instead.
+        let rate_list: &[(&str, &str, i32)] = if full_controls {
+            &rate_steps
+        } else {
+            &[]
+        };
+        if !full_controls {
+            let current = rate_steps
+                .iter()
+                .position(|(_, _, rate)| (state.rate - *rate as f64).abs() < 0.5)
+                .unwrap_or(1);
+            let next = rate_steps[(current + 1) % rate_steps.len()];
+            rates = rates.child(
+                Button::new("audio-rate-cycle")
+                    .rounded(gpui_kit::px(999.))
+                    .small()
+                    .px(gpui_kit::px(9.))
+                    .py(gpui_kit::px(3.))
+                    .label(rate_steps[current].1)
+                    .tooltip("点击切换播放倍速")
+                    .ghost()
+                    .on_click(cx.listener(move |view, _, _, cx| {
+                        view.invoke(
+                            json!({"op":"audio_action", "action":"rate", "value":next.2}),
+                            cx,
+                        )
+                    })),
+            );
+        }
+        for (id, label, rate) in rate_list.iter().copied() {
             rates = rates.child(
                 Button::new(id)
                     .rounded(gpui_kit::px(999.))
@@ -689,7 +734,7 @@ impl AudioPanel {
         let sound = div()
             .h_flex()
             .flex_wrap()
-            .gap_2()
+            .gap_1()
             .items_center()
             .child(rates)
             .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.border))
@@ -697,7 +742,7 @@ impl AudioPanel {
                 Button::new("audio-volume-down")
                     .rounded(gpui_kit::px(999.))
                     .small()
-                    .px(gpui_kit::px(13.))
+                    .px(gpui_kit::px(9.))
                     .py(gpui_kit::px(3.))
                     .child(Icon::new(IconName::Minus).size(px(15.)))
                     .accessibility_label("音量 −")
@@ -715,13 +760,17 @@ impl AudioPanel {
                 div()
                     .text_sm()
                     .text_color(p.muted_foreground)
-                    .child(format!("音量 {}%", state.volume)),
+                    .child(if full_controls {
+                        format!("音量 {}%", state.volume)
+                    } else {
+                        format!("{}%", state.volume)
+                    }),
             )
             .child(
                 Button::new("audio-volume-up")
                     .rounded(gpui_kit::px(999.))
                     .small()
-                    .px(gpui_kit::px(13.))
+                    .px(gpui_kit::px(9.))
                     .py(gpui_kit::px(3.))
                     .child(Icon::new(IconName::Plus).size(px(15.)))
                     .accessibility_label("音量 +")
@@ -846,8 +895,12 @@ impl AudioPanel {
                 format_time(state.end),
                 format_time(state.duration)
             )
-        } else {
+        } else if full_controls {
             "加载视频音轨后可使用波形调时和卡拉 OK 工具".to_owned()
+        } else {
+            // The strip is only 40px tall in the workspace; a permanent sentence
+            // here costs a whole line of waveform.
+            String::new()
         };
         let mut title_row = div().h_flex().items_center().gap_2();
         if !full_controls {
@@ -946,16 +999,16 @@ impl AudioPanel {
             let compact_viewport = div()
                 .h_flex()
                 .flex_wrap()
-                .gap_2()
+                .gap_1()
                 .items_center()
                 .child(
                     Button::new("audio-gain-down")
-                        .icon(IconName::Minus)
+                        .child(Icon::new(IconName::Minus).size(px(15.)))
                         .rounded(gpui_kit::px(999.))
                         .small()
-                        .px(gpui_kit::px(13.))
+                        .px(gpui_kit::px(9.))
                         .py(gpui_kit::px(3.))
-                        .label("波形增益")
+                        
                         .tooltip("降低波形增益（÷2）")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -972,12 +1025,12 @@ impl AudioPanel {
                 )
                 .child(
                     Button::new("audio-gain-up")
-                        .icon(IconName::Plus)
+                        .child(Icon::new(IconName::Plus).size(px(15.)))
                         .rounded(gpui_kit::px(999.))
                         .small()
-                        .px(gpui_kit::px(13.))
+                        .px(gpui_kit::px(9.))
                         .py(gpui_kit::px(3.))
-                        .label("波形增益")
+                        
                         .tooltip("提高波形增益（×2）")
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
@@ -988,12 +1041,12 @@ impl AudioPanel {
                 )
                 .child(
                     Button::new("audio-fit-line")
-                        .icon(IconName::Locate)
+                        .child(Icon::new(IconName::Locate).size(px(15.)))
                         .rounded(gpui_kit::px(999.))
                         .small()
-                        .px(gpui_kit::px(13.))
+                        .px(gpui_kit::px(9.))
                         .py(gpui_kit::px(3.))
-                        .label("定位当前句")
+                        
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.view_start = (view.snapshot.audio.start - 1000).max(0);
@@ -1006,12 +1059,12 @@ impl AudioPanel {
                 )
                 .child(
                     Button::new("audio-zoom-in")
-                        .icon(IconName::ZoomIn)
+                        .child(Icon::new(IconName::ZoomIn).size(px(15.)))
                         .rounded(gpui_kit::px(999.))
                         .small()
-                        .px(gpui_kit::px(13.))
+                        .px(gpui_kit::px(9.))
                         .py(gpui_kit::px(3.))
-                        .label("放大波形")
+                        
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.span = (view.audio.span / 2).max(250);
@@ -1021,12 +1074,12 @@ impl AudioPanel {
                 )
                 .child(
                     Button::new("audio-zoom-out")
-                        .icon(IconName::ZoomOut)
+                        .child(Icon::new(IconName::ZoomOut).size(px(15.)))
                         .rounded(gpui_kit::px(999.))
                         .small()
-                        .px(gpui_kit::px(13.))
+                        .px(gpui_kit::px(9.))
                         .py(gpui_kit::px(3.))
-                        .label("缩小波形")
+                        
                         .disabled(!state.loaded)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.audio.span = (view.audio.span * 2).min(600000);
@@ -1034,10 +1087,20 @@ impl AudioPanel {
                             cx.notify();
                         })),
                 );
+            // Two rows by construction: view/playback above, behaviour and modes below.
             panel = panel
-                .child(compact_viewport)
-                .child(sound.when(state.karaoke, |row| row.child(karaoke)))
-                .child(controls);
+                .child(
+                    div()
+                        .h_flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_1()
+                        .child(mode_seg.take().unwrap())
+                        .child(compact_viewport)
+                        .child(sound),
+                )
+                .child(controls)
+                .child(karaoke.when(state.karaoke, |row| row));
             panel.into_any_element()
         }
     }
