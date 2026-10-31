@@ -4,7 +4,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::Disableable;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::{
-    StyledExt, Theme,
+    Icon, StyledExt, Theme,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
@@ -395,6 +395,20 @@ impl PreferencesPanel {
                             cx,
                         )
                     })),
+            )
+            .child(
+                // The legacy config is just config.json; there is no export
+                // command upstream, so importing means reading that file.
+                Button::new("preferences-import")
+                    .child(Icon::new(IconName::FileInput).size(px(15.)))
+                    .rounded(gpui_kit::px(999.))
+                    .small()
+                    .px(gpui_kit::px(13.))
+                    .py(gpui_kit::px(3.))
+                    .label("导入旧版配置…")
+                    .tooltip("读取旧版 Aegisub 的 config.json，覆盖同名设置")
+                    .disabled(self.loading)
+                    .on_click(cx.listener(|view, _, _, cx| view.import_config_file(cx))),
             )
             .child(
                 Button::new("preferences-discard")

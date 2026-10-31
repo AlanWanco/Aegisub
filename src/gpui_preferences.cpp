@@ -19,7 +19,9 @@
 #include "audio_player_portaudio.h"
 #endif
 
+#include <libaegisub/cajun/reader.h>
 #include <libaegisub/cajun/writer.h>
+#include <libaegisub/io.h>
 #include <libaegisub/hotkey.h>
 #include <libaegisub/path.h>
 
@@ -189,8 +191,85 @@ std::string Appearance() {
 	return encode(std::move(result));
 }
 
+namespace {
+/// Copy one JSON leaf into an option, dispatching on the option's own type so a
+/// stale or wrong-typed entry is skipped instead of aborting the whole import.
+bool apply_element(agi::OptionValue *option, json::UnknownElement const& element) {
+	try {
+		switch (option->GetType()) {
+			case agi::OptionType::Bool: option->SetBool(static_cast<bool const&>(element)); return true;
+			case agi::OptionType::Int: option->SetInt(static_cast<json::Integer const&>(element)); return true;
+			case agi::OptionType::Double: option->SetDouble(static_cast<double const&>(element)); return true;
+			case agi::OptionType::String: option->SetString(static_cast<std::string const&>(element)); return true;
+			case agi::OptionType::Color: option->SetColor(agi::Color(static_cast<std::string const&>(element))); return true;
+			case agi::OptionType::ListColor: {
+				std::vector<agi::Color> items;
+				for (auto const& entry : static_cast<json::Array const&>(element))
+					items.emplace_back(static_cast<std::string const&>(static_cast<json::Object const&>(entry).at("color")));
+				option->SetListColor(items);
+				return true;
+			}
+			case agi::OptionType::ListString: {
+				std::vector<std::string> items;
+				for (auto const& entry : static_cast<json::Array const&>(element)) items.emplace_back(static_cast<std::string const&>(entry));
+				option->SetListString(items);
+				return true;
+			}
+			case agi::OptionType::ListInt: {
+				std::vector<int64_t> items;
+				for (auto const& entry : static_cast<json::Array const&>(element)) items.emplace_back(static_cast<json::Integer const&>(entry));
+				option->SetListInt(items);
+				return true;
+			}
+			case agi::OptionType::ListDouble: {
+				std::vector<double> items;
+				for (auto const& entry : static_cast<json::Array const&>(element)) items.emplace_back(static_cast<double const&>(entry));
+				option->SetListDouble(items);
+				return true;
+			}
+			case agi::OptionType::ListBool: {
+				std::vector<bool> items;
+				for (auto const& entry : static_cast<json::Array const&>(element)) items.emplace_back(static_cast<bool const&>(entry));
+				option->SetListBool(items);
+				return true;
+			}
+		}
+	}
+	catch (...) {
+		// Type mismatch: the entry came from a build with a different option type.
+	}
+	return false;
+}
+
+/// Walk the imported document, applying every path the running build knows.
+void import_object(json::Object const& object, std::string const& prefix, int &applied, int &skipped) {
+	for (auto const& [key, item] : object) {
+		std::string const path = prefix.empty() ? key : prefix + "/" + key;
+		agi::OptionValue *option = nullptr;
+		try {
+			option = config::opt->Get(path);
+		}
+		catch (...) {
+			option = nullptr;
+		}
+		if (option) {
+			if (apply_element(option, item)) ++applied;
+			else ++skipped;
+			continue;
+		}
+		try {
+			import_object(static_cast<json::Object const&>(item), path, applied, skipped);
+		}
+		catch (...) {
+			++skipped;
+		}
+	}
+}
+}
+
 std::string Preferences(json::Object const& request) {
 	std::string const& action = request.at("action");
+	int imported = 0, skipped = 0;
 	if (action == "apply") {
 		std::vector<std::unique_ptr<agi::OptionValue>> changes;
 		for (auto const& [name, item] : static_cast<json::Object const&>(request.at("fields"))) {
@@ -214,6 +293,20 @@ std::string Preferences(json::Object const& request) {
 		}
 		backup("config.json");
 		for (auto option : reset) option->Reset();
+		config::opt->Flush();
+	}
+	else if (action == "import") {
+		std::string const& path = request.at("path");
+		auto stream = agi::io::Open(agi::fs::path(path));
+		json::UnknownElement root;
+		try {
+			json::Reader::Read(root, *stream);
+		}
+		catch (json::Exception const& error) {
+			throw std::invalid_argument(std::string("不是有效的 JSON 配置文件：") + error.what());
+		}
+		backup("config.json");
+		import_object(static_cast<json::Object const&>(root), "", imported, skipped);
 		config::opt->Flush();
 	}
 	else if (action != "state") throw std::invalid_argument("unknown preferences action");
@@ -261,6 +354,8 @@ std::string Preferences(json::Object const& request) {
 	}
 	json::Object result;
 	result["ok"] = true;
+	result["imported"] = static_cast<int64_t>(imported);
+	result["skipped"] = static_cast<int64_t>(skipped);
 	result["options"] = std::move(options);
 	return encode(std::move(result));
 }

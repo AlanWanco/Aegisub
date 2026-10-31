@@ -1658,6 +1658,45 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Read an old `config.json` and apply every option this build knows about.
+    fn import_config_file(&mut self, cx: &mut Context<Self>) {
+        let bridge = self.bridge.clone();
+        let weak = cx.weak_entity();
+        cx.spawn(async move |_, cx| {
+            let picked = rfd::AsyncFileDialog::new()
+                .set_title("导入旧版配置")
+                .add_filter("Aegisub 配置文件", &["json"])
+                .pick_file()
+                .await;
+            let Some(file) = picked else {
+                return;
+            };
+            let path = file.path().to_string_lossy().to_string();
+            let result = bridge
+                .call(json!({"op":"preferences","action":"import","path":path}))
+                .await;
+            let _ = weak.update(cx, |view, cx| {
+                match result {
+                    Ok(value) => {
+                        let imported = value["imported"].as_i64().unwrap_or(0);
+                        let skipped = value["skipped"].as_i64().unwrap_or(0);
+                        view.status = if skipped > 0 {
+                            format!("已导入 {imported} 项设置，{skipped} 项当前版本不适用；重启后全部生效")
+                        } else {
+                            format!("已导入 {imported} 项设置；重启后全部生效")
+                        };
+                        view.preferences_request(json!({"action":"state"}), cx);
+                    }
+                    Err(error) => {
+                        view.status = format!("导入配置失败：{error}");
+                        cx.notify();
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+
     fn pick_file(&mut self, kind: &'static str, cx: &mut Context<Self>) {
         let weak = cx.weak_entity();
         cx.spawn(async move |_, cx| {
