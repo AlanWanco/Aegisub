@@ -9106,6 +9106,34 @@ impl Render for Workspace {
 
 /// Opens a workspace window wired to the bridge. Every window keeps its own
 /// connection, so File > New Window gives an independent view of the document.
+/// Tool windows open at the size their page actually needs: a page with two
+/// fields has no business being as tall as the preferences list.
+fn panel_window_size(panel: Panel) -> gpui_kit::Size<gpui_kit::Pixels> {
+    let (width, height) = match panel {
+        Panel::Subtitles => (1420., 920.),
+        Panel::Styles => (1100., 720.),
+        Panel::Styling => (820., 520.),
+        Panel::Project => (900., 620.),
+        Panel::Audio => (1080., 700.),
+        Panel::Visual => (1100., 780.),
+        Panel::Translation => (900., 600.),
+        Panel::Timing => (860., 660.),
+        Panel::Processor => (900., 600.),
+        Panel::Resample => (880., 620.),
+        Panel::Search => (880., 640.),
+        Panel::Paste => (820., 620.),
+        Panel::VideoSettings => (820., 620.),
+        Panel::Attachments => (900., 600.),
+        Panel::Preferences => (1000., 780.),
+        Panel::Hotkeys => (980., 780.),
+        Panel::Files => (980., 700.),
+        Panel::Spelling => (760., 440.),
+        Panel::Automation => (900., 600.),
+        Panel::Commands => (900., 720.),
+    };
+    size(px(width), px(height))
+}
+
 fn open_workspace(
     cx: &mut App,
     bridge: Bridge,
@@ -9115,7 +9143,7 @@ fn open_workspace(
     let window_bounds = match bounds {
         Some(bounds) => WindowBounds::Windowed(bounds),
         None => match detached {
-            Some(_) => WindowBounds::centered(size(px(820.), px(720.)), cx),
+            Some(panel) => WindowBounds::centered(panel_window_size(panel), cx),
             None => WindowBounds::centered(size(px(1420.), px(920.)), cx),
         },
     };
