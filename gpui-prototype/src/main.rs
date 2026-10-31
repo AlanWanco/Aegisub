@@ -1022,6 +1022,9 @@ struct Workspace {
     /// in the subtitle, so an edit with an unchanged frame number still needs a
     /// refetch — tracked per revision so a stale reply never clears the need.
     frame_image_revision: u64,
+    /// Width in physical pixels the preview paints at, so the host can ship a
+    /// frame sized for the box instead of the full source resolution.
+    preview_width_px: std::cell::Cell<f32>,
     frame_request_inflight: bool,
     frame_request_generation: u64,
     video_epoch: u64,
@@ -1345,6 +1348,7 @@ impl Workspace {
             frame_image: None,
             frame_image_frame: -1,
             frame_image_revision: u64::MAX,
+            preview_width_px: std::cell::Cell::new(0.),
             frame_request_inflight: false,
             frame_request_generation: 0,
             video_epoch: 0,
@@ -5589,8 +5593,9 @@ impl Workspace {
         let request_revision = self.snapshot.revision;
         let bridge = self.bridge.clone();
         let weak = cx.weak_entity();
+        let max_width = self.preview_width_px.get().round() as i64;
         cx.spawn(async move |_, cx| {
-            match bridge.call(json!({"op":"frame", "frame":request_frame, "request":generation, "epoch":request_epoch})).await {
+            match bridge.call(json!({"op":"frame", "frame":request_frame, "request":generation, "epoch":request_epoch, "max_width":max_width})).await {
                 Ok(value) => {
                     let reply: FrameReply = match serde_json::from_value(value) {
                         Ok(reply) => reply,
@@ -5610,15 +5615,20 @@ impl Workspace {
                         }
                         return;
                     }
+                    let width = reply.width.unwrap_or(0);
+                    let height = reply.height.unwrap_or(0);
+                    let frame = reply.frame.unwrap_or(-1);
+                    let video_gone = reply.video == Some(false);
+                    let error = reply.error;
                     let Some(encoded) = reply.image else {
                         if let Some(view) = weak.upgrade() {
                             let _ = view.update(cx, |view, cx| {
                                 if view.frame_request_generation != generation { return; }
                                 view.frame_request_inflight = false;
-                                if reply.video == Some(false) {
+                                if video_gone {
                                     view.apply_snapshot(Snapshot { video: false, ..view.snapshot.clone() }, cx);
                                 }
-                                if let Some(error) = reply.error {
+                                if let Some(error) = error {
                                     view.status = format!("视频帧请求失败：{error}");
                                     cx.notify();
                                 } else {
@@ -5629,18 +5639,37 @@ impl Workspace {
                         }
                         return;
                     };
+                    // Release the request slot and ask for the next frame before
+                    // decoding this one: the JPEG decode and upload cost more than
+                    // a frame interval, and the host only renders into a client
+                    // that is already waiting, so decoding first drops every other
+                    // frame during playback.
+                    let mut apply = false;
+                    if let Some(view) = weak.upgrade() {
+                        let _ = view.update(cx, |view, cx| {
+                            if view.frame_request_generation != generation { return; }
+                            view.frame_request_inflight = false;
+                            apply = view.snapshot.video && view.video_epoch == request_epoch;
+                            if apply && view.snapshot.playing {
+                                view.refresh_frame(cx);
+                            }
+                        });
+                    }
+                    if !apply {
+                        if let Some(view) = weak.upgrade() {
+                            let _ = view.update(cx, |view, cx| view.refresh_frame(cx));
+                        }
+                        return;
+                    }
                     let bytes = match cx.background_executor().spawn(async move {
                         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
                     }).await {
                         Ok(bytes) => bytes,
                         Err(error) => {
-                            if let Some(view) = weak.upgrade() { let _ = view.update(cx, |view, cx| { if view.frame_request_generation == generation { view.frame_request_inflight = false; view.status = format!("视频帧解码失败：{error}"); cx.notify(); } }); }
+                            if let Some(view) = weak.upgrade() { let _ = view.update(cx, |view, cx| { view.status = format!("视频帧解码失败：{error}"); cx.notify(); }); }
                             return;
                         }
                     };
-                    let width = reply.width.unwrap_or(0);
-                    let height = reply.height.unwrap_or(0);
-                    let frame = reply.frame.unwrap_or(-1);
                     let decoded = cx.background_executor().spawn(async move {
                         let decoder = image::ImageReader::with_format(
                             std::io::Cursor::new(bytes),
@@ -5663,11 +5692,8 @@ impl Workspace {
                         Err(error) => {
                             if let Some(view) = weak.upgrade() {
                                 let _ = view.update(cx, |view, cx| {
-                                    if view.frame_request_generation == generation {
-                                        view.frame_request_inflight = false;
-                                        view.status = format!("视频帧解码失败：{error}");
-                                        cx.notify();
-                                    }
+                                    view.status = format!("视频帧解码失败：{error}");
+                                    cx.notify();
                                 });
                             }
                             return;
@@ -5675,24 +5701,13 @@ impl Workspace {
                     };
                     if let Some(view) = weak.upgrade() {
                         let _ = view.update(cx, |view, cx| {
-                            if view.frame_request_generation != generation { return; }
-                            view.frame_request_inflight = false;
-                            if view.snapshot.video && view.video_epoch == request_epoch
-                                && (view.snapshot.frame == frame
-                                    || (view.snapshot.playing && frame >= view.frame_image_frame)) {
-                                // Ask for the next frame before touching the
-                                // image: the upload and repaint below cost a few
-                                // milliseconds, and the host only renders into a
-                                // client that is already waiting, so spending
-                                // them first makes the next frame arrive late.
-                                if view.snapshot.playing {
-                                    view.refresh_frame(cx);
-                                }
-                                view.replace_frame_image(image, frame, request_revision);
-                                cx.notify();
-                            } else {
-                                view.refresh_frame(cx);
-                            }
+                            if !view.snapshot.video || view.video_epoch != request_epoch { return; }
+                            // Another request is already in flight, so this image
+                            // can arrive after a newer one: never paint backwards
+                            // unless it is the frame the document is sitting on.
+                            if frame < view.frame_image_frame && view.snapshot.frame != frame { return; }
+                            view.replace_frame_image(image, frame, request_revision);
+                            cx.notify();
                         });
                     }
                 }
@@ -6818,6 +6833,9 @@ impl Workspace {
             self.video_preview_height.unwrap_or(view_height)
         };
         self.last_preview_height.set(view_height);
+        self.preview_width_px.set(
+            (view_height * aspect * window.scale_factor()).clamp(320., 1920.),
+        );
         let image = self.frame_image.clone();
         let has_image = image.is_some();
         let overscan = self.snapshot.video && self.snapshot.video_overscan;

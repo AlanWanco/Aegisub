@@ -68,6 +68,7 @@
 #include <random>
 #include <sstream>
 #include <string_view>
+#include <chrono>
 #include <deque>
 #include <vector>
 
@@ -150,10 +151,19 @@ std::string quote_json(std::string_view value) {
 	return out.str();
 }
 
-std::string to_base64_jpeg(VideoFrame const& frame, double aspect) {
+std::string to_base64_jpeg(VideoFrame const& frame, double aspect, int max_width) {
 	wxImage image = GetImage(frame);
-	int const display_width = std::max(1, static_cast<int>(std::round(image.GetHeight() * aspect)));
-	if (display_width != image.GetWidth()) image.Rescale(display_width, image.GetHeight(), wxIMAGE_QUALITY_HIGH);
+	int display_width = std::max(1, static_cast<int>(std::round(image.GetHeight() * aspect)));
+	// The preview is a few hundred pixels wide, so shipping a full 1080p frame
+	// only makes the frontend decode and upload nine times the pixels it shows.
+	if (max_width > 0 && display_width > max_width) {
+		int const scaled_height = std::max(1, static_cast<int>(std::round(image.GetHeight() * (double(max_width) / display_width))));
+		image.Rescale(max_width, scaled_height, wxIMAGE_QUALITY_HIGH);
+		display_width = max_width;
+	}
+	else if (display_width != image.GetWidth()) {
+		image.Rescale(display_width, image.GetHeight(), wxIMAGE_QUALITY_HIGH);
+	}
 	image.SetOption(wxIMAGE_OPTION_QUALITY, 82);
 	wxMemoryOutputStream stream;
 	if (!image.SaveFile(stream, wxBITMAP_TYPE_JPEG))
@@ -252,6 +262,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		bool responding = false;
 		bool waiting_for_frame = false;
 		bool awaiting_current = false;
+		int max_width = 0;
 		int requested_frame = -1;
 		uint64_t request_id = 0;
 		uint64_t video_epoch = 0;
@@ -447,7 +458,7 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 			it->second.waiting_for_frame = false;
 			it->second.awaiting_current = false;
 			it->second.provider = nullptr;
-			std::string encoded = to_base64_jpeg(*event.frame, context->videoController->GetAspectRatioValue());
+			std::string encoded = to_base64_jpeg(*event.frame, context->videoController->GetAspectRatioValue(), it->second.max_width);
 			if (encoded.empty()) {
 				BeginResponse(socket, it->second, R"({"ok":false,"error":"could not encode preview frame"})");
 				continue;
@@ -793,6 +804,8 @@ struct GpuiBridge::Impl final : wxEvtHandler {
 		int frame_number = frame_it == object.end() ? context->videoController->GetFrameN() : static_cast<int>(static_cast<json::Integer const&>(frame_it->second));
 		frame_number = std::clamp(frame_number, 0, provider->GetFrameCount() - 1);
 		uint64_t request_id = request_it == object.end() ? 0 : static_cast<uint64_t>(static_cast<json::Integer const&>(request_it->second));
+		if (auto width_it = object.find("max_width"); width_it != object.end())
+			client.max_width = static_cast<int>(static_cast<json::Integer const&>(width_it->second));
 		client.waiting_for_frame = true;
 		client.awaiting_current = frame_number != context->videoController->GetFrameN();
 		client.requested_frame = frame_number;
