@@ -3383,7 +3383,16 @@ impl Workspace {
                             .border_color(p.border)
                             .bg(p.inset)
                             .overflow_hidden()
-                            .child(div().absolute().inset_0().bg(current))
+                            // overflow_hidden clips to a rectangle, so the fill
+                            // has to carry the radius itself or it paints over
+                            // the four corners of the rounded frame.
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .rounded(px(workspace_theme::RADIUS_SM))
+                                    .bg(current),
+                            )
                             .child(
                                 div()
                                     .absolute()
