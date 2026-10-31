@@ -31,7 +31,7 @@ std::string Search(agi::Context *context, json::Object const& request) {
 	};
 	auto boolean = [&](char const* key) { return static_cast<json::Boolean const&>(request.at(key)); };
 	if (action != "state") {
-		if (action != "select" && action != "preview" && action != "find" && action != "replace" && action != "replace_all")
+		if (action != "select" && action != "preview" && action != "find" && action != "replace" && action != "replace_all" && action != "list")
 			throw std::invalid_argument("unknown search action");
 		SearchReplaceSettings settings{};
 		settings.find = static_cast<std::string const&>(request.at("find"));
@@ -46,6 +46,36 @@ std::string Search(agi::Context *context, json::Object const& request) {
 		if (action == "select" || action == "preview") {
 			settings.use_regex = mode == 2;
 			settings.exact_match = mode == 0;
+		}
+		if (action == "list") {
+			if (settings.find.empty())
+				throw std::invalid_argument("enter text or a regular expression to find");
+			auto matches = SearchReplaceEngine::GetMatcher(settings);
+			json::Array rows;
+			int64_t count = 0;
+			for (auto& line : context->ass->Events) {
+				auto match = matches(&line, 0);
+				if (!match) continue;
+				++count;
+				// The preview only needs the first match per line; the list is
+				// capped so a broad query cannot stall the bridge.
+				if (rows.size() >= 200) continue;
+				std::string const text = line.Text.get();
+				json::Object row;
+				row["row"] = static_cast<int64_t>(line.Row + 1);
+				row["style"] = line.Style.get();
+				row["text"] = text;
+				row["after"] = text.substr(0, match.start) + match.replacement + text.substr(match.end);
+				rows.emplace_back(std::move(row));
+			}
+			result["count"] = count;
+			result["items"] = std::move(rows);
+			result["ok"] = true;
+			std::ostringstream stream;
+			agi::JsonWriter::Write(result, stream);
+			auto response = stream.str();
+			response.erase(std::remove(response.begin(), response.end(), '\n'), response.end());
+			return response;
 		}
 		else if (settings.find.empty()) throw std::invalid_argument("enter text or a regular expression to find");
 		auto matches = SearchReplaceEngine::GetMatcher(settings);

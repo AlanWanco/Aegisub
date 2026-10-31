@@ -19,6 +19,10 @@ use crate::{Snapshot, Workspace};
 #[derive(Default, Deserialize)]
 pub struct SearchReply {
     #[serde(default)]
+    pub items: Vec<SearchItem>,
+    #[serde(default)]
+    pub list_count: i64,
+    #[serde(default)]
     pub search_defaults: Value,
     #[serde(default)]
     pub selection_defaults: Value,
@@ -30,6 +34,18 @@ pub struct SearchReply {
     pub found: Option<bool>,
     pub replaced: Option<bool>,
     pub row: Option<i64>,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+pub struct SearchItem {
+    #[serde(default)]
+    pub row: i64,
+    #[serde(default)]
+    pub style: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub after: String,
 }
 
 pub struct SearchPanel {
@@ -46,6 +62,8 @@ pub struct SearchPanel {
     pub error: Option<String>,
     pub message: String,
     pub history: Vec<String>,
+    pub items: Vec<SearchItem>,
+    pub items_count: i64,
     pending_find: Option<String>,
     pending_replace: Option<String>,
     _events: Vec<Subscription>,
@@ -93,6 +111,8 @@ impl SearchPanel {
                 ("dialogue", true),
             ]),
             selection_mode: false,
+            items: Vec::new(),
+            items_count: 0,
             initialized: false,
             loading: false,
             focus_pending: false,
@@ -390,6 +410,45 @@ impl SearchPanel {
         }
         if self.loading {
             panel = panel.child(crate::page::hint(cx, "正在检索…"));
+        }
+        if self.items_count > 0 || !self.items.is_empty() {
+            let p = crate::workspace_theme::Palette::current(cx);
+            let mut rows = div().v_flex().w_full().gap_1();
+            for item in self.items.iter().take(200) {
+                let changed = item.after != item.text;
+                rows = rows.child(
+                    div()
+                        .v_flex()
+                        .w_full()
+                        .gap_0p5()
+                        .px_2()
+                        .py_1()
+                        .rounded(px(6.))
+                        .child(
+                            div()
+                                .h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(p.muted)
+                                        .child(format!("{:03}", item.row)),
+                                )
+                                .child(div().text_xs().text_color(p.muted).child(item.style.clone())),
+                        )
+                        .child(div().text_sm().child(item.text.clone()))
+                        .when(changed, |card| {
+                            card.child(div().text_sm().text_color(p.accent).child(item.after.clone()))
+                        }),
+                );
+            }
+            panel = panel.child(crate::page::section(
+                cx,
+                "查找结果",
+                Some(crate::page::badge(cx, format!("{} 行", self.items_count)).into_any_element()),
+                crate::page::section_body().child(rows),
+            ));
         }
         if !self.history.is_empty() {
             let mut history = div().h_flex().flex_wrap().gap_2();

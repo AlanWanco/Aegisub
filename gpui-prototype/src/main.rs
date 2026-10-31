@@ -4685,7 +4685,20 @@ impl Workspace {
                 if let Some(draft) = draft {
                     bridge.call(draft).await?;
                 }
-                let reply = serde_json::from_value::<SearchReply>(bridge.call(request).await?)?;
+                let mut listing = request.clone();
+                let wants_list = !matches!(action, "state" | "select" | "preview");
+                if wants_list {
+                    listing["action"] = json!("list");
+                }
+                let mut reply = serde_json::from_value::<SearchReply>(bridge.call(request).await?)?;
+                if wants_list {
+                    if let Ok(list) = bridge.call(listing).await {
+                        if let Ok(list) = serde_json::from_value::<SearchReply>(list) {
+                            reply.items = list.items;
+                            reply.list_count = list.count.unwrap_or(0) as i64;
+                        }
+                    }
+                }
                 let snapshot = bridge.snapshot().await?;
                 Ok::<_, anyhow::Error>((reply, snapshot))
             }
@@ -4694,6 +4707,8 @@ impl Workspace {
                 view.find_panel.loading = false;
                 match result {
                     Ok((reply, snapshot)) => {
+                        view.find_panel.items = reply.items.clone();
+                        view.find_panel.items_count = reply.list_count;
                         if action != "state" {
                             view.find_panel.message = match action {
                                 "select" | "preview" => format!(
