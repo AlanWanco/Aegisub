@@ -666,21 +666,22 @@ fn line_field_row(
     p: &crate::workspace_theme::Palette,
 ) -> gpui_kit::Div {
     let mut row = div().h_flex().items_center().gap_2().w_full().min_w_0();
-    for (key, label, weight) in [
-        ("style", "样式", 1.5),
-        ("actor", "角色", 0.8),
-        // The time fields carry the widest fixed content, so they get the room.
-        ("start", "始", 1.6),
-        ("end", "终", 1.6),
+    // The time fields only ever hold "0:00:00.00", so they keep a fixed width
+    // (label + box) and the free space goes to the actor field instead.
+    for (key, label, grow, basis) in [
+        ("style", "样式", 1.4, 200.),
+        ("actor", "角色", 1.0, 90.),
+        ("start", "始", 0., 118.),
+        ("end", "终", 0., 118.),
     ] {
         row = row.child(
             div()
                 .h_flex()
                 .items_center()
                 .gap_1p5()
-                .flex_basis(gpui_kit::px(0.))
-                .flex_grow(weight)
-                .flex_shrink(1.)
+                .flex_basis(gpui_kit::px(basis))
+                .flex_grow(grow)
+                .flex_shrink(if grow > 0. { 1. } else { 0. })
                 .min_w_0()
                 // The label rides beside the field, not above it: a stacked label
                 // cost a whole text line per row and doubled the panel height.
