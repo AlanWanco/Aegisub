@@ -727,19 +727,9 @@ fn line_field_row(
                 }),
         );
     }
-    row.child(
-        Button::new("apply-editor-fields")
-            .rounded(gpui_kit::px(999.))
-            .small()
-            .px(gpui_kit::px(13.))
-            .py(gpui_kit::px(3.))
-            .child(Icon::new(IconName::Check).size(px(15.)))
-            .accessibility_label("应用样式与角色")
-            .tooltip("应用样式、角色、图层、效果")
-            .ghost()
-            .disabled(view.selected_line < 0 || !view.properties_dirty)
-            .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx))),
-    )
+    // No apply button here: the panel's own 应用修改 button commits the same
+    // fields, and two checkmarks for one action is just a second way to be wrong.
+    row
 }
 
 fn escape_line_breaks(text: String, soft: bool) -> String {
@@ -6391,14 +6381,6 @@ impl Workspace {
             .primary()
             .disabled(self.selected_line < 0 || !self.properties_dirty)
             .on_click(cx.listener(|view, _, _, cx| view.commit_properties(cx)));
-        let count = div()
-            .px_2()
-            .py_0p5()
-            .rounded(px(4.))
-            .bg(p.raised)
-            .text_size(px(11.))
-            .text_color(p.muted)
-            .child(format!("{} 行", self.snapshot.selected.len()));
         // No title and no icon: the fields are the panel, and the actions sit at
         // the end of the first row so the whole panel is two rows tall.
         let header = div()
