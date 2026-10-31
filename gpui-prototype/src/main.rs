@@ -7450,6 +7450,35 @@ impl Workspace {
                 editor.font_family(appearance.edit_font.clone())
             });
         let mut format_toolbar = div().h_flex().flex_wrap().gap_1().items_center();
+        // One palette button with the four colour slots behind a menu: four
+        // identical AB buttons said nothing about which slot they edited.
+        let color_weak = cx.weak_entity();
+        let color_menu = Button::new("format-color")
+            .rounded(gpui_kit::px(999.))
+            .px(px(9.))
+            .py(px(4.))
+            .ghost()
+            .tooltip("字幕颜色：主要色 / 次要色 / 描边颜色 / 阴影颜色")
+            .child(Icon::new(IconName::Palette).size(px(15.)))
+            .child(Icon::new(IconName::ChevronDown).size(px(11.)))
+            .dropdown_menu(move |mut menu, _, _| {
+                for (label, kind) in [
+                    ("主要色", "primary"),
+                    ("次要色", "secondary"),
+                    ("描边颜色", "outline"),
+                    ("阴影颜色", "shadow"),
+                ] {
+                    let target = color_weak.clone();
+                    let name = format!("edit/color/{kind}");
+                    menu = menu.item(PopupMenuItem::new(label).on_click(move |_, _, cx| {
+                        let name = name.clone();
+                        let _ = target.update(cx, |view, cx| {
+                            view.invoke(json!({"op": "command", "name": name}), cx);
+                        });
+                    }));
+                }
+                menu
+            });
         for (id, label, icon, name) in [
             ("format-bold", "粗体", IconName::Bold, "edit/style/bold"),
             (
@@ -7471,12 +7500,6 @@ impl Workspace {
                 "edit/style/strikeout",
             ),
             ("format-font", "字体", IconName::ALargeSmall, "edit/font"),
-            (
-                "format-primary",
-                "颜色",
-                IconName::Palette,
-                "edit/color/primary",
-            ),
             (
                 "split-preserve",
                 "光标处分行",
@@ -7507,6 +7530,7 @@ impl Workspace {
                     })),
             );
         }
+        format_toolbar = format_toolbar.child(color_menu);
         // Playback lives next to the text it affects: jumping frames or replaying
         // the current line used to require moving the pointer to the video panel.
         let mut playback_toolbar = div().h_flex().flex_wrap().gap_1().items_center();
