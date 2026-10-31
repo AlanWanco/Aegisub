@@ -6489,6 +6489,9 @@ impl Workspace {
                     .gap_0p5()
             })
             .child(header)
+            // Style, actor, layer and effect belong to the line, so they live in
+            // the line's own panel instead of floating above it as a loose row.
+            .when(rail.is_none(), |panel| panel.child(line_field_row(cx, self, &p)))
             .children(groups)
             .overflow_y_scrollbar()
     }
@@ -7610,12 +7613,7 @@ impl Workspace {
         // Without the side rail the inspector stacks under the editor, and the
         // style/role/layer/effect row moves back into it.
         let stacked_properties = rail.is_none().then(|| {
-            div()
-                .v_flex()
-                .gap_2()
-                .child(line_field_row(cx, self, &p))
-                .child(self.render_properties(None, cx))
-                .into_any_element()
+            self.render_properties(None, cx).into_any_element()
         });
         let rail_handle = rail.map(|rail_width| {
             div()
