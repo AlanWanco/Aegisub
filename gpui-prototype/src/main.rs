@@ -7686,7 +7686,17 @@ impl Workspace {
                             .items_center()
                             .gap_2()
                             .child(
-                                crate::page::toggle_chip(cx, "editor-frame-mode", "按帧显示", frame_mode, false)
+                                crate::page::toggle_chip(
+                                    cx,
+                                    "editor-frame-mode",
+                                    if self.snapshot.fps.is_some() {
+                                        "按帧显示"
+                                    } else {
+                                        "按帧显示（需视频）"
+                                    },
+                                    frame_mode,
+                                    self.snapshot.fps.is_none(),
+                                )
                                     .on_click(cx.listener(|view, _, window, cx| {
                                         view.time_in_frames = !view.time_in_frames;
                                         let fps = view.snapshot.fps.unwrap_or(0.);
