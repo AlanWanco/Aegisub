@@ -7643,7 +7643,9 @@ impl Workspace {
             .v_flex()
             .flex_1()
             .min_w_0()
-            .min_h_0()
+            // Without a floor the editor loses every share negotiation to the
+            // properties card and the list, and collapses to nothing.
+            .min_h(px(150.))
             .gap_2()
             .when(rail.is_some(), |content| content.py_3().pl_3().pr_2())
             .when(rail.is_none(), |content| content.px_3().py_3())
@@ -8664,11 +8666,7 @@ impl Render for Workspace {
                         .when(side_by_side && properties_rail.is_none(), |column| {
                             column.child(video_handle)
                         })
-                        // Filling the column (instead of a fixed height) lets
-                        // the preview divider trade space with the properties.
-                        .when(properties_rail.is_none(), |column| {
-                            column.child(self.render_properties(None, cx))
-                        }),
+                        ,
                 )
                 .when(side_by_side, |row| row.child(column_handle))
                 .child({
