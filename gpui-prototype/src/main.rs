@@ -8039,7 +8039,14 @@ impl Workspace {
             // Stop the list a radius short of the edge instead.
             .pb(px(crate::workspace_theme::RADIUS_LG))
             .shadow(crate::page::card_shadow(dark))
-            .child(editor_section.h(px(editor_height)).flex_shrink_0())
+            // The stacked properties card is a child of this section, so the
+            // section has to budget for it; otherwise the card is laid out over
+            // the editor's toolbars and clips them.
+            .child(
+                editor_section
+                    .h(px(editor_height + if rail.is_none() { 150. } else { 0. }))
+                    .flex_shrink_0(),
+            )
             .child(
                 div()
                     .id("subtitle-editor-list-resize-handle")
