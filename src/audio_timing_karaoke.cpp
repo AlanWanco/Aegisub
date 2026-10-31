@@ -405,6 +405,7 @@ void AudioTimingControllerKaraoke::AnnounceChanges(int syl) {
 }
 
 void AudioTimingControllerKaraoke::OnMarkerDrag(std::vector<AudioMarker*> const& m, int new_position, int) {
+	if (m.empty()) return;
 	int old_position = m[0]->GetPosition();
 	int syl = MoveMarker(static_cast<KaraokeMarker *>(m[0]), new_position);
 	if (syl < 0) return;

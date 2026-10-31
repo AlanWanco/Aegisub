@@ -212,7 +212,11 @@ std::string Audio::Interact(json::Object const& request) {
 		if (gesture != impl->gesture) throw std::invalid_argument("audio selection changed during this gesture");
 		int const ms = integer(request, "ms", 0, std::numeric_limits<int>::max() - 1);
 		int const snap = OPT_GET("Audio/Snap/Enable")->GetBool() ? integer(request, "snap", 0, 10000) : 0;
-		timing->OnMarkerDrag(impl->dragging, ms, snap);
+		// A click that did not land on a marker returns an empty marker list.
+		// The karaoke timing controller indexes m[0] unconditionally, so passing
+		// the empty list through aborts the whole application.
+		if (!impl->dragging.empty())
+			timing->OnMarkerDrag(impl->dragging, ms, snap);
 		if (action == "up") impl->dragging.clear();
 	}
 	else if (action == "karaoke") {

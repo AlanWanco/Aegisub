@@ -128,6 +128,23 @@ impl AudioPanel {
             .clamp(0, state.duration.max(0))
     }
 
+    /// 距离 `x` 最近、且在 `px` 像素以内的 marker 时间。
+    ///
+    /// 宿主只在点击落在 sensitivity 窗口内时才发起 marker 拖拽，而缩得很宽时
+    /// 一个 marker 只有一两个像素宽，靠手点几乎必然落到缝隙里变成"选音节"。
+    pub fn marker_near(&self, x: Pixels, state: &AudioState, px: f32) -> Option<i64> {
+        let bounds = *self.bounds.borrow();
+        let width = f32::from(bounds.size.width).max(1.);
+        let per_px = self.span as f32 / width;
+        let ms = self.time_at(x, state);
+        state
+            .markers
+            .iter()
+            .copied()
+            .filter(|marker| ((*marker - ms) as f32).abs() <= px * per_px)
+            .min_by_key(|marker| (*marker - ms).abs())
+    }
+
     pub fn render(
         &self,
         state: &AudioState,
@@ -469,17 +486,32 @@ impl AudioPanel {
                 continue;
             }
             let left = (marker - self.view_start) as f32 / self.span as f32 * width;
+            // A 1px translucent line reads as a grid line, not as something you
+            // can grab, so markers get a small handle at the top edge.
             graph = graph.child(
                 div()
                     .absolute()
                     .top_0()
                     .bottom_0()
                     .left(px(left))
-                    .w(px(1.))
+                    .w(px(2.))
                     .bg(appearance.color(
                         "Colour/Audio Display/Line Boundary Inactive Line",
-                        gpui_kit::rgba(0xe5c78b88).into(),
-                    )),
+                        gpui_kit::rgba(0xe5c78bff).into(),
+                    ))
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(2.))
+                            .left(px(-3.))
+                            .w(px(8.))
+                            .h(px(10.))
+                            .rounded(px(2.))
+                            .bg(appearance.color(
+                                "Colour/Audio Display/Line Boundary Inactive Line",
+                                gpui_kit::rgba(0xe5c78bff).into(),
+                            )),
+                    ),
             );
         }
         if state.playing {
@@ -505,7 +537,12 @@ impl AudioPanel {
                     }
                     view.key_focus = crate::KeyFocus::Audio;
                     view.focus_handle.focus(window, cx);
-                    let ms = view.audio.time_at(event.position.x, &view.snapshot.audio);
+                    let ms = view
+                        .audio
+                        .marker_near(event.position.x, &view.snapshot.audio, 6.)
+                        .unwrap_or_else(|| {
+                            view.audio.time_at(event.position.x, &view.snapshot.audio)
+                        });
                     view.begin_audio_drag(
                         ms,
                         event.button == MouseButton::Right,
