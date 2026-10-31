@@ -380,6 +380,21 @@ pub fn toggle_chip(
         .child(label)
 }
 
+/// Tooltip for elements that are not `Button`s.
+///
+/// `toggle_chip` returns a `Div`, and only `Button`/`Switch`/`Checkbox` carry a
+/// one-line `tooltip` helper. This attaches the same tooltip widget through the
+/// element's low-level builder.
+pub fn with_tooltip(
+    el: gpui_kit::Stateful<gpui_kit::Div>,
+    text: impl Into<gpui_kit::SharedString> + 'static,
+) -> gpui_kit::Stateful<gpui_kit::Div> {
+    let text = text.into();
+    el.tooltip(move |window, cx| {
+        gpui_kit::component::tooltip::Tooltip::new(text.clone()).build(window, cx)
+    })
+}
+
 /// Dropdown trigger that reads like a select: value on the left, caret on the
 /// right. A plain `Button` centers its label, which makes a wide select look
 /// like a call to action instead of a field.

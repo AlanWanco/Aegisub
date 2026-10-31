@@ -323,33 +323,37 @@ impl AudioPanel {
         let short = |long: &'static str, brief: &'static str| {
             if full_controls { long } else { brief }
         };
-        for (id, label, command, active) in [
+        for (id, label, command, active, tip) in [
             (
                 "audio-auto-commit",
                 short("自动提交", "自动"),
                 "audio/opt/autocommit",
                 state.autocommit,
+                "自动提交：改动时间后立即写入字幕",
             ),
             (
                 "audio-auto-next",
                 short("提交后前进", "前进"),
                 "audio/opt/autonext",
                 state.autonext,
+                "提交后前进：提交一行后自动选中下一行",
             ),
             (
                 "audio-auto-scroll",
                 short("跟随当前句", "跟随"),
                 "audio/opt/autoscroll",
                 state.autoscroll,
+                "跟随当前句：波形随播放自动滚动",
             ),
         ] {
-            controls = controls.child(
-                crate::page::toggle_chip(cx, id, label, active, false).on_click(cx.listener(
-                    move |view, _, _, cx| view.invoke(json!({"op":"command", "name":command}), cx),
-                )),
+            let chip = crate::page::toggle_chip(cx, id, label, active, false).on_click(
+                cx.listener(move |view, _, _, cx| {
+                    view.invoke(json!({"op":"command", "name":command}), cx)
+                }),
             );
+            controls = controls.child(crate::page::with_tooltip(chip, tip));
         }
-        controls = controls.child(
+        controls = controls.child(crate::page::with_tooltip(
             crate::page::toggle_chip(cx, "audio-snap", "吸附", state.snap, false).on_click(
                 cx.listener(|view, _, _, cx| {
                     view.invoke(
@@ -358,23 +362,26 @@ impl AudioPanel {
                     )
                 }),
             ),
-        );
-        controls = controls.child(
+            "吸附：拖动边界时贴到关键帧和音频峰值",
+        ));
+        // "OK" read as an acknowledgement button; it is the karaoke timing mode.
+        controls = controls.child(crate::page::with_tooltip(
             crate::page::toggle_chip(
-            cx,
-            "audio-karaoke-mode",
-            short("卡拉 OK", "OK"),
-            state.karaoke,
-            !state.loaded,
-        )
-                .on_click(cx.listener(|view, _, _, cx| {
-                    view.invoke(
-                        json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}),
-                        cx,
-                    )
-                })),
-        );
-        controls = controls.child(
+                cx,
+                "audio-karaoke-mode",
+                short("卡拉 OK", "卡拉OK"),
+                state.karaoke,
+                !state.loaded,
+            )
+            .on_click(cx.listener(|view, _, _, cx| {
+                view.invoke(
+                    json!({"op":"audio_action", "action":"karaoke", "enabled":!view.snapshot.audio.karaoke}),
+                    cx,
+                )
+            })),
+            "卡拉 OK 模式：按音节切分时间",
+        ));
+        controls = controls.child(crate::page::with_tooltip(
             crate::page::toggle_chip(cx, "audio-medusa", "美杜莎", state.medusa, false)
                 .on_click(cx.listener(|view, _, _, cx| {
                     // Medusa mode swaps the global timing hotkeys for the
@@ -384,7 +391,8 @@ impl AudioPanel {
                         cx,
                     )
                 })),
-        );
+            "美杜莎模式：把全局时间热键换成音频编辑热键",
+        ));
         let bounds = self.bounds.clone();
         // The rendered waveform image is drawn for a dark display, so keep the
         // dark track once audio exists and follow the theme while it is empty.
