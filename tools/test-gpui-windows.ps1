@@ -87,6 +87,30 @@ function Press-Control([string]$Name, [switch]$Last) {
     Start-Sleep -Milliseconds 250
 }
 
+function Switch-ToToolWindow([string] $Title) {
+    # Tools open in their own window now, so the sidebar click above does not
+    # change what the workspace window shows.
+    $root = [Windows.Automation.AutomationElement]::RootElement
+    $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $Title)
+    for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        $window = $root.FindFirst([Windows.Automation.TreeScope]::Children, $condition)
+        if ($window) {
+            $script:windowHandle = [IntPtr]$window.Current.NativeWindowHandle
+            [void][GpuiDesktop]::SetForegroundWindow($script:windowHandle)
+            Start-Sleep -Milliseconds 350
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    throw "Tool window not found: $Title"
+}
+
+function Switch-ToMainWindow {
+    $script:windowHandle = $script:mainWindowHandle
+    [void][GpuiDesktop]::SetForegroundWindow($script:windowHandle)
+    Start-Sleep -Milliseconds 350
+}
+
 function Set-Amount([string]$Value) {
     $element = Find-Control '平移时长' -Kind Edit
     $pattern = $element.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
@@ -135,11 +159,13 @@ try {
     }
     if (-not $frontend -or $frontend.MainWindowHandle -eq [IntPtr]::Zero) { throw 'GPUI did not create a window' }
     $script:windowHandle = $frontend.MainWindowHandle
+    $script:mainWindowHandle = $script:windowHandle
     $screen = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
     [void][GpuiDesktop]::SetWindowPos($script:windowHandle, [IntPtr]::Zero, $screen.X, $screen.Y, [Math]::Min(1024, $screen.Width), [Math]::Min(720, $screen.Height), 0x0040)
     [void][GpuiDesktop]::SetForegroundWindow($script:windowHandle)
     Start-Sleep -Milliseconds 750
     Press-Control '时间平移'
+    Switch-ToToolWindow 'Aegisub · 时间平移'
     $input = Find-Control '平移时长' -Kind Edit
     $initialBounds = $input.Current.BoundingRectangle
     if ($input.Current.IsOffscreen -or $initialBounds.Height -lt 15) { throw 'Shift input is clipped or offscreen' }
@@ -178,11 +204,15 @@ try {
     if ([Math]::Abs($afterBounds.Y - $initialBounds.Y) -gt 1) { throw 'History scrolling moved the parameter input' }
     Save-Screenshot 'timing-history-scrolled'
 
+    Switch-ToMainWindow
     foreach ($name in @('时间后处理', '重采样', '查找替换', '样式管理')) {
         Press-Control $name
+        Switch-ToToolWindow "Aegisub · $name"
         Save-Screenshot ("tool-" + $name)
     }
+    Switch-ToMainWindow
     Press-Control '时间平移'
+    Switch-ToToolWindow 'Aegisub · 时间平移'
     [void][GpuiDesktop]::SetWindowPos($script:windowHandle, [IntPtr]::Zero, $screen.X, $screen.Y, 800, 600, 0x0040)
     Start-Sleep -Milliseconds 350
     # The compact window stacks both cards: the parameter field stays visible and
