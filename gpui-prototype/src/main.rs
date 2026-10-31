@@ -7586,6 +7586,16 @@ impl Workspace {
         let row_count = visible.len();
         let properties_rail =
             rail.map(|width| self.render_properties(Some(width), cx).into_any_element());
+        // Without the side rail the inspector stacks under the editor, and the
+        // style/role/layer/effect row moves back into it.
+        let stacked_properties = rail.is_none().then(|| {
+            div()
+                .v_flex()
+                .gap_2()
+                .child(line_field_row(cx, self, &p))
+                .child(self.render_properties(None, cx))
+                .into_any_element()
+        });
         let rail_handle = rail.map(|rail_width| {
             div()
                 .id("properties-rail-resize-handle")
@@ -7676,8 +7686,7 @@ impl Workspace {
                     )
                     .child(format_toolbar)
                     .child(playback_toolbar)
-                    .child(editor.flex_1().min_h(px(40.)))
-                    .child(line_field_row(cx, self, &p));
+                    .child(editor.flex_1().min_h(px(40.)));
         let editor_section = div()
             .id("subtitle-editor-section")
             .flex_shrink_0()
@@ -7690,7 +7699,8 @@ impl Workspace {
             .border_color(border)
             .child(editor_content)
             .children(rail_handle)
-            .children(properties_rail);
+            .children(properties_rail)
+            .children(stacked_properties);
         let subtitle_list = div()
             .v_flex()
             .min_w_0()
@@ -8459,21 +8469,9 @@ impl Render for Workspace {
                 .clamp(280., (body_width - 280.).max(280.));
             // The inspector moves beside the text editor once the right column
             // can hold both without squeezing the editor into a sliver.
-            // The inspector only turns into a side rail while the editor still
-            // keeps a workable width next to it.
-            let right_column_width = body_width - column_width - 16.;
-            let default_rail = (right_column_width * 0.42).clamp(228., 320.);
-            // Dragging the handle widens the rail at the editor's expense, so
-            // the editor keeps a floor of 260 and the rail can grow past its
-            // default share of the column.
-            let rail_limit = (right_column_width - 260.).max(200.);
-            let rail_width = self
-                .properties_rail_width
-                .unwrap_or(default_rail)
-                .clamp(200., rail_limit);
-            let properties_rail = side_by_side
-                .then_some(rail_width)
-                .filter(|_| right_column_width >= 420.);
+            // The inspector stacks under the editor, so there is no side rail
+            // to size or drag any more.
+            let properties_rail: Option<f32> = None;
             let grip = p.muted.opacity(0.7);
             let audio_handle = div()
                 .id("audio-panel-resize-handle")
